@@ -1,20 +1,27 @@
 --[[
-  /QalcomOS/Apps/Desktop/main.lua - System desktop process (v0.2)
+  /QalcomOS/Apps/Desktop/main.lua - System desktop process (v0.3)
 
   The desktop owns the bottom z-order layer. It draws:
     * Wallpaper on a full-bleed system window.
     * Desktop icons (right-side vertical grid).
     * A 1-row taskbar at the bottom with [Start], running-window tray,
-      and a clock.
+      and a clock. The focused window's tray button is highlighted with a
+      distinct accent colour. Minimized windows show with a dimmed label.
     * A Start menu overlay (managed by toggling showStartMenu state)
       that lists every .qalcom app.
+    * A right-click context menu (managed by showContextMenu state) with
+      quick actions: Settings, About, and Reboot. Clicking anywhere else
+      or pressing Esc closes it.
 
   On click, it:
     * Hits an icon -> kernel.spawn the app at its declared geometry.
     * Hits the Start button -> toggles the Start menu.
-    * Hits a running-window tray button -> kernel.focusWindow.
+    * Hits a running-window tray button -> kernel.focusWindow (or
+      restore a minimized window; toggle-minimize for the focused one).
     * Hits a menu item -> kernel.spawn + close menu.
     * Esc -> terminate (drops to CraftOS).
+
+  On right-click (button == 2), the context menu opens near the cursor.
 ]]
 
 local qos      = _QOS
@@ -35,6 +42,19 @@ local menuTH        = #apps + 4 -- menu height: title + items + 2 padding
 -- Clamp menu size to the screen.
 if menuTH + 4 > h then menuTH = h - 4 end
 if menuTW > w - 6 then menuTW = w - 6 end
+
+-- Right-click context menu state.
+local showContextMenu = false
+local contextX = 0              -- top-left corner of the menu
+local contextY = 0
+local contextItems = {
+  { label = "Settings",  icon = "S", action = "settings"  },
+  { label = "About",     icon = "A", action = "about"     },
+  { label = "-" },  -- separator
+  { label = "Reboot",    icon = "R", action = "reboot"    },
+}
+local contextW = 18  -- fixed width
+local contextMenuIndex = 0  -- hover highlight index, 0 = none
 
 -- ----------------------------------------------------------------------------
 -- Drawing helpers
@@ -125,6 +145,12 @@ local function drawTaskbar()
   term.setCursorPos(1, y)
   term.write("[Start]")
 
+  -- Separator after Start button.
+  term.setBackgroundColor(colors.gray)
+  term.setTextColor(colors.lightGray)
+  term.setCursorPos(8, y)
+  term.write("|")
+
   -- Running-window tray buttons. Each gets an equal slice.
   local prog = kernel.listRunning()
   if #prog > 0 then
@@ -135,9 +161,22 @@ local function drawTaskbar()
       if x + tray_w > w - 9 then break end
       local label = " " .. (p.title or "?")
       if #label > tray_w - 1 then label = label:sub(1, tray_w - 2) .. "~" end
+
+      -- Highlight the focused window; dim minimized windows.
+      local isFocused   = p.focused
+      local isMinimized = p.minimized
+
       term.setCursorPos(x, y)
-      term.setBackgroundColor(colors.gray)
-      term.setTextColor(colors.white)
+      if isMinimized then
+        term.setBackgroundColor(colors.lightGray)
+        term.setTextColor(colors.gray)
+      elseif isFocused then
+        term.setBackgroundColor(colors.lightBlue)
+        term.setTextColor(colors.yellow)
+      else
+        term.setBackgroundColor(colors.gray)
+        term.setTextColor(colors.white)
+      end
       term.write(label)
     end
   end
@@ -149,6 +188,84 @@ local function drawTaskbar()
   term.setCursorPos(w - #clk - 1, y)
   term.setTextColor(colors.white)
   term.write(clk)
+end
+
+-- ----------------------------------------------------------------------------
+-- Context menu drawing & hit-testing
+-- ----------------------------------------------------------------------------
+
+local function drawContextMenu()
+  if not showContextMenu then return end
+  local menuH = #contextItems + 2  -- items + 2 border rows
+  local mx = contextX
+  local my = contextY
+  -- Clamp to screen so the menu never goes off the bottom or right.
+  if mx + contextW > w then mx = w - contextW + 1 end
+  if my + menuH > h - 1 then my = h - 1 - menuH end  -- above taskbar
+  if mx < 1 then mx = 1 end
+  if my < 1 then my = 1 end
+  contextX, contextY = mx, my  -- store clamped coords for hit-test
+
+  -- Fill background.
+  for row = my, my + menuH - 1 do
+    term.setCursorPos(mx, row)
+    term.setBackgroundColor(colors.white)
+    term.setTextColor(colors.black)
+    term.write(string.rep(" ", contextW))
+  end
+
+  -- Border.
+  term.setCursorPos(mx, my)
+  term.setBackgroundColor(colors.white)
+  term.write("+" .. string.rep("-", contextW - 2) .. "+")
+  term.setCursorPos(mx, my + menuH - 1)
+  term.write("+" .. string.rep("-", contextW - 2) .. "+")
+  for row = my + 1, my + menuH - 2 do
+    term.setCursorPos(mx, row); term.write("|")
+    term.setCursorPos(mx + contextW - 1, row); term.write("|")
+  end
+
+  -- Items.
+  local iy = my + 1
+  for i, item in ipairs(contextItems) do
+    if iy > my + menuH - 2 then break end
+    term.setCursorPos(mx + 2, iy)
+    if item.label == "-" then
+      -- Separator row.
+      term.setBackgroundColor(colors.white)
+      term.setTextColor(colors.lightGray)
+      term.write(string.rep("-", contextW - 4))
+    else
+      if i == contextMenuIndex then
+        term.setBackgroundColor(colors.yellow)
+        term.setTextColor(colors.black)
+      else
+        term.setBackgroundColor(colors.white)
+        term.setTextColor(colors.black)
+      end
+      local row = " " .. (item.icon or "?") .. "  " .. item.label
+      if #row > contextW - 4 then row = row:sub(1, contextW - 5) .. "~" end
+      term.write(row)
+    end
+    iy = iy + 1
+  end
+end
+
+local function contextMenuHit(mx, my)
+  if not showContextMenu then return nil end
+  local menuH = #contextItems + 2
+  local mx1, my1 = contextX, contextY
+  if mx < mx1 or mx >= mx1 + contextW then return nil end
+  if my < my1 + 1 or my >= my1 + menuH - 1 then return nil end
+  local idx = my - my1  -- convert row to item index (skip top border)
+  if idx < 1 or idx > #contextItems then return nil end
+  if contextItems[idx].label == "-" then return nil end  -- separator
+  return idx
+end
+
+local function contextMenuHover(mx, my)
+  local idx = contextMenuHit(mx, my)
+  contextMenuIndex = idx or 0
 end
 
 -- Start menu panel: drawn over the wallpaper on the left.
@@ -250,7 +367,32 @@ local function menusContains(mx, my)
 end
 
 local function handleClick(button, mx, my)
-  -- 1. If the menu is open, handle clicks inside or outside.
+  -- 1. Context menu takes top priority when open.
+  if showContextMenu then
+    local ci = contextMenuHit(mx, my)
+    if ci then
+      local action = contextItems[ci].action
+      showContextMenu = false
+      if action == "settings" then
+        kernel.spawn("/QalcomOS/Apps/System/main.lua", {
+          title = "System", w = 40, h = 14,
+        })
+      elseif action == "about" then
+        kernel.spawn("/QalcomOS/Apps/About/main.lua", {
+          title = "About", w = 32, h = 12,
+        })
+      elseif action == "reboot" then
+        os.reboot()
+      end
+      return
+    else
+      -- Click outside: close the context menu.
+      showContextMenu = false
+      return
+    end
+  end
+
+  -- 2. Start menu: if open, handle clicks inside or outside.
   if showStartMenu then
     if menusContains(mx, my) then
       local mx1, my1, _, my2 = menuRect()
@@ -270,30 +412,45 @@ local function handleClick(button, mx, my)
     end
   end
 
-  -- 2. Start button toggles the menu.
+  -- 3. Right-click on the desktop background opens the context menu.
+  if button == 2 then
+    -- Only open if the click didn't land on a taskbar icon or app window.
+    if my < h and not hitIcon(mx, my) then
+      showContextMenu = true
+      contextX = mx
+      contextY = my
+      return
+    end
+  end
+
+  -- 4. Start button toggles the menu.
   if startButtonHit(mx, my) and button == 1 then
     showStartMenu = not showStartMenu
     menuIndex = 0
     return
   end
 
-  -- 3. Tray button focuses the running window.
+  -- 5. Tray button: focus or toggle-minimize.
   if my == h then
     local rec = trayButtonHit(mx, my)
     if rec then
-      kernel.focusWindow(rec.win_id)
+      if rec.minimized then
+        kernel.restoreWindow(rec.win_id)
+      else
+        kernel.focusWindow(rec.win_id)
+      end
       return
     end
   end
 
-  -- 4. Icon click launches.
+  -- 6. Icon click launches.
   local iconIdx = hitIcon(mx, my)
   if iconIdx then
     launch(apps[iconIdx])
     return
   end
 
-  -- 5. Otherwise: nothing. (Background click is ignored so we don't
+  -- 7. Otherwise: nothing. (Background click is ignored so we don't
   -- drag the desktop around by accident.)
 end
 
@@ -306,6 +463,7 @@ local function render()
   drawIcons()
   drawTaskbar()
   if showStartMenu then drawStartMenu() end
+  if showContextMenu then drawContextMenu() end
 end
 
 render()
@@ -315,6 +473,12 @@ while true do
   if ev == "mouse_click" then
     handleClick(a, b, c)
     render()
+  elseif ev == "mouse_move" then
+    -- Update context menu hover highlight as the mouse moves.
+    if showContextMenu then
+      contextMenuHover(b, c)
+      render()
+    end
   elseif ev == "mouse_up" then
     -- A click release is harmless; just keep the screen current.
     term.setCursorBlink(false)
@@ -328,6 +492,9 @@ while true do
       if showStartMenu then
         showStartMenu = false
         menuIndex = 0
+        render()
+      elseif showContextMenu then
+        showContextMenu = false
         render()
       else
         -- Esc on bare desktop: terminate the desktop process. The

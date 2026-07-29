@@ -248,16 +248,21 @@ end
 -- Public API used by the desktop process (system) and other apps that
 -- request it via their env.
 
--- List currently-running non-system processes as {pid, title, win_id}.
+-- List currently-running non-system processes as
+-- {pid, title, win_id, minimized, maximized}.
 -- Used by the desktop's taskbar.
 function M.listRunning()
   local out = {}
   for pid, proc in pairs(P) do
     if pid ~= SYSTEM_PID and coroutine.status(proc.co) ~= "dead" then
+      local wrec = wm.windows[proc.win_id]
       out[#out + 1] = {
-        pid    = pid,
-        title  = proc.title or "?",
-        win_id = proc.win_id,
+        pid       = pid,
+        title     = proc.title or "?",
+        win_id    = proc.win_id,
+        minimized = wrec and wrec.minimized or false,
+        maximized = wrec and wrec.maximized or false,
+        focused   = (pid == focused_pid),
       }
     end
   end
@@ -273,21 +278,90 @@ function M.focusWindow(win_id)
   if wrec and wrec.pid then focused_pid = wrec.pid end
 end
 
+-- Minimize a window (hide it; taskbar keeps it listed).
+function M.minimizeWindow(win_id)
+  local wrec = wm.windows[win_id]
+  if not wrec or wrec.isSystem then return end
+  wm.minimize(win_id)
+  -- Clear focused_pid if we just minimized the focused window so events
+  -- stop routing to the hidden coroutine.
+  if wrec.pid and wrec.pid == focused_pid then
+    focused_pid = nil
+  end
+end
+
+-- Maximize / restore-toggle a window.
+function M.maximizeWindow(win_id)
+  local wrec = wm.windows[win_id]
+  if not wrec or wrec.isSystem then return end
+  wm.maximize(win_id)
+end
+
+-- Restore a window from minimized or maximized state.
+function M.restoreWindow(win_id)
+  local wrec = wm.windows[win_id]
+  if not wrec or wrec.isSystem then return end
+  wm.restore(win_id)
+  -- Re-focus so events route to the restored window.
+  if wrec.pid then focused_pid = wrec.pid end
+end
+
 -- Terminate a non-system process early (e.g. user clicks taskbar X).
--- Works on both Lua 5.2+ (coroutine.kill, raises inside the chunk) and
--- Lua 5.4 (coroutine.close, marks it dead) so the offline lupa test
--- harness -- which only exposes coroutine.close -- can drive the
--- close-button path the same way real ComputerCraft will.
+-- Works on Lua 5.2+ (coroutine.kill, raises inside the chunk) and on
+-- Lua 5.4 / CC:Tweaked (coroutine.close, marks it dead) so the
+-- offline lupa test harness -- which only exposes coroutine.close --
+-- can drive the close-button path the same way real ComputerCraft
+-- will. Both APIs leave the coroutine in "dead" status, which lets
+-- reapAndRefocus() tear the window down on the next pass.
+--
+-- As a final fallback for hosts that lack BOTH functions (vanilla
+-- ComputerCraft Lua 5.1, some test harnesses), we do the teardown
+-- ourselves: hide the child window, drop the registry entry, and
+-- clear focused_pid. The still-suspended chunk can never receive
+-- another event because deliver() early-returns on a missing proc,
+-- so it goes silent and gets garbage-collected. Without this
+-- fallback, clicking X on those runtimes would look like a no-op --
+-- the click reaches wm.closeHit, but reapAndRefocus() only destroys
+-- windows whose coroutine.status is "dead", and with no kill API
+-- available the chunk stays "suspended" forever.
 function M.killProcess(pid)
   local proc = P[pid]
   if not proc or pid == SYSTEM_PID then return false end
+
+  -- Prefer the runtime-provided coroutine terminator. The pcall
+  -- wrappers are NOT defensive ritual: LuaJIT's coroutine.kill
+  -- raises at the call site for already-dead coroutines (and any
+  -- future host could behave the same way), so an un-wrapped call
+  -- would propagate that raise back up into M.run and abort boot.
+  -- Errors raised INSIDE the chunk by a successful kill/close are
+  -- caught separately by runChunk's pcall in spawn(); here we
+  -- only care whether the coroutine is now dead.
+  local ok = false
   if coroutine.kill then
-    return pcall(coroutine.kill, proc.co) ~= false
+    pcall(coroutine.kill, proc.co)
+    ok = coroutine.status(proc.co) == "dead"
   end
-  if coroutine.close then
-    return pcall(coroutine.close, proc.co) ~= false
+  if not ok and coroutine.close then
+    pcall(coroutine.close, proc.co)
+    ok = coroutine.status(proc.co) == "dead"
   end
-  return false
+
+  -- Fallback for hosts that lack BOTH kill APIs (vanilla CC Lua 5.1,
+  -- some test harnesses). reapAndRefocus() only removes windows
+  -- whose coroutine.status is "dead", so without a kill API the
+  -- window would stay open and the X button would look like a no-op.
+  -- Delegate to the canonical wm.destroy so this path stays in sync
+  -- with future changes to WM (one extra render vs. duplicating the
+  -- body inline -- acceptable cost). The chunk is then dropped from
+  -- P; deliver() early-returns on missing proc, so the suspended
+  -- chunk can never receive another event and gets garbage-collected.
+  if not ok then
+    wm.destroy(proc.win_id)
+    P[pid] = nil
+    if focused_pid == pid then focused_pid = nil end
+  end
+
+  return true
 end
 
 -- Public reference to the WM so system processes can drive it.
@@ -419,33 +493,38 @@ function M.run()
 
     elseif event == "mouse_click" then
       local button, mx, my = a, b, c
-      -- Close button takes precedence. titleHit would otherwise claim
-      -- the same row, but we want a single click to kill, not to start
-      -- a drag-then-release sequence. Routing closeHit first is the
-      -- only place that has access to the close-button enlargement
-      -- (titleHit / hitTest return the window regardless of region).
+      -- Close button takes precedence. Minimize/maximize are checked
+      -- next; only the title-bar click path (drag) falls through.
       local close_id = wm.closeHit(mx, my)
       if close_id then
         local wrec = wm.windows[close_id]
         if wrec then
-          -- Refocus first so the visual click target lines up with
-          -- the kill (avoids a frame where the click changes nothing).
           wm.setFocus(close_id)
           if wrec.pid and not M.isSystemProcess(wrec.pid) then
             M.killProcess(wrec.pid)
           end
         end
       else
-        local win_id, region = hitTestWithTitle(mx, my)
-        if win_id then
-          local wrec = wm.windows[win_id]
-          wm.setFocus(win_id)
-          focused_pid = wrec.pid
-          if region == "titlebar" and button == 1 then
-            wm.startDrag(win_id, mx, my)
+        local min_id = wm.minimizeHit(mx, my)
+        if min_id then
+          M.minimizeWindow(min_id)
+        else
+          local max_id = wm.maximizeHit(mx, my)
+          if max_id then
+            M.maximizeWindow(max_id)
+          else
+            local win_id, region = hitTestWithTitle(mx, my)
+            if win_id then
+              local wrec = wm.windows[win_id]
+              wm.setFocus(win_id)
+              focused_pid = wrec.pid
+              if region == "titlebar" and button == 1 then
+                wm.startDrag(win_id, mx, my)
+              end
+              deliver(focused_pid, "mouse_click", button,
+                      mx - wrec.x + 1, my - wrec.bodyY + 1)
+            end
           end
-          deliver(focused_pid, "mouse_click", button,
-                  mx - wrec.x + 1, my - wrec.bodyY + 1)
         end
       end
       reapAndRefocus()

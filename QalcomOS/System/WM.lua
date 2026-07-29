@@ -188,15 +188,34 @@ function M.titleHit(mx, my)
   return nil
 end
 
--- The rightmost `closeW` columns of a non-system title row are the
--- close button. Kernel.run() routes clicks landing here to
--- killProcess(); we expose this as its own hit-test so the title/body
--- click path doesn't have to know about it. The glyph lives in
--- api.formats so WM + apps share the same constant.
+-- The rightmost columns of a non-system title row hold three buttons:
+-- minimize [_], maximize [#] (or restore [^]), and close [X].
+-- Each button is BTN_W (3) chars wide; three side-by-side consume
+-- NUM_BTN * BTN_W (9) columns. The glyph set lives in api.formats
+-- so the WM and any app that draws matching chrome stay in lock-step.
+local function btnW()   return api.formats.BTN_W   or 3 end
+local function numBtn() return api.formats.NUM_BTN or 3 end
+local function totalBtnW() return btnW() * numBtn() end
+
+-- Right-to-left layout: close | maximize | minimize
+--   close:    w.x + w.w - 3 .. w.x + w.w - 1
+--   maximize: w.x + w.w - 6 .. w.x + w.w - 4
+--   minimize: w.x + w.w - 9 .. w.x + w.w - 7
 local function closeRectOf(w)
-  local close = api.formats and api.formats.closeGlyph or "[X]"
-  local closeW = #close
-  return w.x + w.w - closeW, w.x + w.w - 1, w.y
+  local bw = btnW()
+  return w.x + w.w - bw, w.x + w.w - 1, w.y
+end
+
+local function maximizeRectOf(w)
+  local bw = btnW()
+  local tw = totalBtnW()
+  return w.x + w.w - tw + bw, w.x + w.w - tw + bw * 2 - 1, w.y
+end
+
+local function minimizeRectOf(w)
+  local bw = btnW()
+  local tw = totalBtnW()
+  return w.x + w.w - tw, w.x + w.w - tw + bw - 1, w.y
 end
 
 function M.closeButtonRect(id)
@@ -205,19 +224,151 @@ function M.closeButtonRect(id)
   return closeRectOf(w)
 end
 
-function M.closeHit(mx, my)
-  -- Walk z_order back-to-front so a topmost window's close button
-  -- wins over a lower window whose row happens to overlap.
+function M.minimizeButtonRect(id)
+  local w = M.windows[id]
+  if not w or w.isSystem or w.titleH == 0 then return nil end
+  return minimizeRectOf(w)
+end
+
+function M.maximizeButtonRect(id)
+  local w = M.windows[id]
+  if not w or w.isSystem or w.titleH == 0 then return nil end
+  return maximizeRectOf(w)
+end
+
+local function hitBtn(rectFn, mx, my)
   for i = #M.z_order, 1, -1 do
     local w = M.windows[M.z_order[i]]
     if w and not w.isSystem and w.titleH > 0 then
-      local x1, x2, y = closeRectOf(w)
+      local x1, x2, y = rectFn(w)
       if mx >= x1 and mx <= x2 and my == y then
         return M.z_order[i]
       end
     end
   end
   return nil
+end
+
+function M.closeHit(mx, my)    return hitBtn(closeRectOf,    mx, my) end
+function M.minimizeHit(mx, my) return hitBtn(minimizeRectOf, mx, my) end
+function M.maximizeHit(mx, my) return hitBtn(maximizeRectOf, mx, my) end
+
+-- Window state helpers -----------------------------------------------------------------
+
+-- Minimize: hide the child window and mark it. The render pass
+-- skips minimized windows entirely so the desktop (or whatever
+-- sits beneath) is exposed. The window record stays alive so
+-- the taskbar can re-show it later.
+function M.minimize(id)
+  local w = M.windows[id]
+  if not w or w.isSystem then return end
+  w.minimized = true
+  w.child.setVisible(false)
+  if M.focused == id then
+    -- Hand focus to the next visible window on top of the stack.
+    M.focused = nil
+    for i = #M.z_order, 1, -1 do
+      local cand = M.windows[M.z_order[i]]
+      if cand and not cand.minimized and not cand.isSystem then
+        M.focused = M.z_order[i]
+        break
+      end
+    end
+    if not M.focused then M.focused = M.z_order[1] end  -- fall back to desktop
+  end
+  M.render()
+end
+
+-- Maximize: expand the window to fill the screen (leaving room for the
+-- 1-row taskbar the desktop draws at the very bottom). The original
+-- geometry is saved so a second click on the maximize button (now
+-- showing the restore glyph [^]) snaps it back.
+function M.maximize(id)
+  local w = M.windows[id]
+  if not w or w.isSystem then return end
+  local sw, sh = M.master.getSize()
+  if w.maximized then
+    -- Restore.
+    w.maximized = false
+    w.x = w.savedX or w.x
+    w.y = w.savedY or w.y
+    w.w = w.savedW or w.w
+    w.h = w.savedH or w.h
+  else
+    -- Save current geometry, then expand.
+    w.savedX = w.x
+    w.savedY = w.y
+    w.savedW = w.w
+    w.savedH = w.h
+    w.maximized = true
+    w.x = 1
+    w.y = 1
+    w.w = sw
+    w.h = sh - 1  -- leave bottom row for the taskbar
+  end
+  w.bodyY  = w.y + w.titleH
+  w.bodyH  = math.max(1, w.h - w.titleH)
+  w.child.reposition(w.x, w.bodyY, w.w, w.bodyH)
+  M.render()
+end
+
+-- Restore from minimized or maximized state.
+function M.restore(id)
+  local w = M.windows[id]
+  if not w or w.isSystem then return end
+  if w.minimized then
+    w.minimized = false
+    w.child.setVisible(true)
+    M.setFocus(id)
+    M.render()
+  elseif w.maximized then
+    M.maximize(id)  -- toggle back
+  end
+end
+
+-- Snap-to-edge: called at the end of a drag. If the mouse is close
+-- to the left, right, or top screen edge the window is repositioned
+-- to fill that half or the whole screen respectively. Returns true
+-- if a snap was applied.
+function M.snapToEdge(id, mx, my)
+  local w = M.windows[id]
+  if not w or w.isSystem then return false end
+  local sw, sh = M.master.getSize()
+  local snapped = false
+
+  -- Top edge -> maximize.
+  if my <= 2 and not w.maximized then
+    M.maximize(id)
+    return true
+  end
+
+  -- Left edge -> left half.
+  if mx <= 2 then
+    w.maximized = false
+    w.savedX, w.savedY, w.savedW, w.savedH = nil, nil, nil, nil
+    w.x = 1
+    w.y = 1
+    w.w = math.floor(sw / 2)
+    w.h = sh - 1
+    snapped = true
+  -- Right edge -> right half.
+  elseif mx >= sw - 1 then
+    w.maximized = false
+    w.savedX, w.savedY, w.savedW, w.savedH = nil, nil, nil, nil
+    w.w = math.floor(sw / 2)
+    w.x = sw - w.w + 1
+    w.y = 1
+    w.h = sh - 1
+    snapped = true
+  end
+
+  if snapped then
+    w.bodyY = w.y + w.titleH
+    w.bodyH = math.max(1, w.h - w.titleH)
+    w.child.reposition(w.x, w.bodyY, w.w, w.bodyH)
+    M.render()
+  end
+  return snapped
 end
 
 function M.startDrag(id, mx, my)
@@ -253,9 +404,11 @@ function M.render()
   api.drawWallpaper(M.master)
 
   -- Children, back to front, blitted into their body's region.
+  -- Minimized windows are skipped -- their child is hidden and
+  -- the desktop (or whatever sits beneath) shows through.
   for _, id in ipairs(M.z_order) do
     local w = M.windows[id]
-    if w then
+    if w and not w.minimized then
       api.blitWindow(w.child, M.master, w.x, w.bodyY)
     end
   end
@@ -264,29 +417,33 @@ function M.render()
   -- AFTER blitting children, on the master buffer directly. System
   -- windows have no title bar; their child is the full screen.
   --
-  -- Non-system title bars reserve the rightmost `closeW` columns for
-  -- the close button. The label area is shrunk to `w.w - closeW - 1`
-  -- so a single column of padding sits between the title text and the
-  -- [X]. truncate-to-labelMaxW keeps long titles from clipping into
-  -- the close region. closeButtonRect / closeHit must use the same
-  -- math (see closeRectOf below) or clicks will mis-register.
+  -- Non-system title bars reserve NUM_BTN * BTN_W columns on the
+  -- right for [minimize] [maximize] [close]. The label area is
+  -- shrunk so the title text never clips into the button region.
+  local tw = totalBtnW()
   for _, id in ipairs(M.z_order) do
     local w = M.windows[id]
     if w and not w.isSystem then
-      local close  = api.formats and api.formats.closeGlyph or "[X]"
-      local closeW = #close
-      -- Allow labelMaxW = 0 so a degenerate window (w.w < closeW + 1)
-      -- still renders strictly w.w chars; the title simply drops out.
-      local labelMaxW = math.max(0, w.w - closeW - 1)
+      -- Build the button glyphs. Maximize shows [^] (restore) when
+      -- the window is already maximized, [#] otherwise.
+      local minG  = api.formats and api.formats.minimizeGlyph or "[_]"
+      local maxG  = api.formats and api.formats.maximizeGlyph or "[#]"
+      if w.maximized then
+        maxG = api.formats and api.formats.restoreGlyph or "[^]"
+      end
+      local closeG = api.formats and api.formats.closeGlyph or "[X]"
+      local buttons = minG .. maxG .. closeG
+
+      local labelMaxW = math.max(0, w.w - tw - 1)
       local bar = " " .. (w.title or "") .. " "
       if #bar > labelMaxW then bar = bar:sub(1, labelMaxW) end
-      local pad = math.max(0, w.w - #bar - closeW)
+      local pad = math.max(0, w.w - #bar - tw)
       local bg  = (id == M.focused) and api.theme.panel or api.theme.panelX
       local fg  = api.theme.text
       M.master.setBackgroundColor(bg)
       M.master.setTextColor(fg)
       M.master.setCursorPos(w.x, w.y)
-      M.master.write(bar .. string.rep(" ", pad) .. close)
+      M.master.write(bar .. string.rep(" ", pad) .. buttons)
     end
   end
 
