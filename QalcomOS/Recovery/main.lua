@@ -109,12 +109,14 @@ function M.execute_command(line, cwd)
       "  ls [path]                  list a directory (default = cwd)",
       "  cat <path>                 print a file line by line",
       "  rm <path>                  delete a file or empty directory",
+      "  mkdir <path>               create an empty directory (single-level)",
+      "  cp <src> <dst>             copy file src to dst",
+      "  mv <src> <dst>             move file src to dst",
       "  cd <path>                  change working directory",
       "  pwd                        show working directory",
       "  edit <path>                stream-editor (type '.' alone to save)",
-      "  launch <path>              dump a file's contents; the recovery",
-      "                             shell has no parent kernel, so it does",
-      "                             not actually run anything",
+      "  launch <path>              dofile(path); pcall-protected; crash returns to prompt",
+      "  recover                    restore Qalcom OS code from /QalcomOS/.backup/",
       "  clear                      clear the terminal",
       "  reboot                     os.reboot() the CC computer",
       "  exit | quit                return to the caller",
@@ -175,6 +177,66 @@ function M.execute_command(line, cwd)
         r.cwd = target
       end
     end
+  elseif cmd == "mkdir" then
+    if not tokens[2] then
+      fail("usage: mkdir <path>")
+    else
+      local target = resolve_path(cwd, tokens[2])
+      if fs.exists(target) then
+        fail("already exists: " .. target)
+      elseif fs.makeDir then
+        fs.makeDir(target)
+        r.lines[#r.lines + 1] = "created: " .. target
+      else
+        fail("fs.makeDir unavailable")
+      end
+    end
+  elseif cmd == "cp" then
+    if not tokens[2] or not tokens[3] then
+      fail("usage: cp <src> <dst>")
+    else
+      local src = resolve_path(cwd, tokens[2])
+      local dst = resolve_path(cwd, tokens[3])
+      if not fs.exists(src) then
+        fail("no such source: " .. src)
+      elseif fs.isDir(src) then
+        fail("source is a directory: " .. src)
+      elseif not fs.copy then
+        fail("fs.copy unavailable")
+      else
+        local ok_, err_ = pcall(fs.copy, src, dst)
+        if not ok_ then
+          fail("copy failed: " .. tostring(err_))
+        else
+          r.lines[#r.lines + 1] = "copied: " .. src .. " -> " .. dst
+        end
+      end
+    end
+  elseif cmd == "mv" then
+    if not tokens[2] or not tokens[3] then
+      fail("usage: mv <src> <dst>")
+    else
+      local src = resolve_path(cwd, tokens[2])
+      local dst = resolve_path(cwd, tokens[3])
+      if not fs.exists(src) then
+        fail("no such source: " .. src)
+      elseif not fs.move then
+        fail("fs.move unavailable")
+      else
+        local ok_, err_ = pcall(fs.move, src, dst)
+        if not ok_ then
+          fail("move failed: " .. tostring(err_))
+        else
+          r.lines[#r.lines + 1] = "moved: " .. src .. " -> " .. dst
+        end
+      end
+    end
+  elseif cmd == "recover" then
+    -- The heavy lifting lives in /QalcomOS/System/snapshot.lua. The
+    -- dispatcher just signals what kind of operation it is; the I/O
+    -- loop dofile's the snapshot module and runs its .recover() so
+    -- the testable logic isn't duplicated here.
+    r.kind = "recover"
   elseif cmd == "pwd" then
     r.lines[#r.lines + 1] = r.cwd
   elseif cmd == "edit" then
@@ -327,6 +389,25 @@ while true do
   elseif r.kind == "launch" then
     print("launching " .. r.path .. " (errors return here; press Ctrl+T then reboot if it hangs)")
     pcall(dofile, r.path)
+  elseif r.kind == "recover" then
+    print("recovering Qalcom OS from /QalcomOS/.backup/ ...")
+    -- pcall the dofile so a missing or syntax-broken snapshot.lua
+    -- does not silently drop the user out of the recovery shell.
+    local dofile_ok, snapshot = pcall(dofile, "/QalcomOS/System/snapshot.lua")
+    if not dofile_ok or type(snapshot) ~= "table" then
+      print("error: recovery module not available: " .. tostring(snapshot))
+    elseif not (snapshot.exists and snapshot.exists()) then
+      print("error: no snapshot found -- run a successful boot first to create one.")
+    else
+      local recover_ok, result = pcall(snapshot.recover)
+      if recover_ok and result and result.ok then
+        print(string.format("restored %d file(s) (%d skipped/missing).",
+                            result.restored or 0, result.missing or 0))
+      else
+        print("error: recover failed: " .. tostring(
+          recover_ok and (result and result.error or "unknown") or result))
+      end
+    end
   elseif r.kind == "reboot" then
     if os and os.reboot then
       print("Rebooting...")

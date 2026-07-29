@@ -157,7 +157,13 @@ local function layout()
   local w, h = term.getSize()
   local boxW, boxH = 36, 13
   local boxX = math.max(2, math.floor((w - boxW) / 2) + 1)
-  local boxY = math.max(2, math.floor((h - boxH) / 2))
+  -- Anchor the dialog at the TOP of the body. Centering was tried in
+  -- earlier versions and left a 1-row 'ramp' of empty T.bg between the
+  -- WM title bar and the dialog title strip on typical 51x19 screens.
+  -- The brand/sub rows that used to live in that ramp were broken
+  -- (their Y math collapsed into the dialog rows for body_h < 20),
+  -- so we anchor at row 1 and let body's clear() paint the rest.
+  local boxY = 1
   local out = {
     w = w, h = h,
     boxX = boxX, boxY = boxY,
@@ -271,24 +277,6 @@ local function draw()
   term.setTextColor(T.text)
   term.clear()
 
-  -- Brand above the dialog.
-  local brand = "QALCOM OS"
-  local brandY = math.max(2, L.boxY - 3)
-  local sub = state.mode == "create"
-              and "Genesis II -- create your account"
-              or  "Genesis II -- sign in"
-  local subY = math.max(3, L.boxY - 1)
-  if brandY > 0 then
-    term.setTextColor(T.accent)
-    term.setCursorPos(math.floor((L.w - #brand) / 2) + 1, brandY)
-    term.write(brand)
-    if subY > 0 then
-      term.setTextColor(T.textDim)
-      term.setCursorPos(math.floor((L.w - #sub) / 2) + 1, subY)
-      term.write(sub)
-    end
-  end
-
   -- Dialog backdrop.
   for row = L.boxY, L.boxY + L.boxH - 1 do
     term.setCursorPos(L.boxX, row)
@@ -302,9 +290,14 @@ local function draw()
   term.setBackgroundColor(T.panel)
   term.setTextColor(T.accent)
   term.write(string.rep(" ", L.boxW))
+  -- Codename is folded into the title strip (we removed the
+  -- decorative brand/sub rows above the dialog because their Y
+  -- math collided with the dialog on body_h < 20; the strip is
+  -- where orientation info lives now).
+  local codename = _QOS_CODENAME or "Qalcom OS"
   local title = state.mode == "create"
-                and " Create your Qalcom account "
-                or  " Login to Qalcom OS "
+                and (" " .. codename .. " -- Create account ")
+                or  (" " .. codename .. " -- Sign in ")
   term.setCursorPos(L.boxX + math.max(1, math.floor((L.boxW - #title) / 2)),
                     L.boxY)
   term.write(title)
@@ -423,9 +416,18 @@ end
 -- ----------------------------------------------------------------------------
 
 local function curtainUp()
-  local sw, sh = term.getSize()
-  local cur_h = math.max(2, (qos.child and qos.child.getSize
-                            and qos.child.getSize()) and (qos.child.getSize() + 1) or sh)
+  -- The original expression used the FIRST multi-value of
+  -- qos.child.getSize() (window WIDTH, e.g. 51 on a 51x19 screen)
+  -- as if it were the body height, producing cur_h = 52 and making
+  -- resizeSelf GROW the window to 51 rows off-screen before the
+  -- curtain could shrink it. Unpack both returns properly.
+  --
+  -- Guard against the child having been torn down (test runs,
+  -- post-destroy race) -- without the guard, missing qos.child
+  -- would crash the chunk and leave the user in Recovery.
+  if not (qos.child and qos.child.getSize) then return end
+  local _, body_h = qos.child.getSize()
+  local cur_h      = math.max(2, body_h + 1)
   if cur_h <= 2 then return end
   for tick = 1, cur_h - 2 do
     local new_h = math.max(2, cur_h - tick)
@@ -473,6 +475,9 @@ local function submitLogin()
   os.sleep(0.10)  -- let Desktop's first paint complete
 
   curtainUp()
+  -- Tell the main loop to bail out so the chunk ends cleanly.
+  -- reapAndRefocus then destroys the (2-row) Login window.
+  submitted = true
 end
 
 -- Create mode: validate inputs, write the .profile file, then drop
@@ -559,14 +564,32 @@ local function switchMode(target)
   draw()
 end
 
+-- Test escape hatch (offline harness only). When the harness flips
+-- qos.options._test_expose_layout = true, hoist  onto the
+-- qos table and skip everything after this point so dofile returns
+-- without entering the event loop. Boot.lua never sets this flag;
+-- test_login_layout.lua is the only caller. The hook sits AFTER
+-- layout()/buttonHit()/fieldAt()/linkHit()/draw() etc. are defined
+-- so the references resolve; it sits BEFORE the main loop so the
+-- chunk does not block on os.pullEvent.
+if qos.options and qos.options._test_expose_layout then
+  qos.options._exposed_layout = layout
+  return
+end
+
 -- ----------------------------------------------------------------------------
 -- Main event loop
 -- ----------------------------------------------------------------------------
 
+-- Set true at the end of submitLogin() so the main loop bails out
+-- cleanly. Without this, the chunk keeps os.pullEvent()-ing forever
+-- and the (now 2-row) Login window sits on top of the Desktop.
+local submitted = false
+
 draw()
 local loginHover = false
 
-while true do
+while not submitted do
   local ev, a, b, c = os.pullEvent()
 
   if ev == "char" then

@@ -48,7 +48,14 @@ M.theme = {
 -- so that the WM and any app that wants to draw a matching glyph stay
 -- in lock-step without an extra module dependency.
 M.formats = {
-  closeGlyph = "[X]",
+  closeGlyph    = "[X]",
+  minimizeGlyph = "[_]",
+  maximizeGlyph = "[#]",
+  restoreGlyph  = "[^]",
+  -- Each title-bar button is 3 chars wide. Three buttons side-by-side
+  -- consume 9 columns; the title text must leave room for all of them.
+  BTN_W = 3,
+  NUM_BTN = 3,
 }
 
 -- Apply a (minor) theme. Currently a no-op; here for forward-compat so

@@ -62,4 +62,18 @@ kernel.spawn(api.paths.apps .. "/Login/main.lua", {
   trusted = true,
 })
 
+-- Snapshot hook: now that the OS code is loaded into a working process,
+-- capture a known-good copy so the Recovery shell can restore it via
+-- "recover" if anything subsequently breaks. pcall-protected so a
+-- snapshot bug cannot block boot -- worse case is to land in Recovery
+-- with no snapshot, which still beats a stranded boot.
+local snap_ok
+do
+  local snap_call_ok, result = pcall(kernel.snapshot)
+  if snap_call_ok then snap_ok = result end
+  -- If pcall failed or snap_ok.ok was false, silently continue. The
+  -- user will see "no snapshot available" if they later try to
+  -- recover; that is preferable to aborting a successful boot.
+end
+
 kernel.run()

@@ -50,6 +50,20 @@ function M.init(windowManager)
   wm = windowManager
 end
 
+-- Take a snapshot of the OS code so the Recovery shell can later
+-- restore it via `recover`. Called from boot.lua right after a
+-- successful spawn of the Login chunk -- the OS is in a known-good
+-- state, and any breakage that happens between this point and the
+-- user's next boot is recoverable.
+--
+-- This is a deliberately thin wrapper: the real work (manifest
+-- generation, copy, atomic swap) lives in /QalcomOS/System/snapshot.lua
+-- where the offline test harness can dofile it directly.
+function M.snapshot()
+  local snapshot = dofile("/QalcomOS/System/snapshot.lua")
+  return snapshot.take()
+end
+
 -- Spawn: load the file as a chunk bound to a per-app environment, wrap
 -- it in a coroutine, and bind that coroutine to a child window.
 function M.spawn(path, options)
