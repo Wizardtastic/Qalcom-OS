@@ -12,6 +12,15 @@
   Both Login and any future System v2 / Desktop read/write fields via
   this module so the file format and the auth primitive live in one
   place. Unit-testable without driving the Login event loop end-to-end.
+
+  v0.7 (this revision) adds:
+    * M.create(name, password, opts) - write a fresh .profile after
+      validating inputs and hashing the password when sha1 is available.
+      Returns (ok, reason) so the caller can surface specific error
+      messages to the user.
+    * M.hasAnyUser() - returns true iff at least one .profile exists
+      under /QalcomOS/Users/. Login uses it on spawn to decide whether
+      to drop into CreateProfile mode (no users yet) or Login mode.
 ]]
 
 local M = {}
@@ -20,6 +29,8 @@ M.PATH            = function(name)
   return "/QalcomOS/Users/" .. name .. "/.profile"
 end
 M.CURRENT_USER_PATH = "/QalcomOS/.current_user"
+M.USERS_DIR         = "/QalcomOS/Users"
+M.MIN_PASSWORD_LEN  = 4
 
 -- Names must be 1..16 chars, alphanumeric/underscore/dash. Mirrors
 -- the safety check Login previously inlined for avatar lookup.
@@ -106,6 +117,78 @@ function M.themeIdx(profile, fallback)
   local n = tonumber(profile.theme_idx)
   if not n or n < 1 or n > 3 then return fallback end
   return math.floor(n)
+end
+
+-- True iff at least one .profile file exists under /QalcomOS/Users/.
+-- Login uses this to pick between CreateProfile mode (no users yet)
+-- and Login mode. Returns false in offline-harness setups where
+-- /QalcomOS/Users doesn't exist or is empty.
+function M.hasAnyUser()
+  if not fs or not fs.exists or not fs.list then return false end
+  if not fs.exists(M.USERS_DIR) then return false end
+  for _, name in ipairs(fs.list(M.USERS_DIR)) do
+    -- Defensive: skip entries that aren't safe usernames -- a
+    -- misbehaving fs.list could return names like "." or "..".
+    if isSafeUsername(name) and fs.exists(M.PATH(name)) then
+      return true
+    end
+  end
+  return false
+end
+
+-- Write a fresh profile file for `name`. Validates inputs up-front
+-- and returns (false, "<reason>") on any failure so the caller can
+-- surface specific UI messages. On success returns (true) and the
+-- file is durable on the host's filesystem (or the test harness's
+-- in-memory store).
+--
+-- Password storage:
+--   * If sha1 is available (real CC has it bundled), write 40 hex
+--     chars. authenticate() detects this and verifies via SHA-1.
+--   * Otherwise (offline harness), write the plaintext. authenticate
+--     falls back to plaintext equality for non-40-hex stored values.
+--
+-- The directory is created with fs.makeDir before writing because
+-- real ComputerCraft's fs.open("w") returns nil if the parent
+-- directory doesn't exist -- a quirk that doesn't trip the offline
+-- harness but does break first-launch on real CC.
+function M.create(name, password, opts)
+  opts = opts or {}
+  if not isSafeUsername(name) then
+    return false, "invalid_username"
+  end
+  if type(password) ~= "string" or #password < M.MIN_PASSWORD_LEN then
+    return false, "password_too_short"
+  end
+  if not fs or not fs.open or not fs.exists then
+    return false, "fs_unavailable"
+  end
+  local path = M.PATH(name)
+  if fs.exists(path) then
+    return false, "username_taken"
+  end
+
+  -- Best-effort parent directory creation. Both create calls are
+  -- wrapped in pcall so a read-only host that already has the dir
+  -- (or doesn't allow makeDir at all) doesn't abort the flow.
+  if fs.makeDir then
+    pcall(fs.makeDir, M.USERS_DIR)
+    pcall(fs.makeDir, M.USERS_DIR .. "/" .. name)
+  end
+
+  local stored = password
+  local hash = sha1Hex(password)
+  if hash then stored = hash end
+
+  local f = fs.open(path, "w")
+  if not f then return false, "fs_open_failed" end
+  f.write("passwd=" .. stored .. "\n")
+  f.write("theme_idx=" .. tostring(opts.theme_idx or 1) .. "\n")
+  if opts.avatar and opts.avatar ~= "" then
+    f.write("avatar=" .. tostring(opts.avatar) .. "\n")
+  end
+  f.close()
+  return true
 end
 
 -- Avatar names -> 1-based index into Login's AVATARS table.
