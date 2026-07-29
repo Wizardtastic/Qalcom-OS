@@ -1,0 +1,7 @@
+# System.qalcom - System Settings (theme picker + about tab)
+name=System
+title=System
+icon=Σ
+path=/QalcomOS/Apps/System/main.lua
+window_w=40
+window_h=14

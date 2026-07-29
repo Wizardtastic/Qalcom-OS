@@ -42,6 +42,15 @@ M.theme = {
   border   = colors.black,
 }
 
+-- Shared glyph/symbol constants used by the WM and by apps that need
+-- to render the same chrome (e.g. virtual title bars or status icons).
+-- The window manager's close-button hook reads api.formats.closeGlyph
+-- so that the WM and any app that wants to draw a matching glyph stay
+-- in lock-step without an extra module dependency.
+M.formats = {
+  closeGlyph = "[X]",
+}
+
 -- Apply a (minor) theme. Currently a no-op; here for forward-compat so
 -- later versions can change the 16 palette entries without touching callers.
 function M.applyPalette(t)

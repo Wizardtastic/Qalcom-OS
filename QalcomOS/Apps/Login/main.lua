@@ -1,88 +1,59 @@
 --[[
-  /QalcomOS/Apps/Login/main.lua - Centered login dialog (v0.4 polish)
+  /QalcomOS/Apps/Login/main.lua - Centered login dialog (v0.6 auth)
 
-  v0.4 features:
-    * Three theme palettes cycled by clicking the swatches at the
-      bottom of the dialog (Default / Dark / Retro).
-    * Real password input echoed as '*' so observers can't shoulder-surf.
-    * Avatar glyph: a small 5-row ASCII portrait next to the username
-      field, picked deterministically from the username's first letter
-      so your face stays the same when you re-type.
-    * Two-line Login button widget: a top "----" border row and a
-      "[ LOGIN ]" centred label below. The button is rendered in grey
-      and click-suppressed while the username is empty (disabled state).
-    * Tab key navigates between Username and Password fields.
-    * Roller-shade transition: after a successful submit, Login shrinks
-      its own window from the BOTTOM upward over ~10 frames. Each
-      frame, the master window redraws the diminished Login rect over
-      the Desktop's first paint, so users perceive the curtain rising
-      and the desktop chrome being exposed rather than a one-frame
-      swap to desktop.
+  v0.6 changes (real authentication):
+    * Authentication is now real. submit() reads
+      /QalcomOS/Users/<name>/.profile via QalcomOS/System/profile.lua,
+      rejects empty / missing profiles, rejects wrong passwords, and
+      on success writes /QalcomOS/.current_user so future System /
+      Desktop revs know who is signed in.
+    * The profile's stored theme_idx overrides the boot-time default
+      at submit, so a user who picked Dark in Settings sees the Dark
+      palette immediately on their first successful login.
+    * The profile's `avatar=<name>` field is honored by loadAvatar
+      (falls back to the deterministic synthetic avatar when absent).
+    * Profile `passwd=` accepts either 40-hex SHA-1 (compared via
+      `require("sha1").hash(s)` if available) or plaintext for
+      simplicity. Empty profile is treated as no-auth and rejected.
+    * Inline error messages replace the placeholder hint line on
+      failed submits. The next char input clears the error.
 
-  Authentication is still mock for v0.4 -- any non-empty username is
-  accepted. A follow-up version will validate against
-  /QalcomOS/Users/<name>/.profile.
+  v0.6 migration (preserved):
+    * The full THEMES table, swatchHit(), swatch-rendering block,
+      and swatch-click handler were removed in the prior pass when
+      the theme picker moved to QalcomOS/Apps/System/.
+
+  v0.4 features (preserved):
+    * Two-line Login button widget with disabled-state styling.
+    * Real password input echoed as '*'.
+    * Roller-shade transition: after submit, Login shrinks from the
+      BOTTOM upward over ~10 frames so the desktop underneath is
+      progressively exposed.
 ]]
 
 local qos       = _QOS
 local kernel    = qos.kernel
 local wm        = qos.wm
+local themes    = dofile("/QalcomOS/System/themes.lua")
+local profile   = dofile("/QalcomOS/System/profile.lua")
 local DESKTOP   = "/QalcomOS/Apps/Desktop/main.lua"
 
 -- ----------------------------------------------------------------------------
--- Theme palettes
+-- Theme bootstrap (file-read + spawn-arg handoff)
 -- ----------------------------------------------------------------------------
 
-local THEMES = {
-  {  -- 1: Default (light-on-dark, blue accents)
-    name              = "Default",
-    bg                = colors.black,
-    panel             = colors.lightBlue,
-    panelX            = colors.gray,
-    text              = colors.white,
-    textDim           = colors.lightGray,
-    accent            = colors.yellow,
-    field             = colors.white,
-    fieldText         = colors.black,
-    button_ok_bg      = colors.lime,
-    button_ok_fg      = colors.black,
-    button_dis_bg     = colors.gray,
-    button_dis_fg     = colors.white,
-    swatch_fg         = colors.white,
-  },
-  {  -- 2: Dark (subdued purple-magenta)
-    name              = "Dark",
-    bg                = colors.black,
-    panel             = colors.purple,
-    panelX            = colors.black,
-    text              = colors.lightGray,
-    textDim           = colors.gray,
-    accent            = colors.magenta,
-    field             = colors.gray,
-    fieldText         = colors.white,
-    button_ok_bg      = colors.magenta,
-    button_ok_fg      = colors.white,
-    button_dis_bg     = colors.gray,
-    button_dis_fg     = colors.lightGray,
-    swatch_fg         = colors.lightGray,
-  },
-  {  -- 3: Retro (orange / amber CRT-ish)
-    name              = "Retro",
-    bg                = colors.black,
-    panel             = colors.orange,
-    panelX            = colors.brown,
-    text              = colors.yellow,
-    textDim           = colors.brown,
-    accent            = colors.white,
-    field             = colors.brown,
-    fieldText         = colors.yellow,
-    button_ok_bg      = colors.yellow,
-    button_ok_fg      = colors.black,
-    button_dis_bg     = colors.brown,
-    button_dis_fg     = colors.white,
-    swatch_fg         = colors.white,
-  },
-}
+-- Pick the theme index to use for the rest of Login's lifetime:
+-- an explicit boot handoff wins; otherwise the .theme file. We freeze
+-- the choice at spawn -- the user can't switch on the Login screen
+-- anymore; that's System's job now. The profile's theme_idx, if
+-- present at submit time, overrides this later in submit().
+local function bootstrapThemeIdx()
+  local opt = qos.options and qos.options.theme_idx
+  if type(opt) == "number" and opt >= 1 and opt <= #themes.themes then
+    return themes.normalize(opt)
+  end
+  return themes.load()
+end
 
 -- ----------------------------------------------------------------------------
 -- State
@@ -91,49 +62,64 @@ local THEMES = {
 local state = {
   username    = "",
   password    = "",
-  themeIdx    = 1,
+  themeIdx    = bootstrapThemeIdx(),
   activeField = "user",   -- "user" | "pass"
+  authError   = "",       -- "" | "no_profile" | "wrong_password"
+  cachedProfileName = nil,
+  cachedProfile     = nil,
 }
 
--- 5-line avatars deterministically picked by first letter of username.
--- Each is a small "~portrait" rendered to the left of the username row.
+-- 5-line avatars deterministically picked by first letter of username
+-- unless the profile overrides with `avatar=smiley|hat|wizard|cube`.
 local AVATARS = {
-  { "  o  ", " o.o ", "  T  ", " / \\ ", "/___\\" },     -- smiley
-  { "/---\\", "| o |", " o.o ", "  T  ", " \\-/ " },     -- with a hat
-  { "  *  ", " /\\  ", "|o.o|", " \\-/ ", "/___\\" },     -- wizard / wizard
-  { " ___ ", "/   \\", "|o o|", "| ^ |", "|___|" },     -- cube
+  { "  o  ", " o.o ", "  T  ", " / \\ ", "/___\\" },        -- smiley
+  { "/---\\", "| o |", " o.o ", "  T  ", " \\-/ " },        -- hat
+  { "  *  ", " /\\  ", "|o.o|", " \\-/ ", "/___\\" },        -- wizard
+  { " ___ ", "/   \\", "|o o|", "| ^ |", "|___|" },         -- cube
 }
 
-local function isSafeUsername(name)
-  return type(name) == "string" and #name > 0 and #name <= 16
-     and name:match("^[%w_%-]+$") ~= nil
+-- Cached profile lookup. Refreshed when the username field changes.
+local function cachedProfile(name)
+  if state.cachedProfileName == name then
+    return state.cachedProfile
+  end
+  local p = profile.read(name)
+  state.cachedProfileName = name
+  state.cachedProfile     = p
+  return p
 end
 
 local function loadAvatar(name)
-  if isSafeUsername(name) then
-    local path = "/QalcomOS/Users/" .. name .. "/avatar"
-    if fs.exists(path) then
-      local f = fs.open(path, "r")
-      if f then
-        local lines = {}
-        for line in f.readLine do
-          if #lines >= 5 then break end
-          lines[#lines + 1] = line
+  if name and #name > 0 then
+    local p = cachedProfile(name)
+    if p and p.avatar then
+      local idx = profile.AVATAR_INDEX[p.avatar]
+      if idx and AVATARS[idx] then return AVATARS[idx] end
+    end
+    -- Existing per-user avatar file override (legacy path).
+    if profile.isSafeUsername(name) then
+      local path = "/QalcomOS/Users/" .. name .. "/avatar"
+      if fs and fs.exists and fs.exists(path) then
+        local f = fs.open(path, "r")
+        if f then
+          local lines = {}
+          for line in f.readLine do
+            if #lines >= 5 then break end
+            lines[#lines + 1] = line
+          end
+          f.close()
+          if #lines == 5 then return lines end
         end
-        f.close()
-        if #lines == 5 then return lines end
       end
     end
   end
-  -- Deterministic synthetic fallback so the OS still works without
-  -- per-user avatar files.
   if not name or name == "" then return nil end
   local h = 0
   for i = 1, #name do h = h + string.byte(name, i) end
   return AVATARS[(h % #AVATARS) + 1]
 end
 
-local function getTheme()    return THEMES[state.themeIdx] end
+local function getTheme()    return themes.themes[state.themeIdx] end
 local function getName()     return (getTheme()).name end
 
 -- ----------------------------------------------------------------------------
@@ -153,21 +139,11 @@ local function layout()
     w = w, h = h,
     boxX = boxX, boxY = boxY,
     boxW = boxW, boxH = boxH,
-
-    -- Avatar rendered along the left edge of the dialog
     avatarX = boxX + 2, avatarY = boxY + 2,
-
-    -- Username / password fields
     userX   = boxX + 13, userY = boxY + 3,
     passX   = boxX + 13, passY = boxY + 5,
-
-    -- Two-line Login button (2 rows tall)
     btnX1   = boxX + 12, btnX2 = boxX + 23,
     btnY1   = boxY + 8, btnY2 = boxY + 9,
-
-    -- Theme swatches in the bottom row of the dialog
-    sw1X    = boxX + 4,  sw2X = boxX + 15, sw3X = boxX + 26,
-    swY     = boxY + 11,
   }
 end
 
@@ -189,18 +165,27 @@ local function fieldAt(mx, my, L)
   return nil
 end
 
-local function swatchHit(mx, my, L)
-  if my ~= L.swY then return nil end
-  for i = 1, 3 do
-    local sx = (i == 1) and L.sw1X or ((i == 2) and L.sw2X or L.sw3X)
-    if mx >= sx and mx < sx + 8 then return i end
-  end
-  return nil
-end
-
 -- ----------------------------------------------------------------------------
 -- Draw
 -- ----------------------------------------------------------------------------
+
+local function drawHint(L, T)
+  local hintY = L.boxY + L.boxH + 1
+  if hintY > L.h then hintY = L.h end
+  if hintY < L.boxY + L.boxH then return end
+  term.setBackgroundColor(T.bg)
+  term.setCursorPos(L.boxX, hintY)
+  if state.authError == "no_profile" then
+    term.setTextColor(T.accent)
+    term.write("No profile for '" .. state.username .. "'.")
+  elseif state.authError == "wrong_password" then
+    term.setTextColor(T.accent)
+    term.write("Invalid username or password.")
+  else
+    term.setTextColor(T.textDim)
+    term.write("Tab=switch field | Enter=submit | Backspace=delete | Esc=cancel")
+  end
+end
 
 local function draw()
   local L = layout()
@@ -284,39 +269,16 @@ local function draw()
     term.write(string.rep("*", #state.password))
   end
 
-  -- Theme swatches + caption (theme name).
-  for i, sw in ipairs(THEMES) do
-    local sx = (i == 1) and L.sw1X or ((i == 2) and L.sw2X or L.sw3X)
-    term.setBackgroundColor(sw.panel)
-    term.setTextColor(sw.swatch_fg)
-    term.setCursorPos(sx, L.swY)
-    term.write(string.rep(" ", 8))
-    -- Mini caption inside the swatch (theme initial letter).
-    term.setCursorPos(sx + 3, L.swY)
-    term.write(sw.name:sub(1, 1))
-  end
-  -- Theme name in the empty row above the swatches, shows current.
-  term.setBackgroundColor(T.panelX)
-  term.setTextColor(T.textDim)
-  local themeName = ("Theme: %s  (click a swatch)"):format(getName())
-  local nameY = L.boxY + 10
-  if nameY < L.boxY + L.boxH then
-    term.setCursorPos(L.boxX + 4, nameY)
-    term.write(themeName)
-  end
-
   -- Two-line Login button widget with disabled-state styling.
   local canSubmit = (#state.username > 0)
   local btnBg     = canSubmit and T.button_ok_bg  or T.button_dis_bg
   local btnFg     = canSubmit and T.button_ok_fg  or T.button_dis_fg
 
-  -- Top row: a fill bar (acts as the button border).
   term.setBackgroundColor(btnBg)
   term.setTextColor(btnFg)
   term.setCursorPos(L.btnX1, L.btnY1)
   term.write(string.rep("-", L.btnX2 - L.btnX1 + 1))
 
-  -- Bottom row: "[ LOGIN ]" centred + a thin underline outline.
   local labelW = L.btnX2 - L.btnX1 + 1
   local label  = "[ LOGIN ]"
   if not canSubmit then label = "[ ---- ]" end
@@ -327,18 +289,10 @@ local function draw()
   local tail = math.max(0, labelW - pad - #label)
   term.write(string.rep(" ", tail))
 
-  -- Hint line below the dialog.
-  local hintY = L.boxY + L.boxH + 1
-  if hintY > L.h then hintY = L.h end
-  if hintY >= L.boxY + L.boxH then
-    term.setBackgroundColor(T.bg)
-    term.setTextColor(T.textDim)
-    term.setCursorPos(L.boxX, hintY)
-    term.write("Tab=switch field | Enter=submit | Backspace=delete | Esc=cancel")
-  end
+  -- Hint line / auth-error message below the dialog.
+  drawHint(L, T)
 
-  -- Drop the caret in the active input field (no blink so the signal
-  -- stays steady even during the printer-drawn frames).
+  -- Drop the caret in the active input field.
   term.setCursorBlink(false)
   if state.activeField == "pass" then
     term.setCursorPos(L.passX + #state.password, L.passY)
@@ -353,17 +307,8 @@ end
 -- Submit + curtain transition
 -- ----------------------------------------------------------------------------
 
--- Animates Login's window shrinking from the BOTTOM upward so that the
--- desktop window underneath is progressively exposed. Each tick shrinks
--- the outer height by 1 row, keeping the title row anchored; the master
--- is repainted by the kernel's timer-event handler each tick (which
--- calls reapAndRefocus -> wm.render).
---
--- Uses the narrow qos.resizeSelf helper instead of the full WM table
--- so the trusted app can't accidentally destroy other windows.
 local function curtainUp()
   local sw, sh = term.getSize()
-  -- Read the current outer height (body height + 1-row title).
   local cur_h = math.max(2, (qos.child and qos.child.getSize
                             and qos.child.getSize()) and (qos.child.getSize() + 1) or sh)
   if cur_h <= 2 then return end
@@ -375,23 +320,38 @@ local function curtainUp()
 end
 
 local function submit()
+  local userProfile = cachedProfile(state.username)
+  if not userProfile or not userProfile.passwd or userProfile.passwd == "" then
+    state.authError = "no_profile"
+    draw()
+    return
+  end
+  if not profile.authenticate(state.password, userProfile.passwd) then
+    state.authError = "wrong_password"
+    draw()
+    return
+  end
+
+  -- Authenticated. Resolve the profile's theme_idx (clamped) and
+  -- persist the active user so future revs of System/Desktop can
+  -- look it up without prompting.
+  state.themeIdx = profile.themeIdx(userProfile, state.themeIdx)
+  state.authError = ""
+  profile.writeCurrentUser(state.username)
+
   -- Spawn Desktop as the system process. SYSTEM_PID slot is empty
-  -- because Login is a regular process. Desktop renders its first
-  -- frame beneath Login -> unseen yet.
+  -- because Login is a regular process.
   local L = layout()
   kernel.spawn(DESKTOP, {
-    title    = "Desktop",
-    isSystem = true,
-    w        = L.w,
-    h        = L.h,
+    title     = "Desktop",
+    isSystem  = true,
+    w         = L.w,
+    h         = L.h,
+    theme_idx = state.themeIdx,
   })
   os.sleep(0.10)  -- let Desktop's first paint complete
 
-  -- Roller-shade in.
   curtainUp()
-
-  -- Returning lets the kernel reap Login and run wm.render(), which
-  -- finally exposes the Desktop's chrome without the curtain overlap.
 end
 
 -- ----------------------------------------------------------------------------
@@ -406,18 +366,30 @@ while true do
 
   if ev == "char" then
     if type(a) == "string" and #a == 1 then
+      -- Any new keystroke clears a stale auth error so the user
+      -- can immediately retry without re-focusing the field.
+      if state.authError ~= "" then
+        state.authError = ""
+      end
       if state.activeField == "pass" then
         state.password = state.password .. a
       else
         state.username = state.username .. a
+        -- Username changed: drop the cached profile so the next
+        -- submit re-reads the per-user file.
+        state.cachedProfileName = nil
+        state.cachedProfile     = nil
       end
       draw()
     end
 
   elseif ev == "key" then
     if a == keys.enter then
-      if #state.username > 0 then submit(); return end
+      if #state.username > 0 then submit() end
     elseif a == keys.backspace then
+      if state.authError ~= "" then
+        state.authError = ""
+      end
       if state.activeField == "pass" then
         if #state.password > 0 then
           state.password = state.password:sub(1, #state.password - 1)
@@ -426,6 +398,8 @@ while true do
       else
         if #state.username > 0 then
           state.username = state.username:sub(1, #state.username - 1)
+          state.cachedProfileName = nil
+          state.cachedProfile     = nil
           draw()
         end
       end
@@ -433,7 +407,6 @@ while true do
       state.activeField = (state.activeField == "user") and "pass" or "user"
       draw()
     elseif a == keys.escape then
-      -- Cancel: red and exit; no desktop spawn.
       term.setBackgroundColor(colors.black)
       term.setTextColor(colors.red)
       term.clear()
@@ -445,15 +418,12 @@ while true do
   elseif ev == "mouse_click" then
     local L = layout()
     if buttonHit(b, c, L) then
-      if #state.username > 0 then submit(); return end
+      if #state.username > 0 then submit() end
     else
       local f = fieldAt(b, c, L)
       if f then
         state.activeField = f
         draw()
-      else
-        local sw = swatchHit(b, c, L)
-        if sw then state.themeIdx = sw; draw() end
       end
     end
 

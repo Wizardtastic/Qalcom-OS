@@ -109,6 +109,14 @@ function M.spawn(path, options)
     child     = child,
     pid       = pid,
     registry  = registry,
+    -- Expose the entire spawn options table so callers can hand off
+    -- arbitrary state (theme_idx, locale, target username, etc.)
+    -- without having to edit this module every time a new opt lands.
+    -- Apps read via `qos.options.<field>`; the legacy
+    -- `_QOS.theme_idx = options.theme_idx` shortcut is preserved
+    -- so existing chunks continue to work.
+    options   = options,
+    theme_idx = options.theme_idx,
   }
   -- System processes get kernel access -- they need to spawn apps,
   -- focus windows, list running tasks, etc. Regular apps don't.
@@ -252,11 +260,20 @@ function M.focusWindow(win_id)
 end
 
 -- Terminate a non-system process early (e.g. user clicks taskbar X).
+-- Works on both Lua 5.2+ (coroutine.kill, raises inside the chunk) and
+-- Lua 5.4 (coroutine.close, marks it dead) so the offline lupa test
+-- harness -- which only exposes coroutine.close -- can drive the
+-- close-button path the same way real ComputerCraft will.
 function M.killProcess(pid)
   local proc = P[pid]
   if not proc or pid == SYSTEM_PID then return false end
-  local ok = pcall(coroutine.kill, proc.co)
-  return ok
+  if coroutine.kill then
+    return pcall(coroutine.kill, proc.co) ~= false
+  end
+  if coroutine.close then
+    return pcall(coroutine.close, proc.co) ~= false
+  end
+  return false
 end
 
 -- Public reference to the WM so system processes can drive it.
@@ -267,6 +284,16 @@ function M.wm() return wm end
 function M.isSystemProcess(pid)
   local proc = P[pid]
   return proc ~= nil and proc.isSystem == true
+end
+
+-- Has the chunk for this pid ended (returned, errored, or been killed)?
+-- Used by the offline harness to verify close-button kills land on
+-- the chunk's coroutine. Missing pids count as dead -- the slot has
+-- either been reaped or never existed.
+function M.isProcDead(pid)
+  local proc = P[pid]
+  if not proc then return true end
+  return coroutine.status(proc.co) == "dead"
 end
 
 -- Reap any non-system processes whose coroutines have ended and re-pick
@@ -378,16 +405,34 @@ function M.run()
 
     elseif event == "mouse_click" then
       local button, mx, my = a, b, c
-      local win_id, region = hitTestWithTitle(mx, my)
-      if win_id then
-        local wrec = wm.windows[win_id]
-        wm.setFocus(win_id)
-        focused_pid = wrec.pid
-        if region == "titlebar" and button == 1 then
-          wm.startDrag(win_id, mx, my)
+      -- Close button takes precedence. titleHit would otherwise claim
+      -- the same row, but we want a single click to kill, not to start
+      -- a drag-then-release sequence. Routing closeHit first is the
+      -- only place that has access to the close-button enlargement
+      -- (titleHit / hitTest return the window regardless of region).
+      local close_id = wm.closeHit(mx, my)
+      if close_id then
+        local wrec = wm.windows[close_id]
+        if wrec then
+          -- Refocus first so the visual click target lines up with
+          -- the kill (avoids a frame where the click changes nothing).
+          wm.setFocus(close_id)
+          if wrec.pid and not M.isSystemProcess(wrec.pid) then
+            M.killProcess(wrec.pid)
+          end
         end
-        deliver(focused_pid, "mouse_click", button,
-                mx - wrec.x + 1, my - wrec.bodyY + 1)
+      else
+        local win_id, region = hitTestWithTitle(mx, my)
+        if win_id then
+          local wrec = wm.windows[win_id]
+          wm.setFocus(win_id)
+          focused_pid = wrec.pid
+          if region == "titlebar" and button == 1 then
+            wm.startDrag(win_id, mx, my)
+          end
+          deliver(focused_pid, "mouse_click", button,
+                  mx - wrec.x + 1, my - wrec.bodyY + 1)
+        end
       end
       reapAndRefocus()
 

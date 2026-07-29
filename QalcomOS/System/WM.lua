@@ -188,6 +188,38 @@ function M.titleHit(mx, my)
   return nil
 end
 
+-- The rightmost `closeW` columns of a non-system title row are the
+-- close button. Kernel.run() routes clicks landing here to
+-- killProcess(); we expose this as its own hit-test so the title/body
+-- click path doesn't have to know about it. The glyph lives in
+-- api.formats so WM + apps share the same constant.
+local function closeRectOf(w)
+  local close = api.formats and api.formats.closeGlyph or "[X]"
+  local closeW = #close
+  return w.x + w.w - closeW, w.x + w.w - 1, w.y
+end
+
+function M.closeButtonRect(id)
+  local w = M.windows[id]
+  if not w or w.isSystem or w.titleH == 0 then return nil end
+  return closeRectOf(w)
+end
+
+function M.closeHit(mx, my)
+  -- Walk z_order back-to-front so a topmost window's close button
+  -- wins over a lower window whose row happens to overlap.
+  for i = #M.z_order, 1, -1 do
+    local w = M.windows[M.z_order[i]]
+    if w and not w.isSystem and w.titleH > 0 then
+      local x1, x2, y = closeRectOf(w)
+      if mx >= x1 and mx <= x2 and my == y then
+        return M.z_order[i]
+      end
+    end
+  end
+  return nil
+end
+
 function M.startDrag(id, mx, my)
   local w = M.windows[id]
   if not w then return end
@@ -231,17 +263,30 @@ function M.render()
   -- Title bars always sit above any child content because we draw them
   -- AFTER blitting children, on the master buffer directly. System
   -- windows have no title bar; their child is the full screen.
+  --
+  -- Non-system title bars reserve the rightmost `closeW` columns for
+  -- the close button. The label area is shrunk to `w.w - closeW - 1`
+  -- so a single column of padding sits between the title text and the
+  -- [X]. truncate-to-labelMaxW keeps long titles from clipping into
+  -- the close region. closeButtonRect / closeHit must use the same
+  -- math (see closeRectOf below) or clicks will mis-register.
   for _, id in ipairs(M.z_order) do
     local w = M.windows[id]
     if w and not w.isSystem then
-      local bar = " " .. w.title .. " "
-      local pad = math.max(0, w.w - #bar)
+      local close  = api.formats and api.formats.closeGlyph or "[X]"
+      local closeW = #close
+      -- Allow labelMaxW = 0 so a degenerate window (w.w < closeW + 1)
+      -- still renders strictly w.w chars; the title simply drops out.
+      local labelMaxW = math.max(0, w.w - closeW - 1)
+      local bar = " " .. (w.title or "") .. " "
+      if #bar > labelMaxW then bar = bar:sub(1, labelMaxW) end
+      local pad = math.max(0, w.w - #bar - closeW)
       local bg  = (id == M.focused) and api.theme.panel or api.theme.panelX
       local fg  = api.theme.text
       M.master.setBackgroundColor(bg)
       M.master.setTextColor(fg)
       M.master.setCursorPos(w.x, w.y)
-      M.master.write(bar .. string.rep(" ", pad))
+      M.master.write(bar .. string.rep(" ", pad) .. close)
     end
   end
 
