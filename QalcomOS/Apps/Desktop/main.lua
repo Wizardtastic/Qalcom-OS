@@ -131,36 +131,97 @@ local function clockText()
   return string.format("%02d:%02d", h, m)
 end
 
+-- Constants used by the bottom-row taskbar. The Start label and
+-- width never change; the round() helper is also constant. Both
+-- are hoisted out of taskbarGeom so per-frame and per-click
+-- calls don't pay the allocation cost.
+local START_LABEL = "[Start]"
+local START_W     = #START_LABEL
+local function round(x) return math.floor(x + 0.5) end
+
+-- Compute the columns used by the bottom-row taskbar. Start is
+-- centered in the LEFT QUARTER of the bar, Clock in the RIGHT
+-- QUARTER, with a 1-char separator drawn next to Start; tray
+-- buttons fill the middle. Falls back to edge-aligned when the
+-- screen is too narrow to honor the quarter centers without
+-- Start and Clock colliding. Both rendering and click hit-tests
+-- share this so the visual layout and click targets stay in
+-- lock-step.
+local function taskbarGeom()
+  local clk_w   = #clockText()
+  -- Centers: Start at 1/4 width, Clock at 3/4 width.
+  local start_x = round(w / 4) - math.floor(START_W / 2)
+  local clk_x   = round(3 * w / 4) - math.floor(clk_w / 2)
+  start_x = math.max(1, start_x)
+  clk_x   = math.min(w - clk_w + 1, math.max(1, clk_x))
+  -- If the centered quarters can't keep Start and Clock 2 cols
+  -- apart (room for separator + tray), fall back to edge-aligned.
+  if clk_x < start_x + START_W + 2 then
+    start_x = 1
+    clk_x   = w - clk_w + 1
+  end
+  -- Final clamp: keep Start and Clock strictly adjacent unless
+  -- the screen is too narrow to fit START_W + clk_w (in which
+  -- case overlap is unavoidable, but we never write past the
+  -- right edge). Outer min caps, inner max enforces Start ->
+  -- Clock separation when there's room.
+  clk_x = math.min(w - clk_w + 1, math.max(start_x + START_W, clk_x))
+  return start_x, START_W, start_x + START_W, clk_x, clk_w
+end
+
 local function drawTaskbar()
-  -- 1 row at the bottom of our system window.
+  -- 1 row at the bottom of our system window. Layout:
+  --   '[Start]|<tray buttons>      <HH:MM>'
+  --   ^Start in left quarter         ^Clock in right quarter
+  -- Both flank elements are inset from the edges so the row
+  -- feels symmetrically balanced whether tray buttons are
+  -- present or not.
   local y = h
+  local start_x, start_w, sep_x, clk_x, clk_w = taskbarGeom()
+
+  -- Background.
   term.setBackgroundColor(colors.gray)
   term.setTextColor(colors.white)
   term.setCursorPos(1, y)
   term.write(string.rep(" ", w))
 
-  -- Start button label.
+  -- Start button.
   term.setBackgroundColor(colors.lightBlue)
   term.setTextColor(colors.white)
-  term.setCursorPos(1, y)
+  term.setCursorPos(start_x, y)
   term.write("[Start]")
 
-  -- Separator after Start button.
+  -- Separator after Start button. Only draw it when there's a real
+  -- 1-col gap before the clock -- on very narrow screens the
+  -- centered quarters collapse into a tight edge-aligned layout
+  -- and the separator would visually collide with the clock.
   term.setBackgroundColor(colors.gray)
   term.setTextColor(colors.lightGray)
-  term.setCursorPos(8, y)
-  term.write("|")
+  if sep_x + 1 < clk_x then
+    term.setCursorPos(sep_x, y)
+    term.write("|")
+  end
 
-  -- Running-window tray buttons. Each gets an equal slice.
+  -- Running-window tray buttons. The transient Login chunk sits
+  -- in the tray for one frame between submit() and the reap
+  -- pass -- a kernel artifact, not a user-visible concept. Filter
+  -- it out so the taskbar stays clean during / right after login.
   local prog = kernel.listRunning()
-  if #prog > 0 then
-    local tray_x0 = 9
-    local tray_w  = math.max(8, math.floor((w - 22) / math.max(1, #prog)))
-    for i, p in ipairs(prog) do
-      local x = tray_x0 + (i - 1) * tray_w
-      if x + tray_w > w - 9 then break end
+  local visible = {}
+  for _, p in ipairs(prog) do
+    if p.title ~= "Login" then visible[#visible + 1] = p end
+  end
+
+  if #visible > 0 and sep_x < clk_x then
+    local tray_left  = sep_x + 1
+    local tray_right = clk_x - 1
+    local tray_total = tray_right - tray_left + 1
+    local tray_w     = math.max(8, math.floor(tray_total / #visible))
+    for i, p in ipairs(visible) do
+      local x = tray_left + (i - 1) * tray_w
+      if x + tray_w - 1 > tray_right then break end
       local label = " " .. (p.title or "?")
-      if #label > tray_w - 1 then label = label:sub(1, tray_w - 2) .. "~" end
+      if #label > tray_w then label = label:sub(1, tray_w - 1) .. "~" end
 
       -- Highlight the focused window; dim minimized windows.
       local isFocused   = p.focused
@@ -181,13 +242,11 @@ local function drawTaskbar()
     end
   end
 
-  -- Clock on the far right.
+  -- Clock on the right.
   term.setBackgroundColor(colors.gray)
-  term.setTextColor(colors.lightGray)
-  local clk = clockText()
-  term.setCursorPos(w - #clk - 1, y)
   term.setTextColor(colors.white)
-  term.write(clk)
+  term.setCursorPos(clk_x, y)
+  term.write(clockText())
 end
 
 -- ----------------------------------------------------------------------------
@@ -347,18 +406,33 @@ end
 
 local function startButtonHit(mx, my)
   if my ~= h then return false end
-  return mx >= 1 and mx <= 8
+  local start_x, _, sep_x = taskbarGeom()
+  -- The Start button AND the separator glyph both toggle the menu,
+  -- so the hit-test extends to sep_x.
+  return mx >= start_x and mx <= sep_x
 end
 
 local function trayButtonHit(mx, my)
-  if my ~= h then return false end
-  if mx < 9 or mx > w - 9 then return false end
+  if my ~= h then return nil end
+  local _, _, sep_x, clk_x = taskbarGeom()
+  local tray_left  = sep_x + 1
+  local tray_right = clk_x - 1
+  if mx < tray_left or mx > tray_right then return nil end
+
+  -- Same Login filter as drawTaskbar so phantom hit-test slots
+  -- don't sneak through to a vanishing process.
   local prog = kernel.listRunning()
-  if #prog == 0 then return nil end
-  local tray_w = math.max(8, math.floor((w - 22) / math.max(1, #prog)))
-  local idx = math.floor((mx - 9) / tray_w) + 1
-  if idx < 1 or idx > #prog then return nil end
-  return prog[idx]
+  local visible = {}
+  for _, p in ipairs(prog) do
+    if p.title ~= "Login" then visible[#visible + 1] = p end
+  end
+  if #visible == 0 then return nil end
+
+  local tray_total = tray_right - tray_left + 1
+  local tray_w     = math.max(8, math.floor(tray_total / #visible))
+  local idx        = math.floor((mx - tray_left) / tray_w) + 1
+  if idx < 1 or idx > #visible then return nil end
+  return visible[idx]
 end
 
 local function menusContains(mx, my)
