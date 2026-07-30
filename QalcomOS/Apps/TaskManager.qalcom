@@ -1,0 +1,8 @@
+# TaskManager.qalcom -- launcher manifest for the Task Manager app.
+name=TaskManager
+title=Task Manager
+icon=T
+path=/QalcomOS/Apps/TaskManager/main.lua
+window_w=44
+window_h=14
+trusted=true

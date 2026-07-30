@@ -50,6 +50,180 @@ function M.init(windowManager)
   wm = windowManager
 end
 
+-- ---------------------------------------------------------------------------
+-- Safe-coroutine helpers
+--
+-- A registered proc can briefly have proc.co == nil if M.spawn()'s
+-- bookkeeping inserts the proc into the P registry before proc.co =
+-- coroutine.create(runChunk) is assigned, then a downstream step
+-- (loadfile failing, a dofile error) raises before co can land. That
+-- orphan would later crash coroutine.status(proc.co) with "bad
+-- argument (thread expected, got nil)" the next time the event loop
+-- visits it. The helpers below fold that case into the existing
+-- reaping path so reap/deliver continue to behave correctly without
+-- sprinkling nil-checks at each of the eight access sites.
+--
+-- Conventions:
+--   coStatus() returns the real coroutine.status() for live procs,
+--     and the synthetic sentinel "absent" for nil-co. NEVER "dead"
+--     -- callers that want "this proc is reap-eligible" should use
+--     isReapable() which covers both "absent" and "dead".
+-- ---------------------------------------------------------------------------
+
+local function coStatus(proc)
+  if not proc or not proc.co then return "absent" end
+  return coroutine.status(proc.co)
+end
+
+local function isReapable(proc)
+  local s = coStatus(proc)
+  return s == "absent" or s == "dead"
+end
+
+local function coResume(proc, ...)
+  if not proc or not proc.co then return false end
+  return coroutine.resume(proc.co, ...)
+end
+
+-- ---------------------------------------------------------------------------
+-- Panic log
+--
+-- Append-only persistent log written from kernel.spawn's two failure
+-- sites (loadfile returning nil + the chunk's first pcall). Goal: a
+-- user can boot into Recovery after a black-screen failure and read
+-- "what died" without setting breakpoints or rebooting with extra
+-- print() statements sprinkled through the code.
+--
+-- Design notes:
+--   * Every fs call is wrapped in pcall -- a half-up state (post-crash,
+--     pre-mount) MUST NOT crash the panic-log writer; that would just
+--     produce another black screen with no trace.
+--   * Time source is os.time() if exposed, decoded as CC's HHMM (e.g.
+--     17:53 -> 1753). Anything that doesn't fit is replaced with
+--     "??:??" so the line is still parseable downstream.
+--   * entries are line-flattened (no embedded newlines), capped at
+--     PANIC_DETAIL_MAX chars, mangled to one-line of ASCII so a
+--     `cat` in Recovery prints them clean.
+--   * Size cap + rotation: when the file exceeds PANIC_FILE_MAX bytes
+--     we truncate to the last PANIC_KEEP_LINES entries. Prevents a
+--     runaway error loop from filling the disk.
+--   * Path is hard-coded here so the log works even before/without
+--     the api module's paths table (api.lua isn't always loaded if
+--     the spawn itself fails before the dofile(api)).
+-- ---------------------------------------------------------------------------
+
+local PANIC_LOG_PATH    = "/QalcomOS/AppData/panic.log"
+local PANIC_DETAIL_MAX  = 256
+local PANIC_FILE_MAX    = 4096
+local PANIC_KEEP_LINES  = 20
+
+-- Byte-by-byte sanitizer for control characters (0x00..0x1F and 0x7F).
+-- Lua pattern syntax does NOT support POSIX-style `\d-\d` byte ranges:
+-- inside `[...]` each char literal (including escape sequences that
+-- Lua doesn't recognise, which become the literal following char)
+-- stands on its own, so a pattern like `[%s\0\1-\31]` would silently
+-- match only a handful of unrelated characters. Iterate the bytes
+-- numerically instead.
+local function panicStripCtrl(s, replace)
+  replace = replace or "?"
+  local out = {}
+  for i = 1, #s do
+    local b = string.byte(s, i)
+    if b < 0x20 or b == 0x7F then
+      out[#out + 1] = replace
+    else
+      out[#out + 1] = string.char(b)
+    end
+  end
+  return table.concat(out)
+end
+
+-- Tolerant fs.exists wrapper. CC's fs.exists rarely throws, but a
+-- post-crash, pre-mount state is exactly when this writer gets
+-- called -- the assumption we don't need ALWAYS holds.
+local function panicSafeExists(p)
+  if not (fs and fs.exists) then return false end
+  local ok, r = pcall(fs.exists, p)
+  return ok and r == true
+end
+
+local function panicTimeStamp()
+  if type(os) ~= "table" or type(os.time) ~= "function" then
+    return "??:??"
+  end
+  local ok, v = pcall(os.time)
+  if not ok or type(v) ~= "number" then return "??:??" end
+  -- CC canonical: HHMM integer with H < 24 and M < 60. Anything
+  -- else (epoch seconds, 0, negative, fractional) is unreadable.
+  if v ~= math.floor(v) or v < 0 or v >= 2400 then return "??:??" end
+  local h = math.floor(v / 100)
+  local m = v - h * 100
+  if h < 0 or h > 23 or m < 0 or m > 59 then return "??:??" end
+  return string.format("%02d:%02d", h, m)
+end
+
+local function panicEnsureDir()
+  if not (fs and fs.makeDir) then return end
+  pcall(function()
+    if not panicSafeExists("/QalcomOS") then
+      pcall(fs.makeDir, "/QalcomOS")
+    end
+    if not panicSafeExists("/QalcomOS/AppData") then
+      pcall(fs.makeDir, "/QalcomOS/AppData")
+    end
+  end)
+end
+
+-- If the file is past PANIC_FILE_MAX bytes, rewrite it retaining only
+-- the final PANIC_KEEP_LINES lines. Done best-effort inside a pcall
+-- so a read error doesn't block the append.
+local function panicRotateIfBig()
+  if not (fs and fs.getSize and fs.open) then return end
+  local size = 0
+  if panicSafeExists(PANIC_LOG_PATH) then
+    local ok, s = pcall(fs.getSize, PANIC_LOG_PATH)
+    if ok and type(s) == "number" then size = s end
+  end
+  if size <= PANIC_FILE_MAX then return end
+  pcall(function()
+    local f = fs.open(PANIC_LOG_PATH, "r")
+    if not f then return end
+    local lines = {}
+    for raw in f.readLine do lines[#lines + 1] = raw end
+    f.close()
+    if #lines <= PANIC_KEEP_LINES then return end
+    local start = #lines - PANIC_KEEP_LINES + 1
+    local fw = fs.open(PANIC_LOG_PATH, "w")
+    if not fw then return end
+    for i = start, #lines do fw.write(lines[i] .. "\n") end
+    fw.close()
+  end)
+end
+
+local function panicLog(tag, details)
+  -- NEVER raises. This writer runs in failure paths; it must not
+  -- produce a *new* failure. Every step below is wrapped.
+  tag    = panicStripCtrl(tostring(tag or "unknown"), "_")
+  details = panicStripCtrl(tostring(details or ""), "?")
+  details = details:gsub("\r", " "):gsub("\n", " | ")
+  if #details > PANIC_DETAIL_MAX then
+    details = details:sub(1, PANIC_DETAIL_MAX - 1) .. "..."
+  end
+  local line = string.format("[%s] [%s] %s\n",
+                             panicTimeStamp(), tag, details)
+  pcall(function()
+    panicEnsureDir()
+    panicRotateIfBig()
+    if not (fs and fs.open) then return end
+    local f = fs.open(PANIC_LOG_PATH, "a")
+    if not f then return end
+    f.write(line)
+    f.close()
+  end)
+end
+
+M.panicLog = panicLog
+
 -- Take a snapshot of the OS code so the Recovery shell can later
 -- restore it via `recover`. Called from boot.lua right after a
 -- successful spawn of the Login chunk -- the OS is in a known-good
@@ -71,10 +245,12 @@ function M.spawn(path, options)
   local sw, sh = wm.master.getSize()
 
   local win_id, child, title
+  local gpuFB  -- GPUFramebuffer for system processes
   if options.isSystem then
     -- System window is full-bleed; no title bar; no specified geometry.
     title = options.title or "[system]"
-    win_id, child = wm.createSystemWindow(sw, sh)
+    win_id, gpuFB = wm.createSystemWindow(sw, sh)
+    child = gpuFB  -- GPU framebuffer IS the child for system processes
   else
     local ww = options.w or math.max(20, math.min(sw - 4, sw - 8))
     local wh = options.h or math.max(10, math.min(sh - 6, sh - 6))
@@ -117,12 +293,17 @@ function M.spawn(path, options)
   -- Lua function. We only shadow os.pullEvent / os.sleep to enable the
   -- kernel's interception.
   local registry = dofile("/QalcomOS/System/registry.lua")
+  -- Load the date/time wrapper once per spawn and hand it to the chunk.
+  -- Apps reach it via qos.osApi without having to know the dofile path,
+  -- AND get a stable surface that never crashes on a missing host API.
+  local osApi    = dofile("/QalcomOS/System/osApi.lua")
 
   local qos_table = {
     win_id    = win_id,
     child     = child,
     pid       = pid,
     registry  = registry,
+    osApi     = osApi,
     -- Expose the entire spawn options table so callers can hand off
     -- arbitrary state (theme_idx, locale, target username, etc.)
     -- without having to edit this module every time a new opt lands.
@@ -131,6 +312,9 @@ function M.spawn(path, options)
     -- so existing chunks continue to work.
     options   = options,
     theme_idx = options.theme_idx,
+    -- GPU framebuffer for system processes (so the desktop can
+    -- render directly to the GPU buffer the WM composites).
+    gpuFB     = gpuFB,
   }
   -- System processes get kernel access -- they need to spawn apps,
   -- focus windows, list running tasks, etc. Regular apps don't.
@@ -199,6 +383,14 @@ function M.spawn(path, options)
   -- Canonical Lua 5.2+ / Cobalt way to bind an env to a chunk.
   local fn, lerr = loadfile(path, "t", env)
   if not fn then
+    -- Record the failure so a Recovery-mode user can read the cause.
+    -- The panic log writer is pcall-protected and never raises, so
+    -- this is always a safe addition even if fs is missing.
+    panicLog("loadfile_fail", path .. " :: " .. tostring(lerr))
+    -- Orphan procs are tolerated by coStatus / coResume / isReapable
+    -- so we don't pre-clean P[pid] here -- the next reap tick will
+    -- pick it up naturally. Adding a manual P[pid] = nil here would
+    -- risk a double-destroy path if wm.destroy is not idempotent.
     error("kernel.spawn: loadfile failed for '" .. path ..
           "': " .. tostring(lerr))
   end
@@ -206,29 +398,47 @@ function M.spawn(path, options)
   local function runChunk()
     local prevTerm = term.current()
     local ok, err  = pcall(function()
-      term.redirect(child)
-      term.setBackgroundColor(colors.white)
-      term.setTextColor(colors.black)
-      term.clear()
-      term.setCursorPos(1, 1)
+      -- For system processes with a GPU framebuffer, we don't
+      -- redirect term to child (the child is a GPU FB, not a
+      -- CC window). The app renders directly to its GPU FB.
+      if not options.isSystem or not gpuFB then
+        term.redirect(child)
+        term.setBackgroundColor(colors.white)
+        term.setTextColor(colors.black)
+        term.clear()
+        term.setCursorPos(1, 1)
+      end
       fn()
     end)
     -- Whatever happened, put term back where it was.
-    term.redirect(prevTerm)
+    if not options.isSystem or not gpuFB then
+      term.redirect(prevTerm)
+    end
     if not ok then
-      -- Surface error inside the child's window. The window will be
-      -- reaped on the next reapAndRefocus() pass.
-      term.redirect(child)
-      pcall(function()
+      panicLog("chunk_runtime", path .. " :: " .. tostring(err))
+      -- Surface error. For GPU apps, use term directly.
+      if options.isSystem and gpuFB then
+        term.redirect(prevTerm)
         term.setBackgroundColor(colors.red)
         term.setTextColor(colors.white)
         term.clear()
         term.setCursorPos(2, 2)
-        term.write("App error in " .. path .. ":")
+        term.write("System app error in " .. path .. ":")
         term.setCursorPos(2, 3)
         term.write(tostring(err))
-      end)
-      term.redirect(prevTerm)
+      else
+        term.redirect(child)
+        pcall(function()
+          term.setBackgroundColor(colors.red)
+          term.setTextColor(colors.white)
+          term.clear()
+          term.setCursorPos(2, 2)
+          term.write("App error in " .. path .. ":")
+          term.setCursorPos(2, 3)
+          term.write(tostring(err))
+        end)
+        term.redirect(prevTerm)
+      end
     end
   end
 
@@ -240,7 +450,7 @@ function M.spawn(path, options)
 
   -- First resume. The chunk will run until it yields or returns. The
   -- yield value isn't meaningful here; we discard it.
-  coroutine.resume(proc.co)
+  coResume(proc)
 
   return pid
 end
@@ -254,7 +464,7 @@ end
 function M.listRunning()
   local out = {}
   for pid, proc in pairs(P) do
-    if pid ~= SYSTEM_PID and coroutine.status(proc.co) ~= "dead" then
+    if pid ~= SYSTEM_PID and not isReapable(proc) then
       local wrec = wm.windows[proc.win_id]
       out[#out + 1] = {
         pid       = pid,
@@ -339,11 +549,11 @@ function M.killProcess(pid)
   local ok = false
   if coroutine.kill then
     pcall(coroutine.kill, proc.co)
-    ok = coroutine.status(proc.co) == "dead"
+    ok = isReapable(proc)
   end
   if not ok and coroutine.close then
     pcall(coroutine.close, proc.co)
-    ok = coroutine.status(proc.co) == "dead"
+    ok = isReapable(proc)
   end
 
   -- Fallback for hosts that lack BOTH kill APIs (vanilla CC Lua 5.1,
@@ -364,6 +574,68 @@ function M.killProcess(pid)
   return true
 end
 
+-- Notification queue: apps call M.notify(title, body, ttl) to surface
+-- user-visible toasts. The Desktop process polls via
+-- M.readNotifications() each frame and renders the active set; entries
+-- whose deadline has passed are evicted on read. The queue is
+-- capped so a misbehaving caller cannot pin memory.
+local _activeNotifications = {}
+local MAX_NOTIFICATIONS    = 16
+
+-- Push a new toast. ttl is clamped to [0.5, 60] seconds. Returns the
+-- queue index, or nil if the call was malformed (no title).
+function M.notify(title, body, ttl)
+  if type(title) ~= "string" or #title == 0 then return nil end
+  ttl = tonumber(ttl) or 4
+  if ttl < 0.5 then ttl = 0.5 end
+  if ttl > 60  then ttl = 60  end
+  _activeNotifications[#_activeNotifications + 1] = {
+    title    = title,
+    body     = (type(body) == "string") and body or "",
+    deadline = os.clock() + ttl,
+  }
+  while #_activeNotifications > MAX_NOTIFICATIONS do
+    table.remove(_activeNotifications, 1)
+  end
+  return #_activeNotifications
+end
+
+-- Return a stable SNAPSHOT of unexpired notifications as a fresh
+-- shallow table. Eviction is internal-only; callers see indices 1..N
+-- without surprise shifts underfoot, so multiple readers (or one
+-- reader iterating twice in a tick) all see the same view.
+function M.readNotifications()
+  local now = os.clock()
+  local i   = 1
+  while i <= #_activeNotifications do
+    if _activeNotifications[i].deadline <= now then
+      table.remove(_activeNotifications, i)
+    else
+      i = i + 1
+    end
+  end
+  local out = {}
+  for j = 1, #_activeNotifications do
+    out[j] = _activeNotifications[j]
+  end
+  return out
+end
+
+-- Drop a specific notification by 1-based index. Returns true if the
+-- index was valid (and an entry was removed), false otherwise -- the
+-- caller can use this to drive a redraw only when something changed.
+function M.dismissNotification(idx)
+  if type(idx) ~= "number" then return false end
+  if idx < 1 or idx > #_activeNotifications then return false end
+  table.remove(_activeNotifications, idx)
+  return true
+end
+
+-- Wipe the queue. Mainly useful as an admin/debug entry point.
+function M.clearNotifications()
+  _activeNotifications = {}
+end
+
 -- Public reference to the WM so system processes can drive it.
 function M.wm() return wm end
 
@@ -381,7 +653,7 @@ end
 function M.isProcDead(pid)
   local proc = P[pid]
   if not proc then return true end
-  return coroutine.status(proc.co) == "dead"
+  return isReapable(proc)
 end
 
 -- Reap any non-system processes whose coroutines have ended and re-pick
@@ -391,7 +663,7 @@ end
 function M.reapDead()
   for pid, proc in pairs(P) do
     if pid ~= SYSTEM_PID
-       and coroutine.status(proc.co) == "dead" then
+       and isReapable(proc) then
       wm.destroy(proc.win_id)
       P[pid] = nil
       if focused_pid == pid then focused_pid = nil end
@@ -408,7 +680,7 @@ end
 local function deliver(pid, event_name, ...)
   local proc = P[pid]
   if not proc then return end
-  if coroutine.status(proc.co) ~= "suspended" then return end
+  if coStatus(proc) ~= "suspended" then return end
 
   -- Mismatch: buffer.
   if proc.filter and proc.filter ~= event_name then
@@ -416,8 +688,8 @@ local function deliver(pid, event_name, ...)
     return
   end
 
-  local ok, kind, a1, a2, a3 = coroutine.resume(
-    proc.co, "qos_event", event_name, ...
+  local ok, kind, a1, a2, a3 = coResume(
+    proc, "qos_event", event_name, ...
   )
   if not ok then
     -- Error inside the chunk: reapAndRefocus() will collect it.
@@ -469,7 +741,7 @@ end
 local function reapAndRefocus()
   for pid, proc in pairs(P) do
     if pid ~= SYSTEM_PID
-       and coroutine.status(proc.co) == "dead" then
+       and isReapable(proc) then
       wm.destroy(proc.win_id)
       P[pid] = nil
       if focused_pid == pid then focused_pid = nil end

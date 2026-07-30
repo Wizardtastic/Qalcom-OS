@@ -1,67 +1,92 @@
 --[[
-  /QalcomOS/Apps/About/main.lua - Demo #2: About dialog
+  /QalcomOS/Apps/About/main.lua - About dialog (v1.0 CC: Graphics)
 
-  v0.1.1 fixes:
-    * Reads _QOS_VERSION / _QOS_CODENAME out of the per-app env
-      instead of the absent _G._QOS_VERSION.
-    * Layout fits a body of ~12 rows.
-    * Routes click events through QOS coordinates correctly.
-]]
+  GPU-accelerated about dialog with panel frame, gradient title bar,
+  and pixel art Qalcom logo.
+]]--
 
-local qos = _QOS
 local w, h = term.getSize()
-term.setBackgroundColor(colors.white)
-term.setTextColor(colors.black)
-term.clear()
 
-local function frame()
-  term.setBackgroundColor(colors.lightBlue)
-  term.setTextColor(colors.white)
-  term.setCursorPos(1, 1)
-  term.write("--" .. string.rep(" ", w - 4) .. "--")
-  for y = 2, h - 1 do
-    term.setCursorPos(1, y); term.write("|")
-    term.setCursorPos(w, y); term.write("|")
+-- Try to load GPU.
+local gpuAvailable, gpu = pcall(dofile, "/QalcomOS/System/gpu.lua")
+if not gpuAvailable then
+  -- Legacy fallback.
+  term.setBackgroundColor(colors.white); term.setTextColor(colors.black); term.clear()
+  term.setCursorPos(3, 3); term.write("Qalcom OS " .. _QOS_VERSION)
+  term.setCursorPos(3, 5); term.write("A Windows-like OS for CC:Tweaked")
+  while true do
+    local ev, k = os.pullEvent()
+    if ev == "key" and k == keys.backspace then return end
+    if ev == "terminate" then return end
   end
-  term.setCursorPos(1, h)
-  term.write("--" .. string.rep(" ", w - 4) .. "--")
-  term.setBackgroundColor(colors.white)
-  term.setTextColor(colors.black)
+  return
 end
 
-local function write_at(x, y, text, fg)
-  if fg then term.setTextColor(fg) end
-  term.setCursorPos(x, y)
-  term.write(text)
-  if fg then term.setTextColor(colors.black) end
-end
+local fb = gpu.createFramebuffer(w, h, {
+  doubleBuffer = true, dirtyAlways = false,
+  clearChar = " ", clearBg = 0, clearFg = 15,
+})
 
-local last_event = "nothing yet"
+-- Qalcom logo (pixel art).
+local LOGO = {
+  "  ╔══╗╔══╗╔╗  ╔══╗  ",
+  "  ║  ║║  ║║║  ║  ║  ",
+  "  ║  ║║  ║║║  ║  ║  ",
+  "  ╚══╝╚══╝╚╝  ╚══╝  ",
+  "  ╔══╗╔══╗╔══╗╔══╗  ",
+  "  ╚══╝╚══╝╚══╝╚══╝  ",
+}
+
+-- Resolve colours.
+local COL = {
+  bg     = gpu.rgbToPaletteIndex(0.15, 0.20, 0.35),  -- deep blue
+  panel  = gpu.rgbToPaletteIndex(0.30, 0.55, 0.90),  -- lightBlue
+  text   = 0,
+  accent = 4,
+  dim    = 7,
+  bodyBg = 0,
+}
+
 local function draw()
-  frame()
-  write_at(3, 3, "Qalcom OS " .. _QOS_VERSION,         colors.yellow)
-  write_at(3, 5, "A Windows-like operating system")
-  write_at(3, 6, "for ComputerCraft: Tweaked on 1.21.1.")
-  write_at(3, 8, "Codename:")
-  write_at(14, 8, "\"" .. _QOS_CODENAME .. "\"",      colors.yellow)
-  write_at(3, h - 3, "Window: " .. qos.win_id,        colors.gray)
-  write_at(3, h - 2, "Last event: " .. last_event,    colors.lightGray)
-  write_at(3, h - 1, "Press backspace to close.",    colors.gray)
+  fb:beginDraw()
+
+  -- Background gradient.
+  fb:gradientFill(1, 1, w, h, COL.bg, COL.panel, 15)
+
+  -- Logo centered.
+  local logoX = math.floor((w - #LOGO[1]) / 2) + 1
+  local logoY = 2
+  for i, line in ipairs(LOGO) do
+    fb:drawText(logoX, logoY + i - 1, line, COL.accent, COL.bg)
+  end
+
+  -- Info text.
+  local lines = {
+    "Qalcom OS " .. _QOS_VERSION .. " \"" .. _QOS_CODENAME .. "\"",
+    "",
+    "A pixel-perfect OS for CC:Tweaked",
+    "Built with the CC: Graphics engine",
+    "",
+    "Window: " .. tostring(_QOS.win_id),
+    "PID: " .. tostring(_QOS.pid),
+    "",
+    "Backspace closes this window.",
+  }
+
+  for i, line in ipairs(lines) do
+    local fg = (line == "" and 15) or (line:match("Backspace") and COL.dim) or COL.text
+    fb:drawTextCentered(logoY + #LOGO + 1 + i, line, fg, COL.bg)
+  end
+
+  fb:endDraw()
+  fb:present()
 end
 
 draw()
 
+local last_event = "nothing yet"
 while true do
-  local ev, k1, k2, k3 = os.pullEvent()
-  if ev == "key" then
-    last_event = "key: " .. tostring(k1)
-    if k1 == keys.backspace then return end
-    draw()
-  elseif ev == "terminate" then
-    return
-  elseif ev == "mouse_click" then
-    last_event = string.format("click btn=%s in-window (%s, %s)",
-                               tostring(k1), tostring(k2), tostring(k3))
-    draw()
-  end
+  local ev, k1 = os.pullEvent()
+  if ev == "key" and k1 == keys.backspace then return end
+  if ev == "terminate" then return end
 end

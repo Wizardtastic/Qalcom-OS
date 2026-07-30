@@ -1,26 +1,26 @@
 --[[
-  QalcomOS.System.WM - Window Manager (v0.1.1)
+  QalcomOS.System.WM - Window Manager (v1.0 CC: Graphics)
 
-  Owns a master window covering the whole screen and lets the kernel
-  spawn child windows inside it. Each child window is divided:
+  Hybrid compositing window manager:
+    * Desktop (system) windows use a GPU framebuffer for pixel-perfect rendering
+    * App windows use standard CC windows (for term.redirect compatibility)
+    * WM composites everything onto the screen GPU framebuffer
+    * Title bars are drawn directly on the screen framebuffer with GPU primitives
 
-       ┌──────────────────────────┐   <- row w.y      : title bar (drawn by WM on master)
-       │  [ Hello ]               │
-       ├──────────────────────────┤   <- row w.bodyY  : child window starts here (apps live here)
-       │  Hello, world!           │
-       │  ...                     │
-       └──────────────────────────┘   <- row w.bodyY + w.bodyH - 1
-
-  This way the title bar lives on the master buffer only and apps
-  receive a clean (w x bodyH) rectangle to draw into via term.redirect.
-]]
+  Rendering pipeline (render()):
+    1. Begin draw on screen FB
+    2. Gradient wallpaper on screen FB
+    3. Composite desktop FB (GPU) onto screen FB (full-bleed)
+    4. For each app window (z-order), blit CC window content onto screen FB
+    5. Draw title bars on screen FB using GPU primitives (colours, shadows)
+    6. End draw and present screen FB to terminal
+]]--
 
 local api = dofile("/QalcomOS/System/api.lua")
+local gpu = nil
 
 local M = {}
 
--- Title bar is exactly one row in v0.1.3 reserved at the top of each
--- window. Kept as a module-level constant so the math is shareable.
 local TITLE_H = 1
 
 M.oTerm   = nil
@@ -28,78 +28,136 @@ M.master  = nil
 M.windows = {}
 M.z_order = {}
 M.focused = nil
-M.TITLE_H = TITLE_H  -- expose for kernel's coord math
+M.TITLE_H = TITLE_H
+
+M.screenFB = nil   -- root compositing framebuffer
+M.desktopFB = nil  -- desktop's GPU framebuffer (system window)
 
 local next_id = 0
 
--- Initialise the window manager. Must be called before any other WM
--- function. Sets up master window, draws an initial wallpaper, and makes
--- the master the active term target.
+-- Initialise.
 function M.init(oTerm)
   M.oTerm  = oTerm
   local w, h = oTerm.getSize()
-  M.master = window.create(oTerm, 1, 1, w, h, true)
 
-  -- Sync the master's palette so child's getLine() returns the same
-  -- colours we want to blit.
+  if not api.isGPUReady then
+    api.initGPU()
+  end
+  gpu = api.gpu
+
+  -- Master CC window (used IF GPU is not available; fallback).
+  M.master = window.create(oTerm, 1, 1, w, h, true)
+  M.master.setVisible(false)  -- hide master; we render via GPU FB
+
+  -- Screen GPU framebuffer.
+  M.screenFB = gpu.createScreen(w, h)
+  M.screenFB.dirtyAlways = true
+
+  -- Create the desktop's GPU framebuffer (full-bleed, no title bar).
+  M.desktopFB = gpu.createFramebuffer(w, h, {
+    doubleBuffer = true,
+    dirtyAlways  = false,
+    clearChar    = " ",
+    clearBg      = api.resolveColour(api.theme.bg or 9, 9),
+    clearFg      = 15,
+  })
+
+  -- Apply enhanced palette.
+  gpu.applyPalette(oTerm, gpu.palettes.default)
+
+  -- Sync palette to master CC window as well.
   for i = 0, 15 do
-    local r, g, b = oTerm.getPaletteColour(2 ^ i)
-    M.master.setPaletteColour(2 ^ i, r, g, b)
+    local c = gpu.IDX_TO_COLOUR[i]
+    local entry = gpu.CORE_PALETTE[i]
+    if entry then
+      M.master.setPaletteColour(c, entry.r, entry.g, entry.b)
+    end
   end
 
   term.redirect(M.master)
-  -- Reset both background AND foreground so neither shell leftovers
-  -- nor default CraftOS colours leak into the first child's view.
-  term.setBackgroundColor(api.theme.bg)
-  term.setTextColor(api.theme.text)
+  term.setBackgroundColor(colors.white)
+  term.setTextColor(colors.black)
   term.clear()
   term.setCursorPos(1, 1)
 
   M.render()
 end
 
--- Create a child window inside the master. (x, y, w, h) describe the
--- OUTER rectangle including the title bar. If options.isSystem is true
--- (or the caller wants a "system window" with no title bar and a
--- forced bottom z-order slot), call M.createSystemWindow instead.
+-- Create a standard app window using CC window (compatible with term.redirect).
 function M.createApp(x, y, w, h, title)
   next_id         = next_id + 1
   local id        = next_id
   local body_y    = y + TITLE_H
   local body_h    = math.max(1, h - TITLE_H)
-  local child     = window.create(M.master, x, body_y, w, body_h, true)
+
+  -- Create a standard CC window for the app.
+  local child = window.create(M.master, x, body_y, w, body_h, true)
+
+  -- Sync palette.
+  for i = 0, 15 do
+    local c = gpu.IDX_TO_COLOUR[i]
+    local entry = gpu.CORE_PALETTE[i]
+    if entry and child.setPaletteColour then
+      child.setPaletteColour(c, entry.r, entry.g, entry.b)
+    end
+  end
+
   M.windows[id] = {
     id       = id,
     x        = x,
     y        = y,
     w        = w,
-    h        = h,                -- OUTER height including title
+    h        = h,
     titleH   = TITLE_H,
-    bodyY    = body_y,           -- absolute master Y where body begins
+    bodyY    = body_y,
     bodyH    = body_h,
     title    = title or "Window",
-    child    = child,
+    child    = child,       -- CC window for term.redirect
     pid      = nil,
     dragging = false,
     dragOffX = 0,
     dragOffY = 0,
+    minimized = false,
+    maximized = false,
     isSystem = false,
+    visible  = true,
+    fb       = nil,         -- no GPU fb for regular apps
   }
+
   table.insert(M.z_order, id)
   M.focused = id
+
+  -- Clear.
+  child.setBackgroundColor(api.resolveColour(api.theme.panelBg or 0, 0))
+  child.setTextColor(colors.black)
+  child.clear()
+
   M.render()
   return id, child
 end
 
--- Create a system window: full-bleed, no title bar, no resize, no drag,
--- pinned at the bottom of z_order. Used by the desktop process. (w, h)
--- are the BODY dimensions (no TITLE_H reservation since TITLE_H = 0).
+-- Create a system window (full-bleed, uses GPU framebuffer).
+-- Returns (id, fb) where fb is the GPUFramebuffer for direct GPU rendering.
 function M.createSystemWindow(w, h)
   next_id = next_id + 1
   local id = next_id
-  local child = window.create(M.master, 1, 1, w, h, true)
+
+  -- GPU framebuffer for system apps (desktop).
+  local fb = gpu.createFramebuffer(w, h, {
+    doubleBuffer = true,
+    dirtyAlways  = false,
+    clearChar    = " ",
+    clearBg      = api.resolveColour(api.theme.bg or 9, 9),
+    clearFg      = 15,
+  })
+
+  -- Create a minimal CC window stub for API compatibility.
+  local stub = window.create(M.master, 1, 1, w, h, false)
+  stub.setVisible(false)
+
   M.windows[id] = {
     id       = id,
+    fb       = fb,          -- GPU framebuffer for rendering
     x        = 1,
     y        = 1,
     w        = w,
@@ -108,43 +166,69 @@ function M.createSystemWindow(w, h)
     bodyY    = 1,
     bodyH    = h,
     title    = "",
-    child    = child,
+    child    = stub,        -- CC window stub (invisible)
     pid      = nil,
     dragging = false,
     dragOffX = 0,
     dragOffY = 0,
+    minimized = false,
+    maximized = false,
     isSystem = true,
+    visible  = true,
   }
-  -- System window sits at the bottom of z_order so apps are drawn on
-  -- top. Insert at index 1.
+
+  -- If this is the first system window, store as desktopFB.
+  if not M.desktopFB or id == M.getDesktopId() then
+    M.desktopFB = fb
+  end
+
   table.insert(M.z_order, 1, id)
   M.focused = id
+
+  fb:clear(" ", 15, api.resolveColour(api.theme.bg or 9, 9))
   M.render()
-  return id, child
+  return id, fb
 end
 
+-- Get the desktop's window id (the system window at the bottom).
+function M.getDesktopId()
+  for _, id in ipairs(M.z_order) do
+    local w = M.windows[id]
+    if w and w.isSystem then return id end
+  end
+  return nil
+end
+
+-- Destroy a window.
 function M.destroy(id)
   local w = M.windows[id]
   if not w then return end
-  -- CC windows have no destroy(): hide and shrink them so they never
-  -- reappear under a future render. We also do not touch dragging
-  -- because M.windows[id] is gone.
-  w.child.setVisible(false)
-  w.child.reposition(1, 1, 1, 1)
+
+  -- Hide the CC window.
+  if w.child and w.child.setVisible then
+    w.child.setVisible(false)
+    w.child.reposition(1, 1, 1, 1)
+  end
+
   for i, v in ipairs(M.z_order) do
     if v == id then table.remove(M.z_order, i); break end
   end
   M.windows[id] = nil
+
   if M.focused == id then
     M.focused = M.z_order[#M.z_order]
   end
+
+  -- Desktop FB fallback.
+  if not M.desktopFB or not M.windows[M.getDesktopId()] then
+    M.desktopFB = nil
+  end
+
   M.render()
 end
 
 function M.setFocus(id)
   if not M.windows[id] then return end
-  -- System windows are pinned at the bottom of z_order. Refuse to move
-  -- them -- their only purpose is the desktop layer.
   if M.windows[id].isSystem then
     M.focused = id
     M.render()
@@ -158,13 +242,10 @@ function M.setFocus(id)
   M.render()
 end
 
--- Hit-test the BODY region only (excluding the title bar). Apps receive
--- only clicks inside their content area this way; the kernel uses
--- M.titleHit to claim title-bar clicks for dragging/focus.
 function M.hitTest(mx, my)
   for i = #M.z_order, 1, -1 do
     local w = M.windows[M.z_order[i]]
-    if w then
+    if w and w.visible and not w.minimized then
       if mx >= w.x and mx < w.x + w.w
          and my >= w.bodyY and my < w.bodyY + w.bodyH then
         return M.z_order[i]
@@ -177,8 +258,7 @@ end
 function M.titleHit(mx, my)
   for i = #M.z_order, 1, -1 do
     local w = M.windows[M.z_order[i]]
-    -- System windows have no title bar so titleHit never fires for them.
-    if w and not w.isSystem and w.titleH > 0 then
+    if w and not w.isSystem and w.titleH > 0 and w.visible and not w.minimized then
       if mx >= w.x and mx < w.x + w.w
          and my >= w.y and my < w.y + w.titleH then
         return M.z_order[i]
@@ -188,58 +268,19 @@ function M.titleHit(mx, my)
   return nil
 end
 
--- The rightmost columns of a non-system title row hold three buttons:
--- minimize [_], maximize [#] (or restore [^]), and close [X].
--- Each button is BTN_W (3) chars wide; three side-by-side consume
--- NUM_BTN * BTN_W (9) columns. The glyph set lives in api.formats
--- so the WM and any app that draws matching chrome stay in lock-step.
-local function btnW()   return api.formats.BTN_W   or 3 end
-local function numBtn() return api.formats.NUM_BTN or 3 end
-local function totalBtnW() return btnW() * numBtn() end
+-- Button helpers ---
+local function btnW()   return 3 end
+local function numBtn() return 3 end
+local function totalBtnW() return 9 end
 
--- Right-to-left layout: close | maximize | minimize
---   close:    w.x + w.w - 3 .. w.x + w.w - 1
---   maximize: w.x + w.w - 6 .. w.x + w.w - 4
---   minimize: w.x + w.w - 9 .. w.x + w.w - 7
-local function closeRectOf(w)
-  local bw = btnW()
-  return w.x + w.w - bw, w.x + w.w - 1, w.y
-end
-
-local function maximizeRectOf(w)
-  local bw = btnW()
-  local tw = totalBtnW()
-  return w.x + w.w - tw + bw, w.x + w.w - tw + bw * 2 - 1, w.y
-end
-
-local function minimizeRectOf(w)
-  local bw = btnW()
-  local tw = totalBtnW()
-  return w.x + w.w - tw, w.x + w.w - tw + bw - 1, w.y
-end
-
-function M.closeButtonRect(id)
-  local w = M.windows[id]
-  if not w or w.isSystem or w.titleH == 0 then return nil end
-  return closeRectOf(w)
-end
-
-function M.minimizeButtonRect(id)
-  local w = M.windows[id]
-  if not w or w.isSystem or w.titleH == 0 then return nil end
-  return minimizeRectOf(w)
-end
-
-function M.maximizeButtonRect(id)
-  local w = M.windows[id]
-  if not w or w.isSystem or w.titleH == 0 then return nil end
-  return maximizeRectOf(w)
-end
+local function closeRectOf(w)    return w.x + w.w - 3, w.x + w.w - 1, w.y end
+local function maximizeRectOf(w) return w.x + w.w - 6, w.x + w.w - 4, w.y end
+local function minimizeRectOf(w) return w.x + w.w - 9, w.x + w.w - 7, w.y end
 
 local function hitBtn(rectFn, mx, my)
   for i = #M.z_order, 1, -1 do
     local w = M.windows[M.z_order[i]]
-    if w and not w.isSystem and w.titleH > 0 then
+    if w and not w.isSystem and w.titleH > 0 and w.visible and not w.minimized then
       local x1, x2, y = rectFn(w)
       if mx >= x1 and mx <= x2 and my == y then
         return M.z_order[i]
@@ -249,149 +290,77 @@ local function hitBtn(rectFn, mx, my)
   return nil
 end
 
-function M.closeHit(mx, my)    return hitBtn(closeRectOf,    mx, my) end
+function M.closeHit(mx, my)    return hitBtn(closeRectOf, mx, my) end
 function M.minimizeHit(mx, my) return hitBtn(minimizeRectOf, mx, my) end
 function M.maximizeHit(mx, my) return hitBtn(maximizeRectOf, mx, my) end
 
--- Window state helpers -----------------------------------------------------------------
-
--- Minimize: hide the child window and mark it. The render pass
--- skips minimized windows entirely so the desktop (or whatever
--- sits beneath) is exposed. The window record stays alive so
--- the taskbar can re-show it later.
 function M.minimize(id)
   local w = M.windows[id]
   if not w or w.isSystem then return end
-  w.minimized = true
-  w.child.setVisible(false)
+  w.minimized = true; w.visible = false
+  if w.child and w.child.setVisible then w.child.setVisible(false) end
   if M.focused == id then
-    -- Hand focus to the next visible window on top of the stack.
     M.focused = nil
     for i = #M.z_order, 1, -1 do
       local cand = M.windows[M.z_order[i]]
       if cand and not cand.minimized and not cand.isSystem then
-        M.focused = M.z_order[i]
-        break
-      end
+        M.focused = M.z_order[i]; break end
     end
-    if not M.focused then M.focused = M.z_order[1] end  -- fall back to desktop
+    if not M.focused then M.focused = M.z_order[1] end
   end
   M.render()
 end
 
--- Maximize: expand the window to fill the screen (leaving room for the
--- 1-row taskbar the desktop draws at the very bottom). The original
--- geometry is saved so a second click on the maximize button (now
--- showing the restore glyph [^]) snaps it back.
 function M.maximize(id)
   local w = M.windows[id]
   if not w or w.isSystem then return end
   local sw, sh = M.master.getSize()
   if w.maximized then
-    -- Restore.
     w.maximized = false
-    w.x = w.savedX or w.x
-    w.y = w.savedY or w.y
-    w.w = w.savedW or w.w
-    w.h = w.savedH or w.h
+    w.x = w.savedX or w.x; w.y = w.savedY or w.y
+    w.w = w.savedW or w.w; w.h = w.savedH or w.h
   else
-    -- Save current geometry, then expand.
-    w.savedX = w.x
-    w.savedY = w.y
-    w.savedW = w.w
-    w.savedH = w.h
+    w.savedX = w.x; w.savedY = w.y
+    w.savedW = w.w; w.savedH = w.h
     w.maximized = true
-    w.x = 1
-    w.y = 1
-    w.w = sw
-    w.h = sh - 1  -- leave bottom row for the taskbar
+    w.x = 1; w.y = 1
+    w.w = sw; w.h = sh - 2
   end
-  w.bodyY  = w.y + w.titleH
-  w.bodyH  = math.max(1, w.h - w.titleH)
-  w.child.reposition(w.x, w.bodyY, w.w, w.bodyH)
+  w.bodyY = w.y + w.titleH; w.bodyH = math.max(1, w.h - w.titleH)
+  if w.child and w.child.reposition then
+    w.child.reposition(w.x, w.bodyY, w.w, w.bodyH)
+  end
   M.render()
 end
 
--- Restore from minimized or maximized state.
 function M.restore(id)
   local w = M.windows[id]
   if not w or w.isSystem then return end
   if w.minimized then
-    w.minimized = false
-    w.child.setVisible(true)
+    w.minimized = false; w.visible = true
+    if w.child and w.child.setVisible then w.child.setVisible(true) end
     M.setFocus(id)
-    M.render()
   elseif w.maximized then
-    M.maximize(id)  -- toggle back
-  end
-end
-
--- Snap-to-edge: called at the end of a drag. If the mouse is close
--- to the left, right, or top screen edge the window is repositioned
--- to fill that half or the whole screen respectively. Returns true
--- if a snap was applied.
-function M.snapToEdge(id, mx, my)
-  local w = M.windows[id]
-  if not w or w.isSystem then return false end
-  local sw, sh = M.master.getSize()
-  local snapped = false
-
-  -- Top edge -> maximize.
-  if my <= 2 and not w.maximized then
     M.maximize(id)
-    return true
   end
-
-  -- Left edge -> left half.
-  if mx <= 2 then
-    w.maximized = false
-    w.savedX, w.savedY, w.savedW, w.savedH = nil, nil, nil, nil
-    w.x = 1
-    w.y = 1
-    w.w = math.floor(sw / 2)
-    w.h = sh - 1
-    snapped = true
-  -- Right edge -> right half.
-  elseif mx >= sw - 1 then
-    w.maximized = false
-    w.savedX, w.savedY, w.savedW, w.savedH = nil, nil, nil, nil
-    w.w = math.floor(sw / 2)
-    w.x = sw - w.w + 1
-    w.y = 1
-    w.h = sh - 1
-    snapped = true
-  end
-
-  if snapped then
-    w.bodyY = w.y + w.titleH
-    w.bodyH = math.max(1, w.h - w.titleH)
-    w.child.reposition(w.x, w.bodyY, w.w, w.bodyH)
-    M.render()
-  end
-  return snapped
 end
 
 function M.startDrag(id, mx, my)
   local w = M.windows[id]
   if not w then return end
-  w.dragging = true
-  w.dragOffX = mx - w.x
-  w.dragOffY = my - w.y
+  w.dragging = true; w.dragOffX = mx - w.x; w.dragOffY = my - w.y
 end
 
 function M.updateDrag(id, mx, my)
   local w = M.windows[id]
   if not w or not w.dragging then return end
-  local sw, sh = M.master.getSize()
-  -- Clamp so the entire outer window stays on screen.
-  local nx = mx - w.dragOffX
-  local ny = my - w.dragOffY
-  nx = math.max(1, math.min(sw - w.w + 1, nx))
-  ny = math.max(1, math.min(sh - w.h + 1, ny))
-  w.x      = nx
-  w.y      = ny
-  w.bodyY  = ny + w.titleH
-  w.child.reposition(nx, w.bodyY)
+  local sw, sh = M.screenFB.w, M.screenFB.h
+  local nx = math.max(1, math.min(sw - w.w + 1, mx - w.dragOffX))
+  local ny = math.max(1, math.min(sh - w.h + 1, my - w.dragOffY))
+  w.x = nx; w.y = ny; w.bodyY = ny + w.titleH
+  if w.child and w.child.reposition then
+    w.child.reposition(nx, w.bodyY)
+  end
 end
 
 function M.endDrag(id)
@@ -400,54 +369,110 @@ function M.endDrag(id)
   w.dragging = false
 end
 
-function M.render()
-  api.drawWallpaper(M.master)
+-- ---------------------------------------------------------------------------
+-- GPU Compositing Render
+-- ---------------------------------------------------------------------------
 
-  -- Children, back to front, blitted into their body's region.
-  -- Minimized windows are skipped -- their child is hidden and
-  -- the desktop (or whatever sits beneath) shows through.
-  for _, id in ipairs(M.z_order) do
-    local w = M.windows[id]
-    if w and not w.minimized then
-      api.blitWindow(w.child, M.master, w.x, w.bodyY)
-    end
-  end
+-- Blit a CC window's content onto a GPU framebuffer row by row.
+local function blitWindowToFB(fb, win, dstX, dstY)
+  if not win or not win.getLine then return end
+  local w, h = win.getSize()
 
-  -- Title bars always sit above any child content because we draw them
-  -- AFTER blitting children, on the master buffer directly. System
-  -- windows have no title bar; their child is the full screen.
-  --
-  -- Non-system title bars reserve NUM_BTN * BTN_W columns on the
-  -- right for [minimize] [maximize] [close]. The label area is
-  -- shrunk so the title text never clips into the button region.
-  local tw = totalBtnW()
-  for _, id in ipairs(M.z_order) do
-    local w = M.windows[id]
-    if w and not w.isSystem then
-      -- Build the button glyphs. Maximize shows [^] (restore) when
-      -- the window is already maximized, [#] otherwise.
-      local minG  = api.formats and api.formats.minimizeGlyph or "[_]"
-      local maxG  = api.formats and api.formats.maximizeGlyph or "[#]"
-      if w.maximized then
-        maxG = api.formats and api.formats.restoreGlyph or "[^]"
+  for line = 1, h do
+    local text, fg, bg = api.readLine(win, line)
+    if text and #text > 0 then
+      local y = dstY + line - 1
+      if y >= 1 and y <= fb.h then
+        local x = dstX
+        local n = math.min(#text, fb.w - x + 1)
+        if n > 0 then
+          -- Write directly to the framebuffer buffer.
+          local buf = fb.back or fb
+          local textSlice = text:sub(1, n)
+          local fgSlice   = fg and fg:sub(1, n) or string.rep("f", n)
+          local bgSlice   = bg and bg:sub(1, n) or string.rep("0", n)
+
+          buf.text[y] = buf.text[y]:sub(1, x - 1) .. textSlice .. buf.text[y]:sub(x + n)
+          buf.fg[y]   = (buf.fg[y] or ""):sub(1, x - 1) .. fgSlice .. (buf.fg[y] or ""):sub(x + n)
+          buf.bg[y]   = (buf.bg[y] or ""):sub(1, x - 1) .. bgSlice .. (buf.bg[y] or ""):sub(x + n)
+          fb.dirty[y] = true
+        end
       end
-      local closeG = api.formats and api.formats.closeGlyph or "[X]"
-      local buttons = minG .. maxG .. closeG
+    end
+  end
+end
 
-      local labelMaxW = math.max(0, w.w - tw - 1)
-      local bar = " " .. (w.title or "") .. " "
-      if #bar > labelMaxW then bar = bar:sub(1, labelMaxW) end
-      local pad = math.max(0, w.w - #bar - tw)
-      local bg  = (id == M.focused) and api.theme.panel or api.theme.panelX
-      local fg  = api.theme.text
-      M.master.setBackgroundColor(bg)
-      M.master.setTextColor(fg)
-      M.master.setCursorPos(w.x, w.y)
-      M.master.write(bar .. string.rep(" ", pad) .. buttons)
+function M.render()
+  local fb = M.screenFB
+  if not fb then return end
+  local sw, sh = fb.w, fb.h
+  local T = api.themeResolved or api.theme
+
+  fb:beginDraw()
+
+  -- 1. Gradient wallpaper.
+  local bgIdx = api.resolveColour(T.bg or 9, 9)
+  local bgAltIdx = api.resolveColour(T.bgAlt or "#1A3A5C", 3)
+  fb:gradientFill(1, 1, sw, sh, bgAltIdx, bgIdx, 15)
+
+  -- 2. Desktop GPU framebuffer (system window at z=0).
+  for _, id in ipairs(M.z_order) do
+    local w = M.windows[id]
+    if w and w.visible and not w.minimized then
+      if w.isSystem and w.fb then
+        fb:compositeFast(w.fb, w.x, w.bodyY, 0)
+      end
+      break  -- only first (system) window
     end
   end
 
-  api.presentMaster(M.master, M.oTerm)
+  -- 3. App windows in z-order (skip desktop which we already rendered).
+  for _, id in ipairs(M.z_order) do
+    local w = M.windows[id]
+    if w and w.visible and not w.minimized then
+      if not w.isSystem and w.child then
+        -- Draw title bar DIRECTLY on the screen FB (above everything).
+        local isFocused = (id == M.focused)
+        local titleBg   = api.resolveColour(isFocused and T.panel or T.panelX, 3)
+        local titleFg   = api.resolveColour(T.text or 0, 0)
+        local winX, winY = w.x, w.y
+
+        -- Title bar shadow (below the title row).
+        fb:drawShadow(winX, winY, winX + w.w - 1, winY, 0, 1, 15)
+
+        -- Title bar background.
+        fb:fillRect(winX, winY, winX + w.w - 1, winY, " ", titleFg, titleBg)
+
+        -- Title text.
+        local title = w.title or ""
+        local maxTitleW = math.max(1, w.w - totalBtnW() - 2)
+        if #title > maxTitleW then title = title:sub(1, maxTitleW - 1) .. "~" end
+        fb:drawText(winX + 1, winY, title, titleFg, titleBg)
+
+        -- Window buttons.
+        local btnStr = "[_] "
+        if w.maximized then btnStr = btnStr .. "[^] " else btnStr = btnStr .. "[#] " end
+        btnStr = btnStr .. "[X]"
+        fb:drawText(winX + w.w - totalBtnW(), winY, btnStr, titleFg, titleBg)
+
+        -- Blit the app's CC window content onto the screen FB.
+        blitWindowToFB(fb, w.child, winX, winY + w.titleH)
+      end
+    end
+  end
+
+  fb:endDraw()
+  -- Render to the REAL terminal (M.oTerm), NOT to term.current()
+  -- which is bound to the invisible master window.
+  fb:render(M.oTerm)
 end
+
+function M.renderFull()
+  if M.screenFB then M.screenFB:markDirty() end
+  M.render()
+end
+
+-- Expose for kernel.
+M.gpu = gpu
 
 return M

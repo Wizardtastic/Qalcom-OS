@@ -42,6 +42,7 @@ function M.parse(filepath)
     path      = nil,
     window_w  = 28,
     window_h  = 12,
+    trusted   = false,
   }
 
   for line in f.readLine do
@@ -55,6 +56,11 @@ function M.parse(filepath)
         local value = trim(stripped:sub(eq + 1))
         if key == "window_w" or key == "window_h" then
           desc[key] = tonumber(value) or desc[key]
+        elseif key == "trusted" then
+          -- Case-insensitive: "true", "True", "TRUE", "1" all opt in.
+          -- Keeps hand-edited .qalcom files forgiving.
+          local lower = (type(value) == "string") and value:lower() or ""
+          desc[key] = (lower == "true" or value == "1")
         else
           desc[key] = value
         end

@@ -1,0 +1,7 @@
+# Clock.qalcom -- launcher manifest for the Clock app.
+name=Clock
+title=Clock
+icon=C
+path=/QalcomOS/Apps/Clock/main.lua
+window_w=28
+window_h=10
