@@ -22,7 +22,7 @@
 --
 -- Behavior:
 --   * If term.setGraphicsMode is present (CC:Graphics installed), boot
---     into mode 2 (256×6  9 over 51×19 cells = ~306×171) by default, with
+--     into mode 2 (51×19 cells × 6×9 px = 306×171 px) by default, with
 --     a 256-color palette.
 --   * Colors from the OS theme (RGB triples {r,g,b}) are mapped to the
 --     nearest palette entry by squared-Euclidean distance, with results
@@ -99,10 +99,12 @@ function M.init(opts)
         local ok = pcall(term.setGraphicsMode, mode)
         if ok then
             isGpu = true
-            -- In graphics mode, term.getSize() returns PIXEL dimensions.
-            local w, h = term.getSize()
-            width  = w or (mode == 2 and 256 or 128)
-            height = h or (mode == 2 and 256 or 128)
+            -- In graphics mode, term.getSize(mode) returns PIXEL dimensions.
+            -- Passing no args always returns text-mode size (51x19), so we
+            -- must pass the mode number to get the correct pixel surface.
+            local w, h = term.getSize(mode)
+            width  = w or (mode == 2 and 306 or 128)
+            height = h or (mode == 2 and 171 or 128)
             -- Preload font so font access is non-blocking in app code
             font = require("os.font")
             -- Paint a neutral base color so users don't see the prior frame.

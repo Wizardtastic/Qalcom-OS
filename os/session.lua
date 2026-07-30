@@ -37,17 +37,17 @@ local function launchApp(appId)
         })
         return
     end
-    -- Create a window for this app
+    -- Create a window for this app (let WM compute proportional defaults)
     app.appId = entry.id
     app.title = entry.label
     local win = wm.new({
         title = entry.label,
-        x = 60 + (math.random and math.random(0, 60) or 0),
-        y = 60 + (math.random and math.random(0, 30) or 0),
-        w = app.w or 460,
-        h = app.h or 320,
-        minW = app.minW or 220,
-        minH = app.minH or 120,
+        x = 30 + (math.random and math.random(0, 40) or 0),
+        y = 20 + (math.random and math.random(0, 20) or 0),
+        w = app.w,
+        h = app.h,
+        minW = app.minW or 120,
+        minH = app.minH or 80,
         app = app,
     })
     if app.init then

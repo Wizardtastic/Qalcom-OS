@@ -9,10 +9,10 @@ local sound = require("os.sound")
 local M = {}
 M.list = {}
 
-local TOAST_W   = 280
-local TOAST_H   = 64
-local TOAST_GAP =  6
-local TOAST_MARGIN = 14
+local TOAST_W   = 200
+local TOAST_H   = 50
+local TOAST_GAP =  4
+local TOAST_MARGIN = 8
 local TOAST_LIFE_MS = 4000
 
 -- Push a notification.  Fields: title, body, level.

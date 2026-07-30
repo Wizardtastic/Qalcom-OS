@@ -1,4 +1,4 @@
--- os/font.lua — 5x7 ASCII bitmap font for CC:Graphics mode-2 (256x256).
+-- os/font.lua — 5x7 ASCII bitmap font for CC:Graphics mode-2.
 -- Each glyph is an array of 7 strings, each row exactly 5 chars wide.
 -- Char '#' = foreground pixel (drawn), anything else = transparent.
 -- Coverage: ASCII 32 (space) through 126 ('~'); the OS code uses ASCII

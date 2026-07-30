@@ -68,8 +68,12 @@ end
 
 local function opt_scaler(opts, dimFn)
     local scale = getScale()
-    local w = opts.w or 480
-    local h = opts.h or 320
+    -- Derive sensible defaults from the actual screen size so windows fit
+    -- on the pixel canvas regardless of resolution.
+    local screenW = gfx.width()
+    local screenH = gfx.height() - dimScaled("taskbarH")
+    local w = opts.w or math.floor(screenW * 0.70)
+    local h = opts.h or math.floor(screenH * 0.70)
     if type(w) == "string" then w = math.floor(dimFn(w) * scale + 0.5) end
     if type(h) == "string" then h = math.floor(dimFn(h) * scale + 0.5) end
     return w, h

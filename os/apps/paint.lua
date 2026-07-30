@@ -10,7 +10,7 @@ local sound  = require("os.sound")
 local notif  = require("os.notifications")
 local fsutil = require("os.fsutil")
 
-local M = {w = 600, h = 420, minW = 320, minH = 220, appId = "paint"}
+local M = {minW = 180, minH = 120, appId = "paint"}
 
 local function getScale() return cfg.appearance.uiScale or 1 end
 local function dim(name) return theme.dimScaled(name, getScale()) end

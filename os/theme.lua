@@ -70,7 +70,6 @@ M.colors = {
 
 -- ---------------------------------------------------------------------------
 -- DIMENSIONS (px). These can be scaled by config.scale.
--- 656px display = "1x". "0.85x" scales everything down a bit.
 -- ---------------------------------------------------------------------------
 M.dim = {
     -- Window chrome
@@ -80,11 +79,11 @@ M.dim = {
     btnGap          = 6,
 
     -- Taskbar
-    taskbarH        = 32,
-    startBtnW       = 64,
-    clockW          = 140,
-    pinnedItemSize  = 28,
-    runningItemMinW = 110,
+    taskbarH        = 28,
+    startBtnW       = 52,
+    clockW          = 100,
+    pinnedItemSize  = 22,
+    runningItemMinW = 80,
 
     -- Interaction
     padding         = 8,

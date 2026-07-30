@@ -6,7 +6,7 @@ local theme  = require("os.theme")
 local text   = require("os.text")
 local cfg    = require("os.config")
 
-local M = {w = 360, h = 380, minW = 220, minH = 220, appId = "clockapp"}
+local M = {minW = 140, minH = 140, appId = "clockapp"}
 
 local function getScale() return cfg.appearance.uiScale or 1 end
 local function dim(name) return theme.dimScaled(name, getScale()) end

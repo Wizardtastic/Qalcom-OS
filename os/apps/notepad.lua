@@ -9,7 +9,7 @@ local cfg    = require("os.config")
 local sound  = require("os.sound")
 local notif  = require("os.notifications")
 
-local M = {w = 500, h = 360, minW = 200, minH = 120, appId = "notepad"}
+local M = {minW = 140, minH = 80, appId = "notepad"}
 
 local function getScale() return cfg.appearance.uiScale or 1 end
 local function dim(name) return theme.dimScaled(name, getScale()) end

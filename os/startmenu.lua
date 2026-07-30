@@ -24,27 +24,31 @@ local function dim(name) return theme.dimScaled(name, getScale()) end
 local function geom()
     local W, H = gfx.width(), gfx.height()
     local barH = dim("taskbarH")
+    -- Compact menu that fits on the small pixel canvas (306×171 on
+    -- an advanced computer in mode 2).
+    local menuW = math.floor(W * 0.60)
+    local menuH = H - barH - 8
     local g = {
         W = W, H = H,
         barY = H - barH,
-        menuW = 360,
-        menuH = 420,
-        menuX = 6,
-        menuY = H - barH - (420 + 8),
+        menuW = menuW,
+        menuH = menuH,
+        menuX = 4,
+        menuY = 4,
     }
     return g
 end
 
 -- search field
 local function drawSearch(g)
-    local pad = dim("padding")
-    local h = 28
+    local pad = 4
+    local h = 20
     local y = g.menuY + pad
-    gfx.fillRoundRect(g.menuX + pad, y, g.menuW - pad*2, h, 6, theme.c("surfaceHigh"))
+    gfx.fillRoundRect(g.menuX + pad, y, g.menuW - pad*2, h, 4, theme.c("surfaceHigh"))
     gfx.outlineRect(g.menuX + pad, y, g.menuW - pad*2, h, theme.c("border"))
-    local opts = {size = dim("fontSizeBody"), style = "plain"}
-    local cursorX = g.menuX + pad + 8
-    gfx.text("🔍 Search", cursorX, y + (h - opts.size)/2,
+    local opts = {size = dim("fontSizeSmall"), style = "plain"}
+    local cursorX = g.menuX + pad + 6
+    gfx.text("Search", cursorX, y + (h - opts.size)/2,
         theme.c("textMuted"), opts)
     if M.searchQuery and #M.searchQuery > 0 then
         gfx.text(M.searchQuery, cursorX, y + (h - opts.size)/2,
@@ -52,20 +56,13 @@ local function drawSearch(g)
     end
 end
 
--- left pane: categories + apps
-local function drawLeftPane(g)
-    local pad = dim("padding")
-    local y0 = g.menuY + 60
-    local h0 = g.menuH - 60 - 60  -- leave footer
+-- apps list (single column, compact)
+local function drawApps(g)
+    local pad = 4
+    local y0 = g.menuY + 28
     local x0 = g.menuX + pad
-    local w0 = g.menuW * 0.65 - pad*2
+    local w0 = g.menuW - pad*2
 
-    -- title
-    gfx.text("Apps", x0, g.menuY + 38,
-        theme.c("textPrimary"),
-        {size = dim("fontSizeBody"), style = "bold"})
-
-    -- list filtered by search
     local filter = (M.searchQuery or ""):lower()
     local items = {}
     for _, app in ipairs(programs.all()) do
@@ -73,99 +70,63 @@ local function drawLeftPane(g)
             items[#items+1] = app
         end
     end
-    -- render as a flat horizontal grid of 3 cols
-    local cellH = 60
-    local cellW = math.floor((w0 - 8) / 3) - 4
-    local curY = y0
-    local curX = x0
-    local idx = 0
+    local cellH = 22
     local hover = M._hover
-    for _, app in ipairs(items) do
-        local row = math.floor(idx / 3)
-        local col = idx % 3
-        local px = x0 + col * (cellW + 6)
-        local py = y0 + row * (cellH + 4)
-        if py + cellH > g.menuY + g.menuH - 60 then break end
+    for i, app in ipairs(items) do
+        local py = y0 + (i-1) * (cellH + 2)
+        if py + cellH > g.menuY + g.menuH - 50 then break end
         local isHover = hover and hover.app == app.id
         local bg = isHover and theme.c("surfaceHigh") or theme.c("surfaceAlt")
-        gfx.fillRoundRect(px, py, cellW, cellH, 6, bg)
-        gfx.outlineRect(px, py, cellW, cellH, theme.c("border"))
+        gfx.fillRoundRect(x0, py, w0, cellH, 3, bg)
+        gfx.outlineRect(x0, py, w0, cellH, theme.c("border"))
         local catColor = app.category == "system" and theme.c("accent")
                          or (app.category == "creative" and theme.c("purpleLight")
                          or (app.category == "utility" and theme.c("greenLight")
                          or theme.c("amberDark")))
-        -- Icon glyph
-        local s = 24
-        local ww = gfx.textSize(app.icon, {size=s, style="bold"})
-        gfx.text(app.icon, px + (cellW - ww)/2, py + 6, catColor, {size=s, style="bold"})
+        -- icon
+        local sz = 10
+        gfx.text(app.icon, x0 + 4, py + (cellH - sz)/2, catColor,
+            {size=sz, style="bold"})
         -- label
-        local labelEllip = text.ellipsize(app.label, cellW - 8,
+        local labelEllip = text.ellipsize(app.label, w0 - 24,
             {size=dim("fontSizeSmall"), style="plain"})
-        local measured = gfx.textSize(labelEllip, {size=dim("fontSizeSmall"), style="plain"})
-        gfx.text(labelEllip, px + (cellW - measured)/2, py + cellH - measured - 2,
+        gfx.text(labelEllip, x0 + 20, py + (cellH - dim("fontSizeSmall"))/2,
             theme.c("textPrimary"), {size=dim("fontSizeSmall"), style="plain"})
-        idx = idx + 1
     end
 end
 
--- right pane: user / lock / power
-local function drawRightPane(g)
-    local pad = dim("padding")
-    local leftW = g.menuW * 0.65
-    local x0 = g.menuX + leftW + 8
-    local w0 = g.menuW - leftW - pad*2 - 12
-    local y0 = g.menuY + 60
-
-    -- title
-    gfx.text("Qalcom OS", x0, g.menuY + 38,
-        theme.c("textPrimary"),
-        {size = dim("fontSizeBody"), style = "bold"})
-
-    -- User card
-    local userCardY = y0
-    local userCardH = 60
-    gfx.fillRoundRect(x0, userCardY, w0, userCardH, 6, theme.c("surfaceHigh"))
-    gfx.outlineRect(x0, userCardY, w0, userCardH, theme.c("border"))
-    local userText = (M._activeUser and M._activeUser.name) or "guest"
-    gfx.text(userText, x0 + 12, userCardY + 12,
-        theme.c("textPrimary"), {size=dim("fontSizeTitle"), style="bold"})
-    gfx.text(M._activeUser and M._activeUser.role or "user",
-        x0 + 12, userCardY + 36,
-        theme.c("textSecondary"), {size=dim("fontSizeSmall"), style="plain"})
-
-    -- power actions
-    local actions = {
-        {label = "Lock",           action = "lock"},
-        {label = "Log out",        action = "logout"},
-        {label = "Restart",        action = "restart"},
-        {label = "Shut down",      action = "shutdown"},
-    }
-    local ay = userCardY + userCardH + 12
-    for _, a in ipairs(actions) do
-        local hover = M._hover and M._hover.action == a.action
-        local bg = hover and theme.c("surfaceHigh") or theme.c("surfaceAlt")
-        gfx.fillRoundRect(x0, ay, w0, 26, 4, bg)
-        gfx.outlineRect(x0, ay, w0, 26, theme.c("border"))
-        gfx.text(a.label, x0 + 12, ay + (26 - dim("fontSizeBody"))/2,
-            theme.c("textPrimary"), {size=dim("fontSizeBody"), style="plain"})
-        ay = ay + 30
-    end
-end
-
--- footer with "All apps" link
+-- footer with power actions (compact row)
 local function drawFooter(g)
-    local pad = dim("padding")
-    local y = g.menuY + g.menuH - 60
-    gfx.fillRect(g.menuX, y, g.menuW, 60, theme.c("surface"))
+    local pad = 4
+    local y = g.menuY + g.menuH - 40
+    local x0 = g.menuX + pad
+    local w0 = g.menuW - pad*2
+    gfx.fillRect(g.menuX, y, g.menuW, 40, theme.c("surface"))
     gfx.outlineRect(g.menuX, y, g.menuW, 1, theme.c("border"))
-    local opts = {size = dim("fontSizeBody"), style = "bold"}
-    local txt = "All apps →"
-    local tw = gfx.textSize(txt, opts)
-    gfx.text(txt, g.menuX + g.menuW - tw - 18, y + (60 - opts.size)/2,
-        theme.c("accent"), opts)
-
-    gfx.text("Qalcom OS v0.1", g.menuX + pad, y + (60 - opts.size)/2,
-        theme.c("textMuted"), opts)
+    -- user name
+    local userName = (M._activeUser and M._activeUser.name) or "guest"
+    gfx.text(userName, x0, y + 4, theme.c("textPrimary"),
+        {size=dim("fontSizeSmall"), style="bold"})
+    -- action buttons in a row
+    local actions = {
+        {label = "Lock",      action = "lock"},
+        {label = "Logout",    action = "logout"},
+        {label = "Power",     action = "shutdown"},
+    }
+    local btnW = math.floor((w0 - 4) / #actions) - 2
+    for i, a in ipairs(actions) do
+        local bx = x0 + (i-1) * (btnW + 2)
+        local by = y + 18
+        local bh = 16
+        local hov = M._hover and M._hover.action == a.action
+        local bg = hov and theme.c("surfaceHigh") or theme.c("surfaceAlt")
+        gfx.fillRoundRect(bx, by, btnW, bh, 3, bg)
+        gfx.outlineRect(bx, by, btnW, bh, theme.c("border"))
+        local opts = {size = 8, style = "plain"}
+        local tw = gfx.textSize(a.label, opts)
+        gfx.text(a.label, bx + (btnW - tw)/2, by + (bh - 8)/2,
+            theme.c("textPrimary"), opts)
+    end
 end
 
 -- ---------------------------------------------------------------------------
@@ -174,7 +135,7 @@ function M.drawAll()
     local g = geom()
 
     -- Card background
-    gfx.fillRoundRect(g.menuX, g.menuY, g.menuW, g.menuH, 8, theme.c("surface"))
+    gfx.fillRoundRect(g.menuX, g.menuY, g.menuW, g.menuH, 6, theme.c("surface"))
     gfx.outlineRect(g.menuX, g.menuY, g.menuW, g.menuH, theme.c("borderBright"))
     -- Soft drop shadow
     if gfx.isDirectGPU() then
@@ -187,8 +148,7 @@ function M.drawAll()
     end
 
     drawSearch(g)
-    drawLeftPane(g)
-    drawRightPane(g)
+    drawApps(g)
     drawFooter(g)
 end
 
@@ -202,22 +162,19 @@ function M.hitTest(x, y)
     if x < g.menuX or x > g.menuX + g.menuW or y < g.menuY or y > g.menuY + g.menuH then
         return nil
     end
-    local pad = dim("padding")
+    local pad = 4
     -- search area
-    if y >= g.menuY + pad and y <= g.menuY + pad + 28 then
+    if y >= g.menuY + pad and y <= g.menuY + pad + 20 then
         return {zone="search"}
     end
-    -- left pane cells
-    local leftW = g.menuW * 0.65
+    -- app list cells
     local x0 = g.menuX + pad
-    local y0 = g.menuY + 60
-    local cellH = 60
-    local cellW = (math.floor((leftW - 8) / 3) - 4)
-    local localX, localY = x - x0, y - y0
-    local col = math.floor(localX / (cellW + 6))
-    local row = math.floor(localY / (cellH + 4))
-    if col >= 0 and col < 3 and row >= 0 then
-        local idx = row*3 + col + 1
+    local y0 = g.menuY + 28
+    local w0 = g.menuW - pad*2
+    local cellH = 22
+    local col = math.floor((x - x0) / w0)
+    local row = math.floor((y - y0) / (cellH + 2))
+    if col == 0 and row >= 0 then
         local filter = (M.searchQuery or ""):lower()
         local items = {}
         for _, app in ipairs(programs.all()) do
@@ -225,24 +182,25 @@ function M.hitTest(x, y)
                 items[#items+1] = app
             end
         end
-        if idx <= #items then
+        local idx = row + 1
+        if idx >= 1 and idx <= #items and idx <= math.floor((g.menuH - 68) / (cellH + 2)) then
             return {zone="app", app = items[idx].id, appObj = items[idx]}
         end
     end
-    -- right pane actions
-    local actions = {
-        {label = "Lock",      action = "lock"},
-        {label = "Log out",   action = "logout"},
-        {label = "Restart",   action = "restart"},
-        {label = "Shut down", action = "shutdown"},
-    }
-    local actionX = g.menuX + leftW + 8
-    local actionW = g.menuW - leftW - pad*2 - 12
-    local actionY0 = g.menuY + 60 + 60 + 12
-    for i, a in ipairs(actions) do
-        local ay = actionY0 + (i-1) * 30
-        if x >= actionX and x <= actionX + actionW and y >= ay and y <= ay + 26 then
-            return {zone="action", action=a.action}
+    -- footer power buttons
+    local footerY = g.menuY + g.menuH - 40
+    if y >= footerY + 18 and y <= footerY + 34 then
+        local actions = {
+            {label = "Lock",      action = "lock"},
+            {label = "Logout",    action = "logout"},
+            {label = "Power",     action = "shutdown"},
+        }
+        local btnW = math.floor((w0 - 4) / #actions) - 2
+        for i, a in ipairs(actions) do
+            local bx = x0 + (i-1) * (btnW + 2)
+            if x >= bx and x <= bx + btnW then
+                return {zone="action", action=a.action}
+            end
         end
     end
     return {zone="menu"}

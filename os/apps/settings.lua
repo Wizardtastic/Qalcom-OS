@@ -10,7 +10,7 @@ local notif  = require("os.notifications")
 local auth   = require("os.auth")
 local fsutil = require("os.fsutil")
 
-local M = {w = 540, h = 420, minW = 300, minH = 240, appId = "settings"}
+local M = {minW = 180, minH = 140, appId = "settings"}
 
 local function getScale() return cfg.appearance.uiScale or 1 end
 local function dim(name) return theme.dimScaled(name, getScale()) end

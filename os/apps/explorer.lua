@@ -12,7 +12,7 @@ local programs= require("os.programs")
 
 local M = {
     -- application dimensions (passed to wm.new)
-    w = 600, h = 380, minW = 320, minH = 220,
+    minW = 180, minH = 120,
     appId = "explorer",
 }
 

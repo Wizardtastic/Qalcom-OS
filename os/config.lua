@@ -21,7 +21,7 @@ M.display = {
 }
 
 -- Default pixel dimensions for an ADVANCED COMPUTER in graphics mode 2.
--- These are not hard-coded at runtime; gfx.init() reads term.getSize()
+-- These are not hard-coded at runtime; gfx.init() reads term.getSize(mode)
 -- dynamically. The numbers below are a hint for the splash / docs only.
 M.expected = {
     width  = 306, -- approx = 51 cell columns * 6 px per cell

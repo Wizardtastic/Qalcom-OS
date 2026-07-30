@@ -8,7 +8,7 @@ local cfg    = require("os.config")
 local sound  = require("os.sound")
 local notif  = require("os.notifications")
 
-local M = {w = 320, h = 420, minW = 220, minH = 280, appId = "calculator"}
+local M = {minW = 140, minH = 160, appId = "calculator"}
 
 local function getScale() return cfg.appearance.uiScale or 1 end
 local function dim(name) return theme.dimScaled(name, getScale()) end

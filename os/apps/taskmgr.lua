@@ -11,7 +11,7 @@ local wm      = require("os.wm")
 local programs= require("os.programs")
 local cfg     = require("os.config")
 
-local M = { w = 540, h = 380, minW = 320, minH = 220, appId = "taskmgr" }
+local M = { minW = 180, minH = 120, appId = "taskmgr" }
 
 local function getScale() return cfg.appearance.uiScale or 1 end
 local function dim(name) return theme.dimScaled(name, getScale()) end
