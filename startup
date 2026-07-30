@@ -1,0 +1,170 @@
+-- /startup — Qalcom OS autorun bootstrap.
+-- Place this file at the root of a CC:T computer.  It wires up `package.path`
+-- so requires resolve into /os/*.lua, then runs /os/run.lua.
+
+-- ---------------------------------------------------------------------------
+-- Path setup
+-- ---------------------------------------------------------------------------
+package.path = "/?.lua;/?/init.lua;./?.lua;./?/init.lua"
+package.path = package.path .. ";/os/?.lua;/os/?/init.lua"
+
+-- Qalcom-specific: most of our modules live under /os/<name>.lua and
+-- /os/apps/<name>.lua. Lua's require does NOT auto-substitute '.' with '/'
+-- in `package.path` lookups, and wedging a custom entry into
+-- `package.loaders` corrupts CC:T's standard loader chain (some Lua
+-- searchers treat any nil slot as a callable, which throws "attempt to
+-- call a nil value").  Instead, we wrap `_G.require` itself: the wrapper
+-- tries our explicit dotted-as-slash `loadfile` first, then falls back
+-- to the *original* require (captured before we touch anything).
+--
+-- The wrapper also populates `package.loaded` so repeated `require(name)`
+-- calls inside OS modules return the *same* module-table instance — without
+-- that, modules like gfx (M.windows), wm (M.windows), notifications
+-- (M.list) and auth (M.users) would each end up with two unrelated state
+-- arrays.
+local _origRequire = require
+rawset(_G, "require", function(name)
+    if type(name) ~= "string" then
+        return _origRequire(name)
+    end
+    if package.loaded[name] ~= nil then
+        return package.loaded[name]
+    end
+    local rel = name:gsub("%.", "/")
+    local fn, lerr = loadfile("/" .. rel .. ".lua")
+    if fn then
+        local ok, val = pcall(fn)
+        if ok then
+            package.loaded[name] = val
+            return val
+        end
+        error("loading '" .. name .. "' chunk: " .. tostring(val))
+    end
+    local ok, val = pcall(_origRequire, name)
+    if ok then
+        if package.loaded[name] == nil then
+            package.loaded[name] = val
+        end
+        return val
+    end
+    error("module '" .. name .. "' not found"
+        .. " (loadfile=" .. tostring(lerr)
+        .. ", require=" .. tostring(val) .. ")")
+end)
+
+-- Helper: resolve a path that *might* be relative from this file.  We resolve
+-- against the location of `startup` so users can place the OS files anywhere.
+local function here()
+    local p = "/startup"
+    return p:match("^(.*)/[^/]+$") or "/"
+end
+
+-- Make a `requireOS(name)` helper just in case we want shorthand later.
+rawset(_G, "requireOS", function(name)
+    package.path = package.path
+    return require("os." .. name)
+end)
+
+-- ---------------------------------------------------------------------------
+-- Boot-times diagnostics helper
+-- Logs each phase of startup to /os/data/boot.log and, on failure, dumps
+-- the full traceback to /os/data/boot_error.log.  Both survive reboots so
+-- the user can `pastebin get` (or read with `type`) them later even if the
+-- red crash screen scrolled the traceback off the visible area.
+-- ---------------------------------------------------------------------------
+local function _mkdirp(p)
+    if not p or p == "" or p == "/" then return end
+    if not fs.exists(p) then fs.makeDir(p) end
+end
+local function _qalLogPath(name)
+    _mkdirp("/os/data")
+    return "/os/data/" .. name
+end
+local function _qalLogAppend(name, line)
+    local ok, f = pcall(fs.open, _qalLogPath(name), "a")
+    if not ok or not f then return end
+    f.write((line or "") .. "\n")
+    f.close()
+end
+
+-- ---------------------------------------------------------------------------
+-- Launch /os/run.lua
+-- ---------------------------------------------------------------------------
+local ok, err = pcall(function()
+    _qalLogAppend("boot.log", "[" .. (os.epoch and os.epoch("utc") or 0) .. "] startup.do(/os/run.lua)")
+    dofile("/os/run.lua")
+end)
+
+if not ok then
+    -- Dump the full error to disk (so the user can cat it after the
+    -- red screen scrolls past).
+    _qalLogAppend("boot_error.log", "==== Qalcom OS boot failure ====")
+    _qalLogAppend("boot_error.log", "When:  " .. tostring(os.epoch and os.epoch("utc") or "<no clock>"))
+    _qalLogAppend("boot_error.log", "Error: " .. tostring(err))
+    _qalLogAppend("boot_error.log", "Computer id: " .. tostring(os.getComputerID and os.getComputerID() or "?"))
+    _qalLogAppend("boot_error.log", "Computer label: " .. tostring(os.getComputerLabel and os.getComputerLabel() or "?"))
+    _qalLogAppend("boot_error.log", "---------------------------------")
+
+    -- Now paint the red crash screen on the COMPUTER's own term so the
+    -- user can read what happened. We paginate long tracebacks so the
+    -- top doesn't scrol off.
+    if term and term.setBackgroundColor then
+        term.setBackgroundColor(colors.red)
+        term.clear()
+        term.setTextColor(colors.white)
+    end
+    term.setCursorPos(1, 1)
+    term.clearLine()
+    term.write(" QALCOM OS - BOOT FAILURE ")
+    local cx, cy = term.getSize()
+    term.setCursorPos(1, 2)
+    term.write((cx - 30) > 0 and string.rep("-", cx - 30) or "----------")
+
+    -- Truncate / paginate the error string to the visible area.
+    local msg = tostring(err)
+    local lines, cur, rowsPerPage = {}, 1, math.max(4, cy - 4)
+    for chunk in (msg .. "\n"):gmatch("([^\n]*)\n?") do
+        if #chunk > 0 then lines[#lines+1] = chunk end
+    end
+    -- Simple page navigator: any key advances; q drops to CC shell.
+    local page, dropped = 1, false
+    while page <= #lines and not dropped do
+        term.setCursorPos(1, 3)
+        for row = 0, rowsPerPage - 1 do
+            term.clearLine()
+            local ln = lines[page + row]
+            if ln then term.write(ln) end
+        end
+        term.setCursorPos(1, cy - 1)
+        term.clearLine()
+        local footer = string.format("[ %d-%d / %d ]  ENTER next  q shell",
+            page, math.min(page + rowsPerPage - 1, #lines), #lines)
+        term.write(footer)
+        term.setCursorPos(1, cy)
+        term.clearLine()
+        term.write("Full log: /os/data/boot_error.log")
+        local ev = {os.pullEvent("key")}
+        local key = ev[2]
+        if key == keys.q or key == keys.escape then
+            dropped = true
+        else
+            page = page + rowsPerPage
+        end
+    end
+
+    if dropped then
+        -- Drop to the CC shell with a tiny prompt.
+        if term and term.setBackgroundColor then
+            term.setBackgroundColor(colors.black)
+            term.setTextColor(colors.white)
+            term.clear()
+            term.setCursorPos(1, 1)
+        end
+        term.write("Dropped to CC shell. Read /os/data/boot_error.log to debug.\n")
+    else
+        term.setCursorPos(1, cy)
+        term.clearLine()
+        term.write("Press any key to drop to the CC shell.")
+        os.pullEvent("key")
+    end
+end

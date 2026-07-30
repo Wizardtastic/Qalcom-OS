@@ -1,7 +1,0 @@
-# Hello.qalcom -- launcher manifest for the Hello demo app.
-name=Hello
-title=Hello
-icon=Hi
-path=/QalcomOS/Apps/Hello/main.lua
-window_w=28
-window_h=12

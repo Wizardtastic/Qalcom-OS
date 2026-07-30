@@ -1,7 +1,0 @@
-# About.qalcom -- launcher manifest for the About dialog demo.
-name=About
-title=About Qalcom OS
-icon=?
-path=/QalcomOS/Apps/About/main.lua
-window_w=30
-window_h=14
