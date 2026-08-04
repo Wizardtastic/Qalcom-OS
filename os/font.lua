@@ -58,8 +58,12 @@ for code = 32, 126 do
         -- The mapping here is the standard 5x7 "left-bit-is-leftmost".
         -- Some rows in data have 6 values (e.g. some lowercase descenders).
         -- We tolerate both by indexing past a missing entry safely.
-        for c = 4, 0, -1 do
-            local bit = bit32 and bit32.btest(bits, c) and 1 or 0
+        for c = 0, 4 do
+            -- bit32.btest isn't available in CC:Tweaked (Lua 5.1), so
+            -- test bit c via pure arithmetic: math.floor(bits / 2^c) % 2
+            local p = 1
+            for _ = 1, c do p = p * 2 end
+            local bit = (math.floor(bits / p) % 2)
             row = row .. (bit == 1 and "#" or " ")
         end
         rows[#rows+1] = row
@@ -86,6 +90,7 @@ end
 
 -- Measure a string: returns pixel width / height for the given scale.
 function M.measure(str, size)
+    if type(str) ~= "string" then return 0, 0 end
     local s = M.scaleForSize(size)
     -- Single column of width 5 with 1 pixel tracking = 6 px effective.
     -- Each advanced char gets +1 px for the rightmost tracking pixel.

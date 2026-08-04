@@ -105,55 +105,20 @@ if not ok then
     _qalLogAppend("boot_error.log", "Computer label: " .. tostring(os.getComputerLabel and os.getComputerLabel() or "?"))
     _qalLogAppend("boot_error.log", "---------------------------------")
 
-    -- Now paint the red crash screen on the COMPUTER's own term so the
-    -- user can read what happened. We paginate long tracebacks so the
-    -- top doesn't scrol off.
-    if term and term.setBackgroundColor then
-        term.setBackgroundColor(colors.red)
-        term.clear()
-        term.setTextColor(colors.white)
-    end
-    term.setCursorPos(1, 1)
-    term.clearLine()
-    term.write(" QALCOM OS - BOOT FAILURE ")
-    local cx, cy = term.getSize()
-    term.setCursorPos(1, 2)
-    term.write((cx - 30) > 0 and string.rep("-", cx - 30) or "----------")
-
-    -- Truncate / paginate the error string to the visible area.
-    local msg = tostring(err)
-    local lines, cur, rowsPerPage = {}, 1, math.max(4, cy - 4)
-    for chunk in (msg .. "\n"):gmatch("([^\n]*)\n?") do
-        if #chunk > 0 then lines[#lines+1] = chunk end
-    end
-    -- Simple page navigator: any key advances; q drops to CC shell.
-    local page, dropped = 1, false
-    while page <= #lines and not dropped do
-        term.setCursorPos(1, 3)
-        for row = 0, rowsPerPage - 1 do
-            term.clearLine()
-            local ln = lines[page + row]
-            if ln then term.write(ln) end
-        end
-        term.setCursorPos(1, cy - 1)
-        term.clearLine()
-        local footer = string.format("[ %d-%d / %d ]  ENTER next  q shell",
-            page, math.min(page + rowsPerPage - 1, #lines), #lines)
-        term.write(footer)
-        term.setCursorPos(1, cy)
-        term.clearLine()
-        term.write("Full log: /os/data/boot_error.log")
-        local ev = {os.pullEvent("key")}
-        local key = ev[2]
-        if key == keys.q or key == keys.escape then
-            dropped = true
-        else
-            page = page + rowsPerPage
-        end
-    end
-
-    if dropped then
-        -- Drop to the CC shell with a tiny prompt.
+    -- Try the shared crash screen module.  If it's available (os/crash.lua
+    -- exists), use it for a consistent experience.  Otherwise fall back to
+    -- the old inline term-based crash screen.
+    local crashOk, crash = pcall(require, "os.crash")
+    if crashOk and type(crash) == "table" and type(crash.show) == "function" then
+        crash.show({
+            title = "Boot Failure",
+            msg   = tostring(err),
+            logPath = "/os/data/boot_error.log",
+            nextAction = "ENTER next  q shell",
+        })
+        -- After crash.show returns, check if the user dropped to shell
+        -- (the crash module returns "dropped" when q is pressed).
+        -- We'll just drop them to the shell either way.
         if term and term.setBackgroundColor then
             term.setBackgroundColor(colors.black)
             term.setTextColor(colors.white)
@@ -162,9 +127,67 @@ if not ok then
         end
         term.write("Dropped to CC shell. Read /os/data/boot_error.log to debug.\n")
     else
-        term.setCursorPos(1, cy)
+        -- Legacy fallback: paint the red crash screen on the COMPUTER's own term
+        -- so the user can read what happened. We paginate long tracebacks so the
+        -- top doesn't scroll off.
+        if term and term.setBackgroundColor then
+            term.setBackgroundColor(colors.red)
+            term.clear()
+            term.setTextColor(colors.white)
+        end
+        term.setCursorPos(1, 1)
         term.clearLine()
-        term.write("Press any key to drop to the CC shell.")
-        os.pullEvent("key")
+        term.write(" QALCOM OS - BOOT FAILURE ")
+        local cx, cy = term.getSize()
+        term.setCursorPos(1, 2)
+        term.write((cx - 30) > 0 and string.rep("-", cx - 30) or "----------")
+
+        -- Truncate / paginate the error string to the visible area.
+        local msg = tostring(err)
+        local lines, cur, rowsPerPage = {}, 1, math.max(4, cy - 4)
+        for chunk in (msg .. "\n"):gmatch("([^\n]*)\n?") do
+            if #chunk > 0 then lines[#lines+1] = chunk end
+        end
+        -- Simple page navigator: any key advances; q drops to CC shell.
+        local page, dropped = 1, false
+        while page <= #lines and not dropped do
+            term.setCursorPos(1, 3)
+            for row = 0, rowsPerPage - 1 do
+                term.clearLine()
+                local ln = lines[page + row]
+                if ln then term.write(ln) end
+            end
+            term.setCursorPos(1, cy - 1)
+            term.clearLine()
+            local footer = string.format("[ %d-%d / %d ]  ENTER next  q shell",
+                page, math.min(page + rowsPerPage - 1, #lines), #lines)
+            term.write(footer)
+            term.setCursorPos(1, cy)
+            term.clearLine()
+            term.write("Full log: /os/data/boot_error.log")
+            local ev = {os.pullEvent("key")}
+            local key = ev[2]
+            if key == keys.q or key == keys.escape then
+                dropped = true
+            else
+                page = page + rowsPerPage
+            end
+        end
+
+        if dropped then
+            -- Drop to the CC shell with a tiny prompt.
+            if term and term.setBackgroundColor then
+                term.setBackgroundColor(colors.black)
+                term.setTextColor(colors.white)
+                term.clear()
+                term.setCursorPos(1, 1)
+            end
+            term.write("Dropped to CC shell. Read /os/data/boot_error.log to debug.\n")
+        else
+            term.setCursorPos(1, cy)
+            term.clearLine()
+            term.write("Press any key to drop to the CC shell.")
+            os.pullEvent("key")
+        end
     end
 end

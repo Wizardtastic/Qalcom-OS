@@ -419,6 +419,10 @@ function M.text(str, x, y, col, opts)
 end
 
 function M.textSize(str, opts)
+    -- Guard against nil like M.text does: a nil string here used to crash
+    -- the whole session (see taskbar clock). Return 0x0 so callers can
+    -- still centre/measure safely.
+    if type(str) ~= "string" then return 0, 0 end
     opts = opts or {}
     if not font then font = require("os.font") end
     local scale = opts.size and font.scaleForSize(opts.size) or DEFAULT_SCALE

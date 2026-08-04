@@ -31,10 +31,11 @@ end
 -- static: Computed geometry ------------------------------------------------
 M.geometry = nil
 local function computeGeom()
-    local W, H = gfx.width(), gfx.height()
-    local H_  = dim("taskbarH")
-    local startBtnW = dim("startBtnW")
-    local clockW = dim("clockW")
+    local W = gfx.width() or 306
+    local H = gfx.height() or 171
+    local H_  = dim("taskbarH") or 28
+    local startBtnW = dim("startBtnW") or 52
+    local clockW = dim("clockW") or 100
     M.geometry = {
         W = W, H = H,
         barY     = H - H_,
@@ -58,11 +59,20 @@ local function drawClock(now)
     -- background
     gfx.fillRoundRect(x, y, w, h, 4, theme.c("surfaceHigh"))
     -- time string
-    local hh = string.format("%02d", now.hour)
-    local mm = string.format("%02d", now.min)
-    local ss = string.format("%02d", now.sec)
-    local date = now.date
+    local hh = string.format("%02d", now.hour or 0)
+    local mm = string.format("%02d", now.min or 0)
+    local ss = string.format("%02d", now.sec or 0)
     local timeText = hh .. ":" .. mm .. ":" .. ss
+    -- Date: os.date("*t") has no .date field, so build it from components.
+    -- Accepts a pre-formatted string (now.date) or a components table.
+    local date
+    if type(now.date) == "string" and #now.date > 0 then
+        date = now.date
+    elseif now.month and now.day then
+        date = string.format("%02d/%02d/%02d", now.month, now.day, (now.year or 2000) % 100)
+    else
+        date = ""
+    end
     -- Header
     local dateOpts = {size = dim("fontSizeSmall"), style = theme.font.stylePlain}
     local timeOpts = {size = dim("fontSizeStatusBar"), style = theme.font.styleBold}
@@ -78,6 +88,7 @@ end
 -- start button -------------------------------------------------------------
 local function drawStartButton(hover)
     local g = M.geometry
+    if not g or not g.startX or not g.barY or not g.startW or not g.barH then return end
     local x, y = g.startX, g.barY + 4
     local w, h = g.startW - 4, g.barH - 8
     local bg = hover and theme.c("accentHover") or theme.c("accent")
@@ -99,6 +110,7 @@ end
 -- pinned app tray ----------------------------------------------------------
 local function drawPinned(registry, hover)
     local g = M.geometry
+    if not g or not g.pinnedX or not g.barY or not g.barH then return end
     if not g.pinnedItems then return end
     local x = g.pinnedX
     local y = g.barY
@@ -126,6 +138,7 @@ end
 -- running apps strip -------------------------------------------------------
 local function drawRunning(hover)
     local g = M.geometry
+    if not g or not g.runningX or not g.barY or not g.barH then return end
     if not g.runningItems then return end
     local x = g.runningX
     local y = g.barY
@@ -149,6 +162,7 @@ end
 -- tray icons (volume, network) --------------------------------------------
 local function drawTrayIcons()
     local g = M.geometry
+    if not g or not g.barY or not g.barH or not g.trayX then return end
     local y = g.barY + 4
     local h = g.barH - 8
     local sz = h - 4
@@ -194,8 +208,8 @@ end
 
 -- Hit testing --------------------------------------------------------------
 function M.hitTest(x, y)
-    if not M.geometry then return nil end
     local g = M.geometry
+    if not g or not g.barY or not g.barH then return nil end
     if y >= g.barY and y <= g.barY + g.barH then
         -- start
         if x >= g.startX and x <= g.startX + g.startW then

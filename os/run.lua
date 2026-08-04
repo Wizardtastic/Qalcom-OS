@@ -91,6 +91,7 @@ bprintln("[+] users ready (" .. #auth.list() .. ")")
 bprintln("[*] opening login...")
 
 local function loop()
+    local crashed = false  -- set true on first session crash to show the screen once
     while true do
         local user = login.run()
         if not user then return end
@@ -99,14 +100,26 @@ local function loop()
         end)
         if not sOk then
             bootlog("session crashed: " .. tostring(sErr))
-            local nOk, notif = safeRequire("os.notifications")
-            if nOk then
-                notif.push({title = "OS Error", body = tostring(sErr), level="error"})
+            bprintln("[!] session crashed: " .. tostring(sErr))
+
+            -- On the first crash, show a full-screen error banner using the
+            -- shared crash module (pixel or term fallback).
+            if not crashed then
+                crashed = true
+                local crash = safeLoad("os.crash", "crash")
+                crash.show({
+                    title = "Session Crashed",
+                    msg   = tostring(sErr),
+                    logPath = "/os/data/boot.log",
+                    nextAction = "Press any key to continue",
+                })
+            else
+                -- Subsequent crash: brief sleep, then retry as before
                 sleep(3)
             end
-            bprintln("[!] session crashed: " .. tostring(sErr))
         else
             bootlog("session returned (logout/restart/shutdown)")
+            crashed = false  -- reset on a clean return
         end
     end
 end
