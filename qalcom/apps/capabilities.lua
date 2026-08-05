@@ -1,6 +1,7 @@
 local UI = dofile("/qalcom/lib/ui.lua")
 local Screen = dofile("/qalcom/lib/ui/screen.lua")
 local Capabilities = dofile("/qalcom/lib/capabilities.lua")
+local Roles = dofile("/qalcom/lib/roles.lua")
 
 return function(ctx)
     local apps = Capabilities.all()
@@ -11,6 +12,7 @@ return function(ctx)
         local width, height = ctx.win.getSize()
         local _, _, contentStart = Screen.begin(ctx.win, "Capabilities", status, { ui = UI })
         local manifest = Capabilities.manifest(apps[selected])
+        local role = Roles.definition(ctx.role)
         local footer = math.max(contentStart, height - 1)
         local split = math.max(12, math.floor(width * 0.43))
         local row = contentStart
@@ -29,11 +31,12 @@ return function(ctx)
         end
         if manifest and row < footer then
             local requested = manifest.requested
-            UI.text(ctx.win, split, row, manifest.trusted and "Trusted built-in application" or "Untrusted", UI.colors.success, UI.colors.surface, width - split - 1)
+            UI.text(ctx.win, split, row, (manifest.trusted and "Trusted built-in application" or "Untrusted") .. " / role: " .. tostring(role and role.label or "unknown"), UI.colors.success, UI.colors.surface, width - split - 1)
             row = row + 1
             for index, capability in ipairs(requested) do
                 if row >= footer then break end
-                UI.status(ctx.win, split, row, "DECLARED", UI.colors.accent, 10)
+                local decision = Capabilities.policy(ctx.role, apps[selected], capability)
+                UI.status(ctx.win, split, row, decision.allowed and "APPROVED" or "DENIED", decision.allowed and UI.colors.success or UI.colors.warning, 10)
                 UI.text(ctx.win, split + 12, row, capability, UI.colors.text, UI.colors.surface, width - split - 13)
                 row = row + 1
             end
@@ -43,7 +46,7 @@ return function(ctx)
         end
         UI.fill(ctx.win, 1, height - 1, width, 2, UI.colors.surfaceAlt)
         UI.text(ctx.win, 2, height - 1, "Up/Down select   R refresh audit   Esc close", UI.colors.muted, UI.colors.surfaceAlt, width - 3)
-        UI.text(ctx.win, 2, height, "Policy visibility only; trusted Lua still has CC:T globals", UI.colors.muted, UI.colors.surfaceAlt, width - 3)
+        UI.text(ctx.win, 2, height, "Role policy only; trusted Lua still has CC:T globals", UI.colors.muted, UI.colors.surfaceAlt, width - 3)
     end
 
     local function auditView()

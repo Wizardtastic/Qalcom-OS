@@ -22,6 +22,16 @@ local function loadPure()
 end
 
 local Pure = loadPure()
+local function loadRoles()
+    local candidates = { "qalcom/lib/roles.lua", "../qalcom/lib/roles.lua", "/qalcom/lib/roles.lua" }
+    for _, path in ipairs(candidates) do
+        local ok, module = pcall(dofile, path)
+        if ok and type(module) == "table" then return module end
+    end
+    fail("Unable to load qalcom/lib/roles.lua")
+end
+
+local Roles = loadRoles()
 local function loadAnimation()
     local candidates = { "qalcom/lib/ui/animation.lua", "../qalcom/lib/ui/animation.lua", "/qalcom/lib/ui/animation.lua" }
     for _, path in ipairs(candidates) do
@@ -54,6 +64,18 @@ end)
 test("validates account records", function()
     truthy(Pure.validateAccountRecord({ username = "Walker", salt = "1", digest = "2" }), "valid account")
     equal(Pure.validateAccountRecord({ username = "Walker" }), false, "incomplete account")
+end)
+
+test("validates roles and policies", function()
+    truthy(Roles.exists("Administrator"), "administrator role")
+    equal(Roles.exists("Unknown"), false, "unknown role")
+    equal(Roles.normalize(nil, true), "Administrator", "first legacy role")
+    equal(Roles.normalize("invalid", true), "Observer", "invalid role fallback")
+    truthy(Roles.allows("Administrator", "system.shutdown"), "administrator shutdown")
+    equal(Roles.allows("Observer", "system.shutdown"), false, "observer shutdown")
+    truthy(Pure.validateRole("Observer", Roles.names()), "valid role")
+    equal(Pure.validateRole("Unknown", Roles.names()), false, "invalid role")
+    truthy(Pure.validatePolicyDecision({ role = "Observer", capability = "fs.read", allowed = true }), "valid decision")
 end)
 
 test("retains newest log lines", function()

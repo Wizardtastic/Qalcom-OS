@@ -4,6 +4,7 @@ local VERSION = dofile("/qalcom/version.lua")
 local Auth = dofile("/qalcom/lib/auth.lua")
 local System = dofile("/qalcom/lib/system.lua")
 local Capabilities = dofile("/qalcom/lib/capabilities.lua")
+local Roles = dofile("/qalcom/lib/roles.lua")
 local unpack = table.unpack or unpack
 local config = Config.load()
 Config.apply(UI, config)
@@ -190,9 +191,17 @@ local function makeContext(task)
         name = task.name,
         title = task.meta.title,
         user = state.user,
+        role = state.role,
         modifiers = state.modifiers,
         win = task.window,
-        capabilities = Capabilities.namesFor(task.name),
+        declaredCapabilities = Capabilities.namesFor(task.name),
+        capabilities = (function()
+            local approved = {}
+            for _, capability in ipairs(Capabilities.namesFor(task.name)) do
+                if Capabilities.effective(state.role, task.name, capability) then approved[#approved + 1] = capability end
+            end
+            return approved
+        end)(),
         manifest = Capabilities.manifest(task.name),
         session = state.session,
         generation = state.session,
@@ -247,7 +256,11 @@ local function makeContext(task)
     end
 
     function context:hasCapability(name)
-        return Capabilities.has(task.name, name)
+        return Capabilities.effective(state.role, task.name, name)
+    end
+
+    function context:policy(name)
+        return Capabilities.policy(state.role, task.name, name)
     end
 
     function context:audit(action, detail)
@@ -256,8 +269,9 @@ local function makeContext(task)
 
     function context:requestPower(action)
         local capability = action == "reboot" and "system.reboot" or action == "shutdown" and "system.shutdown"
-        if not capability or not Capabilities.has(task.name, capability) then
-            Capabilities.audit("denied", task.name .. " requested " .. tostring(action))
+        local decision = capability and Capabilities.policy(state.role, task.name, capability) or nil
+        if not decision or not decision.allowed then
+            Capabilities.auditDecision(decision or { role = state.role, capability = capability, allowed = false }, state.user, "power request")
             notify("Capability denied: " .. tostring(capability or action), UI.colors.danger)
             return false
         end
@@ -269,8 +283,12 @@ local function makeContext(task)
         })
         if not task then return false end
         task.context.dialogCallback = function()
+            Capabilities.auditDecision(decision, state.user, "confirmed " .. action)
             os.queueEvent("qalcom_power_confirmed", action)
             return true
+        end
+        task.context.dialogCancelCallback = function()
+            Capabilities.auditDecision(decision, state.user, "cancelled " .. action, "cancelled")
         end
         return true
     end
@@ -295,6 +313,7 @@ local function makeContext(task)
     function context:systemInfo()
         local info = System.info()
         info.user = state.user
+        info.role = state.role
         info.tasks = {}
         for _, candidate in ipairs(state.tasks) do
             info.tasks[#info.tasks + 1] = {
@@ -315,6 +334,13 @@ local function makeContext(task)
                 lastRunDuration = candidate.lastRunDuration,
                 restartLocked = candidate.restartLocked,
                 capabilities = Capabilities.namesFor(candidate.name),
+                approvedCapabilities = (function()
+                    local approved = {}
+                    for _, capability in ipairs(Capabilities.namesFor(candidate.name)) do
+                        if Capabilities.effective(state.role, candidate.name, capability) then approved[#approved + 1] = capability end
+                    end
+                    return approved
+                end)(),
             }
         end
         return info
@@ -750,6 +776,7 @@ if not authenticated then
 end
 state.session = state.session + 1
 state.user = authenticated.username
+state.role = Roles.normalize(authenticated.role, true)
 recordBootStage("desktop authenticated")
 log("login success: " .. state.user)
 Capabilities.audit("login", state.user)
@@ -786,6 +813,7 @@ while true do
         closeAllTasks()
         state.launcher = false
         state.user = nil
+        state.role = nil
         state.modifiers.alt = false
         state.modifiers.ctrl = false
         state.modifiers.shift = false
@@ -794,6 +822,7 @@ while true do
         if not authenticated then return end
         state.session = state.session + 1
         state.user = authenticated.username
+        state.role = Roles.normalize(authenticated.role, true)
         recordBootStage("desktop reauthenticated")
         config = Config.load()
         Config.apply(UI, config)

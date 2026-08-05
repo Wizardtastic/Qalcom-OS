@@ -1,4 +1,4 @@
-# Qalcom OS 0.2.0
+# Qalcom OS 0.2.1
 
 Qalcom OS is a clean, Windows-inspired desktop environment for ComputerCraft: Tweaked. This milestone runs entirely inside CC:T and does not require a Minecraft mod or CraftOS modification.
 
@@ -29,10 +29,11 @@ Copy the repository contents to the root of a CC:T computer so the layout looks 
 /qalcom/lib/system.lua
 /qalcom/lib/pure.lua
 /qalcom/lib/capabilities.lua
+/qalcom/lib/roles.lua
 /qalcom/apps/capabilities.lua
 ```
 
-Reboot the computer. Qalcom starts through `/startup.lua`, shows the first-run account setup, and will enter a small recovery prompt if the kernel fails to load. When upgrading from 0.1.10, copy the updated `/qalcom/kernel/init.lua`, `/qalcom/lib/ui.lua`, `/qalcom/lib/ui/animation.lua`, `/qalcom/lib/config.lua`, `/qalcom/apps/settings.lua`, `/qalcom/lib/capabilities.lua`, `/qalcom/apps/capabilities.lua`, and `/qalcom/version.lua` files. Configuration schema migration runs automatically, including the Reduced motion preference; account data in `/qalcom/data/accounts` is preserved.
+Reboot the computer. Qalcom starts through `/startup.lua`, shows the first-run account setup, and will enter a small recovery prompt if the kernel fails to load. When upgrading from 0.1.10, copy the updated `/qalcom/kernel/init.lua`, `/qalcom/lib/ui.lua`, `/qalcom/lib/ui/animation.lua`, `/qalcom/lib/config.lua`, `/qalcom/apps/settings.lua`, `/qalcom/lib/capabilities.lua`, `/qalcom/lib/roles.lua`, `/qalcom/apps/capabilities.lua`, and `/qalcom/version.lua` files. Configuration schema migration runs automatically, including the Reduced motion preference; account data in `/qalcom/data/accounts` is preserved.
 
 ## Controls
 
@@ -51,7 +52,7 @@ Reboot the computer. Qalcom starts through `/startup.lua`, shows the first-run a
 - File Explorer supports mouse selection, keyboard navigation, opening directories, and refresh.
 - System Monitor is available from Start and reports peripheral/modem status; it does not launch automatically.
 - Open **Control Center** from Start to inspect processes, memory, storage, services, and declared capability profiles.
-- Open **Capabilities** from Start to inspect built-in application manifests and the capability policy audit stream.
+- Open **Capabilities** from Start to inspect built-in application manifests, role decisions, and the capability policy audit stream.
 - Open **Recovery** from Start to clear notifications, reset the theme, toggle Safe Mode, restore Qalcom defaults, view diagnostics, or open the system log.
 - In **Settings**, select Safe Mode, Log retention, or Reduced motion and press Enter to change them. Restore defaults to reset Qalcom settings without deleting accounts.
 - In **System Log**, press F to cycle through all, failure, and login entries.
@@ -69,12 +70,14 @@ Reboot the computer. Qalcom starts through `/startup.lua`, shows the first-run a
 - **Diagnostics**: Scrollable boot-stage and recent-crash details.
 - **System Log**: Scrollable recent system events with failure/login filtering and retention limits.
 - **Settings**: Edit the computer label, change themes, toggle Safe Mode, view settings categories, and adjust log retention.
-- **Account**: View the current session and sign out to the login screen.
+- **Account**: View the current session, local war-server role, and sign out to the login screen.
 - **Text Viewer**: View and edit local text, Lua, and log files.
 
-## Version 0.2.0
+## Version 0.2.1
 
-This release introduces the first capability policy layer. Built-in applications now have trusted manifests, declared capability profiles, capability-aware context metadata, a read-only Capabilities inspector, and a bounded `/qalcom/logs/audit.log` stream for launches, logins, denials, and inspections. The policy is intentionally advisory in 0.2.0: trusted Lua still has normal CC:T globals and this is not a secure sandbox. Approval decisions and managed enforcement are deferred to 0.2.1 and later. The native Windows-like UI foundation from 0.1.10 remains active.
+Qalcom retains the first capability policy layer from 0.2.0: built-in applications have trusted manifests, declared capability profiles, capability-aware context metadata, a read-only Capabilities inspector, and a bounded `/qalcom/logs/audit.log` stream. Trusted Lua still has normal CC:T globals, so this is not a secure sandbox. The native Windows-like UI foundation from 0.1.10 remains active.
+
+This 0.2.1 milestone adds local war-server roles and the first approval boundary. Accounts carry migrated roles, built-in capability declarations are intersected with role policy, the Account/Settings/Capabilities/Control Center views show the active role, and reboot/shutdown requests are denied or audit-recorded when policy does not allow them. Confirming an allowed power action records an approval. Only that existing managed power path is enforced here; filesystem, peripheral, redstone, and network enforcement remains future work. Trusted built-in Lua still has normal CC:T globals.
 
 Run `lua tests/pure_test.lua` when a local Lua interpreter is available. This covers only CC:T-independent helpers; complete the in-game checklist in [TESTING.md](TESTING.md) as well.
 

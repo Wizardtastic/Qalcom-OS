@@ -14,6 +14,7 @@ Use this checklist before calling a milestone complete.
 - [ ] Exported functions and references were searched after changes.
 - [ ] CC:T API calls are defensive where peripherals, memory, files, or optional APIs may be absent.
 - [ ] Every built-in application has a versioned capability manifest.
+- [ ] Role policy and approval behavior are documented; trusted Lua is not treated as sandboxed.
 - [ ] Capability policy limitations are documented; no sandbox claim is made.
 - [ ] Compact terminal behavior is checked at 30 x 14 and at a normal terminal size.
 - [ ] Native UI shadows and animations are checked for bounds, responsiveness, and memory impact.
@@ -22,6 +23,7 @@ Use this checklist before calling a milestone complete.
 ## Persistence and migration
 
 - [ ] Existing account data remains readable.
+- [ ] Legacy accounts migrate to versioned roles without data loss.
 - [ ] Existing settings remain readable.
 - [ ] Schema migration runs before settings are applied.
 - [ ] Legacy setting names are tested and current defaults do not hide them.
@@ -37,12 +39,13 @@ Use this checklist before calling a milestone complete.
 - [ ] Manual CC:T checklist in `TESTING.md` is complete.
 - [ ] Boot, login, logout, recovery, resize, app-failure, task cleanup, and power-confirmation paths were tested.
 - [ ] Manual restart limits and recovery diagnostics were checked.
-- [ ] Capability inspector and audit events were checked.
+- [ ] Capability inspector, role decisions, and approval/denial audit events were checked.
 - [ ] Known limitations are recorded in the README and release notes.
 
 ## Version and documentation
 
 - [ ] `/qalcom/version.lua` has the new version.
+- [ ] Role schema/version migration is documented in the README and roadmap.
 - [ ] User-facing version text is current.
 - [ ] `ROADMAP.md` marks the milestone complete and preserves future work.
 - [ ] `README.md` documents controls, installation changes, recovery, and limitations.

@@ -31,9 +31,12 @@ return function(ctx)
                     elseif result == false then
                         ctx:notify(tostring(detail or "Action failed"), UI.colors.danger)
                     end
+                elseif selected == 2 and ctx.dialogCancelCallback then
+                    pcall(ctx.dialogCancelCallback)
                 end
                 ctx:close()
             elseif value == keys.escape then
+                if ctx.dialogCancelCallback then pcall(ctx.dialogCancelCallback) end
                 ctx:close()
             end
         elseif event == "mouse_click" then
@@ -52,6 +55,7 @@ return function(ctx)
                 end
                 ctx:close()
             elseif y == height - 3 and x and x >= noX and x < noX + buttonWidth then
+                if ctx.dialogCancelCallback then pcall(ctx.dialogCancelCallback) end
                 ctx:close()
             end
         elseif event == "term_resize" then

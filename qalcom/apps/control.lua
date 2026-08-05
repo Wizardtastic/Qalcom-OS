@@ -53,6 +53,7 @@ return function(ctx)
 
             stat("Qalcom", VERSION, UI.colors.accent)
             stat("User", tostring(info.user or "-"))
+            stat("Role", tostring(info.role or "-"), UI.colors.accent)
             stat("Computer", tostring(info.computerId))
             stat("Memory", tostring(info.memory))
             stat("Terminal", tostring(info.width) .. " x " .. tostring(info.height))

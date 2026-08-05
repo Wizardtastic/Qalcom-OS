@@ -1,6 +1,8 @@
 local Capabilities = {}
+local Roles = dofile("/qalcom/lib/roles.lua")
 
 Capabilities.schemaVersion = 1
+Capabilities.policySchemaVersion = Roles.schemaVersion
 Capabilities.names = {
     "fs.read",
     "fs.write",
@@ -130,6 +132,33 @@ function Capabilities.has(name, capability)
     return contains(Capabilities.namesFor(name), capability)
 end
 
+function Capabilities.roleAllows(role, capability)
+    return Roles.allows(role, capability)
+end
+
+function Capabilities.effective(role, appName, capability)
+    return Capabilities.roleAllows(role, capability) and Capabilities.has(appName, capability)
+end
+
+function Capabilities.policy(role, appName, capability)
+    local appKnown = Capabilities.manifest(appName) ~= nil
+    local roleKnown = Roles.exists(role)
+    local declared = appKnown and Capabilities.has(appName, capability) or false
+    local allowed = roleKnown and declared and Roles.allows(role, capability) or false
+    return {
+        role = Roles.normalize(role),
+        app = appName,
+        capability = capability,
+        declared = declared,
+        allowed = allowed,
+        reason = not appKnown and "unknown application"
+            or not roleKnown and "unknown role"
+            or not declared and "application did not declare capability"
+            or not Roles.allows(role, capability) and "role policy denied"
+            or "allowed",
+    }
+end
+
 function Capabilities.all()
     local result = {}
     for name, _ in pairs(manifests) do result[#result + 1] = name end
@@ -149,6 +178,15 @@ function Capabilities.catalog()
         result.apps[#result.apps + 1] = Capabilities.manifest(name)
     end
     return result
+end
+
+function Capabilities.auditDecision(decision, actor, detail, outcome)
+    local allowed = decision and decision.allowed == true
+    local action = outcome or (allowed and "approval" or "denial")
+    local suffix = tostring(actor or "unknown") .. " " .. tostring(decision and decision.role or "unknown")
+        .. " " .. tostring(decision and decision.capability or "unknown")
+    if detail then suffix = suffix .. " " .. tostring(detail) end
+    return Capabilities.audit(action, suffix)
 end
 
 function Capabilities.audit(action, detail)

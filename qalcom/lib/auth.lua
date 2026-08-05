@@ -1,14 +1,18 @@
 local Auth = {}
 local Pure = dofile("/qalcom/lib/pure.lua")
+local Roles = dofile("/qalcom/lib/roles.lua")
 
 local ACCOUNT_PATH = "/qalcom/data/accounts"
+local ROLE_SCHEMA_VERSION = Roles.schemaVersion
 local MAX_INPUT = 24
+local readAccounts
+local writeAccounts
 
 local function ensureDirectory()
     if not fs.exists("/qalcom/data") then fs.makeDir("/qalcom/data") end
 end
 
-local function readAccounts()
+readAccounts = function()
     if not fs.exists(ACCOUNT_PATH) then return {} end
     local file = fs.open(ACCOUNT_PATH, "r")
     if not file then return {} end
@@ -25,13 +29,42 @@ local function readAccounts()
     return accounts
 end
 
-local function writeAccounts(accounts)
+writeAccounts = function(accounts)
     ensureDirectory()
     local file = fs.open(ACCOUNT_PATH, "w")
     if not file then return false end
     file.write(textutils.serialize(accounts))
     file.close()
     return true
+end
+
+local function normalizeAccount(account, firstAccount)
+    if not Pure.validateAccountRecord(account) then return nil end
+    local normalized = {}
+    for key, value in pairs(account) do normalized[key] = value end
+    normalized.role = Roles.normalize(account.role, firstAccount)
+    normalized.roleSchemaVersion = ROLE_SCHEMA_VERSION
+    return normalized
+end
+
+local function migrateAccounts(accounts)
+    local changed = false
+    local normalized = {}
+    for index, account in ipairs(accounts) do
+        local value = normalizeAccount(account, index == 1)
+        if value then
+            if account.role ~= value.role or account.roleSchemaVersion ~= ROLE_SCHEMA_VERSION then changed = true end
+            normalized[#normalized + 1] = value
+        end
+    end
+    return normalized, changed
+end
+
+local function ensureRoleMigration()
+    local accounts = readAccounts()
+    local normalized, changed = migrateAccounts(accounts)
+    if changed then writeAccounts(normalized) end
+    return normalized
 end
 
 -- This is a local deterrent, not cryptographic protection. CC:T files remain accessible
@@ -55,7 +88,7 @@ local function validUsername(username)
 end
 
 function Auth.accounts()
-    return readAccounts()
+    return ensureRoleMigration()
 end
 
 function Auth.hasAccounts()
@@ -74,6 +107,8 @@ function Auth.create(username, password)
         username = username,
         salt = salt,
         digest = digest(password, salt),
+        role = #accounts == 0 and Roles.legacyAdministrator or Roles.default,
+        roleSchemaVersion = ROLE_SCHEMA_VERSION,
         created = os.epoch and os.epoch("utc") or 0,
     }
     if not writeAccounts(accounts) then return false, "Unable to save account data." end
@@ -81,7 +116,7 @@ function Auth.create(username, password)
 end
 
 function Auth.verify(username, password)
-    local accounts = readAccounts()
+    local accounts = ensureRoleMigration()
     username = tostring(username or "")
     password = tostring(password or "")
     for _, account in ipairs(accounts) do

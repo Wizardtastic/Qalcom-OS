@@ -2,6 +2,7 @@ local UI = dofile("/qalcom/lib/ui.lua")
 local Screen = dofile("/qalcom/lib/ui/screen.lua")
 local Config = dofile("/qalcom/lib/config.lua")
 local VERSION = dofile("/qalcom/version.lua")
+local Roles = dofile("/qalcom/lib/roles.lua")
 
 return function(ctx)
     local selected = 1
@@ -55,7 +56,7 @@ return function(ctx)
             { "Computer ID", tostring(os.getComputerID()) },
             { "OS version", "Qalcom OS " .. VERSION },
             { "Boot mode", "Normal" },
-            { "Security", "Local-only services" },
+            { "Security", "Role: " .. tostring((Roles.definition(ctx.role) or {}).label or "Unknown") },
             { "Safe Mode", config.safeMode and "Enabled" or "Disabled" },
             { "Log retention", tostring(config.logLimit) .. " lines" },
             { "Reduced motion", config.reducedMotion and "Enabled" or "Disabled" },

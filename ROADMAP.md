@@ -1,8 +1,47 @@
 # Qalcom OS Roadmap
 
-Qalcom OS is a Windows-inspired ComputerCraft: Tweaked operating environment built entirely from standard CC:T Lua APIs. It is a replacement userland and desktop running above the CC:T host, not a replacement for the Java-side firmware.
+Qalcom OS is a Windows-inspired ComputerCraft: Tweaked command-and-control environment for a modded Minecraft war server. The server uses **Aeronautics** for vehicles and airships, **Create: Big Cannons (CBC)** for artillery, and **Create: Propulsion** for propulsion and mechanical systems. Qalcom provides the in-world terminals, permissions, telemetry, logistics views, and carefully allowlisted controls needed to operate those systems; it does not replace the CC:T host, the installed mods, or their normal game mechanics.
 
-This roadmap is intentionally incremental. Each milestone should deliver one coherent capability, remain usable on its own, and be validated on an actual CC:T computer before the next milestone begins.
+The roadmap is intentionally incremental. Each milestone should deliver one coherent capability, remain usable on its own, and be validated on an actual CC:T computer in the target modpack before the next milestone begins. Mod integrations must be defensive and observable by default: Qalcom should never invent mod APIs, bypass server protections, or expose unrestricted remote Lua or arbitrary peripheral calls.
+
+## War-server product goals
+
+- Give commanders a reliable picture of radar contacts, vehicles, artillery, propulsion infrastructure, supplies, power, territory, and alerts.
+- Turn radar detections into understandable contact tracks without making radar an automatic weapons authority.
+- Separate strategic visibility from high-impact controls such as firing, launching, movement, lockdowns, and demolition.
+- Make every sensitive action role-gated, explicitly confirmed, rate-limited, and auditable.
+- Treat Aeronautics, CBC, and Create: Propulsion as optional integrations discovered at runtime, with graceful degradation when a mod, block, peripheral, or addon is absent.
+- Keep the system useful during a conflict: stale data, damaged links, missing peripherals, and server restarts must be visible rather than silently treated as healthy.
+
+## Target modpack assumptions
+
+- **Aeronautics:** vehicle and airship state, assemblies, controls, docking, navigation, and flight-related telemetry where exposed through supported peripherals or server-side bridges.
+- **CBC / Create: Big Cannons:** cannon inventory, loading and readiness state, ammunition logistics, targeting metadata, and firing controls only where the server explicitly exposes a safe, allowlisted interface.
+- **Create: Propulsion:** propulsion assemblies, engines, fuel or energy status, mechanical readiness, and transport/logistics telemetry where available.
+- **Create Radar:** radar blocks, scans, contacts, range/status, and detection events where exposed through CC:T or a supported peripheral bridge.
+- **Create Aero Radar:** the Aeronautics-oriented radar integration for aerial/physics-vehicle detection and radar-assisted tracking where its server-side interface exposes those capabilities.
+- **Supporting vehicle and combat systems:** Create Aeronautics/Aeroworks, Sable and CC:Sable, Create Submarine, Drive-By-Wire, CBC Compact Mount, CBC Military Supplement, TACZ with aero compatibility, and RHA armor/projectile mods.
+- **Supporting server operations:** FTB Teams, FTB Chunks, FTB Essentials, FTB Quests, Warring Nations, Region Guard, Xaero's maps, Simple Voice Chat, admin tickets, and player-revive/medical systems.
+- **Supporting industrial/logistics systems:** Create Diesel Generators, Create Nuclear, Create Railways/Railways, Create Threaded Trains, Create Tweaked Controllers, Create Addition, Storage Drawers, Sophisticated Backpacks, and Create-linked storage/transport blocks.
+- The exact peripheral names, methods, block entities, and addon APIs are server-specific. Integration work must use an adapter layer and capability discovery instead of hard-coded assumptions throughout the desktop.
+
+## Integration boundary
+
+Qalcom is an operations layer, not a replacement for the mods' physics, permissions, radar rules, or combat rules. A mod adapter may read state or request a narrowly defined action, but the server and the mod remain authoritative. Every adapter must report its availability, API version, supported operations, stale-data state, and failure reason. Radar contacts are observations, not proof of hostile intent, ownership, or a valid firing solution. No milestone may depend on arbitrary `peripheral.call`, remote Lua execution, or an undocumented command path.
+
+## Confirmed modpack integration profile
+
+The target instance is Minecraft 1.21.1 on NeoForge and includes the following Qalcom-relevant integration points. This inventory is the planning baseline, not proof that a mod exposes a ComputerCraft peripheral, compatible API, or the capabilities suggested by its name. The actual peripheral names, exposed methods, permissions, and cross-mod behavior must be inspected in-game before implementation; each item below is a verification target unless explicitly marked otherwise.
+
+- **Computer and bridge layer:** CC:Tweaked 1.120.0, CC:CBC, CC:Sable, CC:Graphics, and KubeJS. Verify which peripheral types and read-only methods are actually exposed. These may make programmable consoles and server-specific bridge scripts possible, but do not make arbitrary Lua or KubeJS execution an acceptable Qalcom feature.
+- **Vehicles and movement:** Create Aeronautics bundled 1.3.0, Aeroworks, Sable, Create Propulsion 1.1.5, Drive-By-Wire, Create Submarine, Create Aeronautics transmission/linkage and sail addons, and Sable hose connectors.
+- **Artillery and weapons:** Create Big Cannons 5.11.7, CBC Military Supplement, CBC Compact Mount, TACZ, TACZ Aero Compat, TACZ C, TACZ Armor, RHA/RHA Plus, and the projectile library.
+- **Detection and mapping:** Create Radar 0.4.9.4, Create Aero Radar 0.1.1, Xaero's Minimap/World Map, and FTB Xaero compatibility. Radar is a first-class candidate Qalcom sensor source; verify whether it can expose scans, contacts, tracks, alerts, or map coordinates, then prioritize read-only contacts and map overlays before any control workflow is considered.
+- **Factions and territory:** Warring Nations, FTB Teams, FTB Chunks, Region Guard, Team RTP, FTB Quests, and FTB Essentials. These should inform identity, faction/territory context, protected-zone rules, and operator workflows without allowing Qalcom to bypass server ownership or claims.
+- **Industry and logistics:** Create 6.0.10, Create Addition, Create Diesel Generators, Create Nuclear, Create Railways, Create Threaded Trains, Create Tweaked Controllers, Create Cobblestone, Create BB, Storage Drawers, Sophisticated Backpacks, and related Create transport addons. Verify which devices can provide telemetry; treat power, fuel, manufacturing, ammunition, and supply-route views as planned integration targets rather than guaranteed APIs.
+- **Field operations:** Simple Voice Chat, Create-linked communications/controls, First Aid, player revive, admin tickets, and other support systems. Qalcom may link incidents to communications and recovery workflows, but must not impersonate players or silently alter medical/admin state.
+
+The profile intentionally separates direct integrations from libraries, performance mods, and decorative content. Version-specific behavior must be recorded by the adapter health view rather than assumed from a jar filename. The first implementation task for each integration is an in-game capability probe and compatibility record, not a hard-coded control path.
 
 ## Release policy
 
@@ -129,26 +168,30 @@ This roadmap is intentionally incremental. Each milestone should deliver one coh
 - Added bounded capability audit logging for launches, logins, denials, and inspections.
 - Kept the policy explicitly advisory because trusted CC:T Lua is not sandboxed.
 
-- Deferred to 0.2.1+: capability approval policy, role-based decisions, and enforcement for future managed services.
+- Deferred to 0.2.2+: broader capability-aware service boundaries and managed enforcement for future services.
 - Deferred to 0.2.2+: broader capability-aware service boundaries for managed filesystem, peripheral, redstone, and system actions.
 - Deferred to 0.2.3+: peripheral inventory and safe device inspection.
 
-**Implementation status:** Every built-in app has a documented capability profile and the OS can display declared capabilities without changing existing app behavior. The audit stream is bounded and the capability layer does not claim to sandbox trusted Lua. Approval decisions are intentionally deferred to 0.2.1.
+**Implementation status:** Every built-in app has a documented capability profile and the OS can display declared capabilities without changing existing app behavior. The audit stream is bounded and the capability layer does not claim to sandbox trusted Lua. Role approvals now begin in 0.2.1 for managed power requests; broader enforcement remains deferred.
 
 **Exit criteria:** Every built-in app has a documented capability profile and the OS can display declared capabilities without breaking existing apps. Manual CC:T validation remains required before this milestone is considered fully validated.
 
-## 0.2.1 — Roles and approval policy
+## Implemented — validation pending: 0.2.1 — War-server roles and approval policy
 
-**Goal:** Separate identity from permission decisions.
+**Goal:** Separate player identity from permission decisions for a conflict-oriented server.
 
-- Add local roles such as Administrator, Operator, Observer, Automation service, and Restricted guest.
-- Add role persistence and migration for existing administrator accounts.
-- Add a policy table mapping roles to capabilities.
-- Add explicit approval dialogs for sensitive actions.
-- Add audit entries for approvals, denials, and policy changes.
-- Keep account management local and document its non-cryptographic limitations.
+- Added local roles: Administrator, Commander, Operations officer, Artillery officer, Engineer, Logistics officer, Observer, Automation service, and Restricted guest.
+- Added role persistence and migration for existing administrator accounts; an account with no legacy role maps to Administrator only for the first account, later role-less accounts map to Observer, and malformed explicit roles fall back to Observer.
+- Added a policy table intersecting role permissions with declared built-in capabilities.
+- Added explicit approval dialogs for the existing reboot/shutdown sensitive actions.
+- Added audit entries for role-based approvals and denials.
+- Kept account management local and documented its non-cryptographic limitations.
 
-**Exit criteria:** A user’s role can be inspected, sensitive built-in actions can be approved or denied, and all decisions are logged.
+**Implementation status:** Active accounts carry a versioned role, the Account/Settings/Capabilities/Control Center views expose it, and managed power requests are role-checked before confirmation. Only the existing managed power path is enforced in this milestone; filesystem, peripheral, redstone, and network enforcement is deferred to 0.2.2. The policy remains advisory for trusted Lua and does not sandbox CC:T globals.
+
+**Deferred:** Full account-management UI for assigning roles, broader managed filesystem/peripheral/redstone enforcement, and multi-user administration remain in 0.2.2+. Role changes are intentionally not exposed as an unaudited library mutation.
+
+**Exit criteria:** A user’s role can be inspected, sensitive built-in actions can be approved or denied, and all decisions are logged. Manual CC:T validation remains required before this milestone is considered fully validated.
 
 ## 0.2.2 — Capability-aware application context
 
@@ -163,38 +206,42 @@ This roadmap is intentionally incremental. Each milestone should deliver one coh
 
 **Exit criteria:** New Qalcom-managed features consistently check capabilities, and denied actions are visible in the UI and audit log.
 
-## 0.2.3 — Peripheral inventory and inspection
+## 0.2.3 — Peripheral and mod-device inventory
 
-**Goal:** Read and understand local devices before controlling them.
+**Goal:** Read and understand local devices before controlling war-server systems.
 
 - Add a Peripheral Manager application.
 - Discover attached peripherals defensively and refresh on attach/detach events.
 - Display type, side/name, available methods, and basic status where safe.
-- Add user-defined aliases for devices.
+- Identify Aeronautics, CBC, Create: Propulsion, Create Radar, and Create Aero Radar devices through capability discovery rather than fixed names.
+- Define a versioned adapter contract for availability, API compatibility, supported read operations, stale-data state, and failure reporting.
+- Normalize radar scans into bounded contact records with source, timestamp, position/heading when available, confidence, age, and unknown/ambiguous identity.
+- Add user-defined aliases for vehicles, cannons, propulsion systems, radars, depots, and sensors.
 - Add persistent blocklists and trusted-device markers.
 - Keep inspection read-only in this milestone.
 
-**Exit criteria:** Operators can identify local peripherals and their status without issuing control commands.
+**Exit criteria:** Operators can identify local mod devices and their status without issuing control commands, each discovered integration reports a compatible adapter contract and health state, radar contacts are safely normalized without claiming certainty, and an absent integration does not prevent Qalcom from booting.
 
-## 0.2.4 — Redstone and local device controls
+## 0.2.4 — Local base and infrastructure controls
 
-**Goal:** Add narrowly scoped manual control with safeguards.
+**Goal:** Add narrowly scoped manual control for local bases and support systems before controlling vehicles or artillery.
 
-- Add named redstone inputs and outputs.
+- Add named redstone inputs and outputs for doors, alarms, lights, pumps, loaders, and other server-approved infrastructure.
 - Add explicit on/off controls with confirmation for important outputs.
 - Add timed pulses with bounded durations.
-- Add an emergency all-off action for Qalcom-managed outputs.
+- Add an emergency all-off or safe-state action for Qalcom-managed infrastructure.
 - Log every control action with user, device, value, and timestamp.
-- Respect device blocklists and role capabilities.
+- Respect device blocklists, war-server zones, and role capabilities.
+- Do not add firing, launch, propulsion, or movement controls in this milestone.
 
-**Exit criteria:** Manual controls are allowlisted, reversible where possible, auditable, and safe when a peripheral disappears.
+**Exit criteria:** Manual infrastructure controls are allowlisted, reversible where possible, auditable, and safe when a peripheral disappears.
 
 ## 0.2.5 — Local jobs and structured automation
 
 **Goal:** Automate local actions without executing arbitrary Lua strings.
 
 - Add a local job scheduler with named jobs.
-- Support structured triggers such as timer, redstone input, peripheral attach, and manual run.
+- Support structured triggers such as timer, redstone input, peripheral attach, radar contact, and manual run.
 - Add retry limits, cooldowns, timeouts, and execution history.
 - Add pause, resume, disable, and emergency-stop controls.
 - Add per-job capability declarations.
@@ -215,7 +262,7 @@ This roadmap is intentionally incremental. Each milestone should deliver one coh
 
 **Exit criteria:** Failed jobs are diagnosable, bounded, and recoverable from the desktop or CraftOS recovery path.
 
-## 0.3.0 — Network and modem foundation
+## 0.3.0 — Network and modem foundation for the war server
 
 **Goal:** Discover network hardware without accepting remote commands yet.
 
@@ -277,53 +324,63 @@ This roadmap is intentionally incremental. Each milestone should deliver one coh
 
 **Exit criteria:** Operators can understand and control the trust boundary without relying on raw terminal commands.
 
-## 0.4.0 — Defense telemetry foundation
+## 0.4.0 — Modded war-server telemetry foundation
 
-**Goal:** Build a read-only command center before adding response actions.
+**Goal:** Build a read-only command center for the target modpack before adding combat or movement actions.
 
-- Add a dashboard for connected node and device telemetry.
-- Add configurable panels for inventory, power, reactor, turtle, door, and alarm status where supported by installed mods/devices.
-- Add timestamps, stale-data indicators, and source identity.
-- Add historical incident/event timeline using bounded local storage.
-- Keep all panels read-only.
+- Add adapter-backed dashboards for Aeronautics vehicles and airships, CBC artillery, and Create: Propulsion systems.
+- Add configurable panels for radar status, scan coverage, contact tracks, vehicle identity, assembly health, docking, power, fuel, propulsion readiness, cannon readiness, ammunition, loaders, depots, alarms, and base infrastructure where supported.
+- Add radar contact age, confidence, source identity, position uncertainty, scan coverage gaps, and correlation history alongside timestamps, stale-data indicators, mod/integration version, and adapter failure reasons.
+- Add map-oriented overlays and bounded historical incident/combat-event timelines, while respecting faction and protected-zone visibility rules.
+- Keep all mod panels and controls read-only.
 
-**Exit criteria:** The dashboard clearly distinguishes current, stale, missing, and untrusted telemetry.
+**Exit criteria:** The command center clearly distinguishes current, stale, missing, damaged, unavailable, and untrusted telemetry for every supported integration, and radar displays never present an unverified contact as a confirmed hostile target.
 
-## 0.4.1 — Fleet and logistics views
+## 0.4.1 — Fleet, artillery, and logistics views
 
-**Goal:** Organize defensive assets without issuing movement or attack commands.
+**Goal:** Organize war-server assets and supply chains without issuing movement, firing, or propulsion commands.
 
-- Add turtle/fleet inventory and health views.
-- Add named locations and route metadata.
-- Add logistics and storage status panels.
-- Add power and fuel warnings.
-- Add node/device grouping and filters.
+- Add radar-derived air, land, and naval contact views, with explicit unknown/friendly/claimed/unverified states.
+- Add Aeronautics fleet inventory, crew/seat status where available, vehicle health, docking, and named-location views.
+- Add CBC cannon inventory, loading state, barrel/readiness state, ammunition stock, and maintenance warnings.
+- Add Create: Propulsion engine, fuel/energy, assembly, route, and mechanical readiness panels where exposed.
+- Add Create Diesel Generators and Create Nuclear power/fuel/heat telemetry where safely exposed.
+- Add Create Railways, trains, depots, and supply-route status where exposed.
+- Add logistics and storage status for ammunition, fuel, components, and repair supplies.
+- Add power, fuel, ammunition, communication, radar coverage, and sensor-health warnings.
+- Add asset grouping, faction/base/protected-zone filters, and operator-defined routes and locations.
 
-**Exit criteria:** Operators can locate and assess defensive resources from the dashboard without unsafe automatic action.
+**Exit criteria:** Operators can locate and assess vehicles, artillery, propulsion systems, and supplies without unsafe automatic action.
 
-## 0.4.2 — Manual defensive response
+## 0.4.2 — Manual defensive and infrastructure response
 
-**Goal:** Add carefully confirmed response actions.
+**Goal:** Add carefully confirmed response actions while keeping combat actions behind a separate approval boundary.
 
-- Add manual door, barrier, alarm, and lockdown controls.
-- Require role permission and explicit confirmation for high-impact actions.
-- Add all-off/unlock recovery actions where safe and supported.
-- Record operator, target, old state, new state, and result.
-- Add response cooldowns and duplicate-command protection.
+- Add manual door, barrier, alarm, lockdown, docking, and infrastructure controls.
+- Add safe-state or emergency-stop actions for Qalcom-managed propulsion and base systems where supported.
+- Add operator-confirmed radar mute, scan pause, or sensor-isolation actions only where the mod exposes a safe, reversible interface.
+- Keep radar-guided targeting, CBC firing, TACZ actions, and Aeronautics movement/flight commands disabled by default until their dedicated approval and safety model is complete.
+- Require role permission and explicit confirmation for every high-impact action.
+- Add all-off, unlock, and recovery actions where safe and supported.
+- Record operator, target, old state, new state, request ID, and result.
+- Add response cooldowns, duplicate-command protection, and zone restrictions.
 
-**Exit criteria:** Defensive actions are explicit, auditable, reversible where possible, and unavailable to unauthorized roles.
+**Exit criteria:** Defensive and infrastructure actions are explicit, auditable, reversible where possible, and unavailable to unauthorized roles.
 
-## 0.4.3 — Incident response and automation safety
+## 0.4.3 — Incident response and combat-system safety
 
-**Goal:** Coordinate defensive actions without creating an uncontrolled autonomous system.
+**Goal:** Coordinate war-server incidents without creating an uncontrolled autonomous combat system.
 
-- Add incident records with severity, source, timeline, and acknowledgement state.
-- Add response playbooks built from structured allowlisted actions.
+- Add incident records with severity, faction/base/asset source, timeline, and acknowledgement state.
+- Add response playbooks built from structured, allowlisted actions for alarms, lockdowns, logistics, evacuation, and safe-state procedures.
 - Add dry-run previews before executing playbooks.
-- Add automation failure safe mode and global emergency stop.
-- Require operator acknowledgement for destructive or world-changing actions.
+- Add adapter health monitoring and a clear degraded-mode experience when Aeronautics, CBC, Create: Propulsion, Create Radar, or Create Aero Radar is unavailable.
+- Correlate radar contacts with faction, territory, vehicle, and incident records without treating correlation as identification or authorization.
+- Add automation failure safe mode and a global emergency stop.
+- Require operator acknowledgement for destructive, combat-related, or world-changing actions.
+- Defer any radar-guided targeting, CBC firing, TACZ control, Aeronautics flight/movement, or Create: Propulsion actuation to a later milestone with server-specific rules, two-person approval where appropriate, and a dedicated manual CC:T test plan.
 
-**Exit criteria:** Incidents can be acknowledged, investigated, and resolved with bounded playbooks and clear emergency escape paths.
+**Exit criteria:** Incidents can be acknowledged, investigated, and resolved with bounded playbooks, clear emergency escape paths, and no accidental autonomous combat behavior.
 
 ## Cross-release quality requirements
 
@@ -340,12 +397,15 @@ Maintain lightweight checks for:
 - Path handling and filesystem safety
 - Account validation and role persistence
 - Settings defaults and migration
-- Capability declarations and policy decisions
+- Capability declarations and war-server policy decisions
 - Window geometry and compact layouts
 - Event routing and session invalidation
-- Peripheral attach/detach behavior
+- Peripheral attach/detach behavior and mod-adapter discovery
 - Job validation, retries, timeouts, and emergency stop
 - Network envelope validation, replay rejection, expiry, and rate limits
+- Aeronautics, CBC, Create: Propulsion, Create Radar, and Create Aero Radar adapter discovery, stale-data handling, and safe failure
+- Radar contact normalization, uncertainty, deduplication, track expiry, and scan-coverage gaps
+- Asset, ammunition, propulsion, power, territory, and logistics state validation
 - Recovery behavior and bounded log growth
 
 Every milestone also needs an in-game manual checklist because no local CC:T runtime is available.
@@ -373,6 +433,7 @@ Monitor and constrain:
 - Long-running filesystem or peripheral operations
 - Job frequency and retry volume
 - Network message size, rate, and retention
+- Radar scan frequency, contact count, track retention, map-overlay density, and alert fan-out
 
 ## Explicit non-goals
 
@@ -382,6 +443,8 @@ Monitor and constrain:
 - No claim that local login or pairing is cryptographically secure without a suitable CC:T-compatible design
 - No third-party app store before capability and trust work
 - No complex multi-user desktop before the local foundation is stable
-- No autonomous destructive or offensive behavior
+- No autonomous destructive or offensive behavior; combat-system controls require a separate, explicit approval design
+- No autonomous radar-to-targeting, radar-to-firing, or radar-to-engagement loop
+- No assumption that Aeronautics, CBC, Create: Propulsion, Create Radar, or Create Aero Radar APIs are identical across server modpacks or versions
 - No modification of the CC:T Java host or firmware in this project
 - No assumption that a Lua coroutine is a secure process sandbox

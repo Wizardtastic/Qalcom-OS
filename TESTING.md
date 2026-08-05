@@ -1,5 +1,7 @@
 # Qalcom OS Testing Guide
 
+The current source version is 0.2.1. The 0.1.x and 0.2.0 sections below remain required regression checks; the role/approval checks cover the current milestone. No local Lua runtime or CC:T instance is available in this checkout, so automated and in-game validation remain pending.
+
 ## Offline pure-helper checks
 
 The standalone test runner covers logic that does not require CC:T globals:
@@ -90,12 +92,17 @@ Run these checks on a fresh copy and again over an existing 0.1.x installation.
 - [ ] `/qalcom/logs/system.log` records boot, login, failure, and recovery events.
 - [ ] `/qalcom/logs/audit.log` records capability launches, denials, and inspections and remains bounded.
 
-### Capabilities and trusted manifests
+### Roles, approvals, and trusted manifests
 
 - [ ] Every built-in Start application appears in Capabilities with a title and declared profile.
-- [ ] Capabilities shows declared entries without implying enforcement or authorization.
-- [ ] Launch, login, denied power request, and capability inspection events appear in the audit log.
-- [ ] The UI clearly states that the 0.2.0 policy is not a secure CC:T sandbox.
+- [ ] A legacy first account with no role is migrated to Administrator and other legacy accounts to Observer without losing login data.
+- [ ] A malformed explicit role does not escalate to Administrator and is normalized to Observer.
+- [ ] Account, Settings, Control Center, and Capabilities show the active role.
+- [ ] Observer cannot request reboot/shutdown; the denial is visible and audit-recorded.
+- [ ] Administrator can request reboot/shutdown and must explicitly confirm in the dialog.
+- [ ] Confirmed approval, cancellation, and denied requests appear in the audit log with actor, role, capability, and action.
+- [ ] Capabilities shows role decisions without implying enforcement beyond managed Qalcom actions.
+- [ ] The UI clearly states that the policy is not a secure CC:T sandbox.
 - [ ] Missing or malformed audit storage does not prevent Qalcom from booting.
 
 ### Session and resize behavior
