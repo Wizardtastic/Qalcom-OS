@@ -35,7 +35,7 @@ return function(ctx)
             row = row + 1
             for index, capability in ipairs(requested) do
                 if row >= footer then break end
-                local decision = Capabilities.policy(ctx.role, apps[selected], capability)
+                local decision = Capabilities.policy(ctx.role, apps[selected], capability, ctx:isSafeMode())
                 UI.status(ctx.win, split, row, decision.allowed and "APPROVED" or "DENIED", decision.allowed and UI.colors.success or UI.colors.warning, 10)
                 UI.text(ctx.win, split + 12, row, capability, UI.colors.text, UI.colors.surface, width - split - 13)
                 row = row + 1

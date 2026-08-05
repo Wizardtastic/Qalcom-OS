@@ -168,10 +168,10 @@ The profile intentionally separates direct integrations from libraries, performa
 - Added bounded capability audit logging for launches, logins, denials, and inspections.
 - Kept the policy explicitly advisory because trusted CC:T Lua is not sandboxed.
 
-- Deferred to 0.2.2+: broader capability-aware service boundaries and managed enforcement for filesystem, peripheral, redstone, and system actions.
+- Completed in 0.2.2: capability-aware service boundaries and managed enforcement for filesystem, peripheral, redstone, and system actions used by Qalcom-managed paths.
 - Deferred to 0.2.3+: peripheral inventory and safe device inspection.
 
-**Implementation status:** Every built-in app has a documented capability profile and the OS can display declared capabilities without changing existing app behavior. The audit stream is bounded and the capability layer does not claim to sandbox trusted Lua. Role approvals now begin in 0.2.1 for managed power requests; broader enforcement remains deferred.
+**Implementation status:** Every built-in app has a documented capability profile and the OS can display declared capabilities without changing existing app behavior. The audit stream is bounded and the capability layer does not claim to sandbox trusted Lua. Role approvals begin in 0.2.1, and 0.2.2 adds the first managed service boundary for built-in applications.
 
 **Exit criteria:** Every built-in app has a documented capability profile and the OS can display declared capabilities without breaking existing apps. Manual CC:T validation remains required before this milestone is considered fully validated.
 
@@ -188,22 +188,26 @@ The profile intentionally separates direct integrations from libraries, performa
 
 **Implementation status:** Active accounts carry a versioned role, the Account/Settings/Capabilities/Control Center views expose it, Administrator accounts can manage roles through an explicit confirmation flow, and managed power requests are role-checked before confirmation. The last Administrator cannot be removed. Only these existing managed paths are enforced in this milestone; filesystem, peripheral, redstone, and network enforcement is deferred to 0.2.2. The policy remains advisory for trusted Lua and does not sandbox CC:T globals.
 
-**Deferred:** Broader managed filesystem/peripheral/redstone enforcement and multi-user administration remain in 0.2.2+. Role changes are exposed only through the Administrator-gated, audited Account workflow.
+**Deferred:** Mod-device inventory, redstone control UI, and broader multi-user administration remain in 0.2.3+. Role changes are exposed only through the Administrator-gated, audited Account workflow.
 
 **Exit criteria:** A user’s role can be inspected, sensitive built-in actions can be approved or denied, and all decisions are logged. Manual CC:T validation remains required before this milestone is considered fully validated.
 
-## 0.2.2 — Capability-aware application context
+## Implemented — validation pending: 0.2.2 — Capability-aware application context
 
 **Goal:** Connect the policy model to Qalcom’s app lifecycle without pretending to sandbox globals.
 
-- Pass approved capabilities through application contexts.
-- Add reusable checks for Qalcom-managed filesystem, peripheral, redstone, and system actions.
-- Make built-in apps use the managed checks where practical.
-- Show a useful denial message instead of silently failing.
-- Add a Safe Mode policy that disables sensitive managed actions.
-- Document that trusted Lua code still has normal CC:T global access until a stronger boundary exists.
+- Pass approved capabilities through application contexts, including Safe Mode-aware decisions.
+- Added reusable checks in `/qalcom/lib/managed.lua` for Qalcom-managed filesystem, peripheral, redstone, label, and power actions.
+- Migrated Terminal, Explorer, Editor, Logs, Settings, Monitor, Control Center, and Capabilities to use managed helpers where practical.
+- Show useful denial messages and notifications instead of silently failing; denials are bounded-audit entries.
+- Added a Safe Mode policy that disables sensitive managed writes, controls, label changes, and power actions while preserving permitted read-only inspection.
+- Documented that trusted Lua code still has normal CC:T global access until a stronger boundary exists.
 
-**Exit criteria:** New Qalcom-managed features consistently check capabilities, and denied actions are visible in the UI and audit log.
+**Implementation status:** The kernel now exposes approved capability metadata and managed context methods. Built-in applications route their Qalcom-controlled filesystem, peripheral, label, and power operations through those methods. Safe Mode is enforced by the shared policy decision layer, and denied managed operations notify the operator and write an audit entry. Redstone wrappers are available for the next allowlisted infrastructure feature but no built-in app performs redstone control yet. Core settings/account persistence remains a kernel/recovery service path rather than an app-controlled filesystem operation; it is not presented as third-party capability enforcement.
+
+**Exit criteria:** New Qalcom-managed features consistently check capabilities, and denied actions are visible in the UI and audit log. Manual CC:T validation remains required before this milestone is considered fully validated.
+
+**Deferred:** Peripheral inventory applications, mod-device adapters, redstone control UI, and stronger process/security isolation remain future work. Trusted built-in Lua still has normal CC:T globals; this is not a secure sandbox.
 
 ## 0.2.3 — Peripheral and mod-device inventory
 

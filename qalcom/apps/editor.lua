@@ -12,13 +12,11 @@ return function(ctx)
 
     local function loadFile()
         lines = {}
-        if fs.exists(path) and not fs.isDir(path) then
-            local file = fs.open(path, "r")
-            if file then
-                local text = file.readAll() or ""
-                file.close()
-                for line in (text .. "\n"):gmatch("(.-)\n") do lines[#lines + 1] = line end
-            end
+        local text, reason = ctx:readFile(path)
+        if text then
+            for line in (text .. "\n"):gmatch("(.-)\n") do lines[#lines + 1] = line end
+        elseif reason and reason ~= "File not found" then
+            status = reason
         end
         if #lines == 0 then lines = { "" } end
         cursor = 1
@@ -27,13 +25,12 @@ return function(ctx)
     end
 
     local function saveFile()
-        local file = fs.open(path, "w")
-        if not file then
-            status = "Unable to save file"
+        local ok, reason = ctx:writeFile(path, table.concat(lines, "\n"))
+        if not ok then
+            status = reason or "Unable to save file"
+            ctx:notify(status, UI.colors.danger)
             return
         end
-        file.write(table.concat(lines, "\n"))
-        file.close()
         dirty = false
         status = "Saved " .. UI.safeName(path)
         ctx:notify(status, UI.colors.success)

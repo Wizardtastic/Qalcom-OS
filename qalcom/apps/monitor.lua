@@ -33,17 +33,15 @@ return function(ctx)
             if row < footerRow then
                 UI.text(ctx.win, 3, row, "Attached peripherals", UI.colors.accent, UI.colors.surface, width - 4)
                 row = row + 1
-                local names = {}
-                local okNames, listed = pcall(peripheral.getNames)
-                if okNames and type(listed) == "table" then names = listed end
+                local names = ctx:peripheralNames() or {}
                 table.sort(names)
                 if #names == 0 then
                     UI.text(ctx.win, 3, row, "No peripherals detected", UI.colors.muted, UI.colors.surface, width - 4)
                 else
                     for _, name in ipairs(names) do
                         if row >= footerRow then break end
-                        local okType, peripheralType = pcall(peripheral.getType, name)
-                        local types = okType and tostring(peripheralType or "unknown") or "unknown"
+                        local peripheralType = ctx:peripheralType(name)
+                        local types = tostring(peripheralType or "unknown")
                         UI.text(ctx.win, 3, row, name, UI.colors.text, UI.colors.surface, math.floor(width * 0.42))
                         UI.text(ctx.win, math.floor(width * 0.44), row, types, UI.colors.muted, UI.colors.surface, width - math.floor(width * 0.44) - 1)
                         row = row + 1

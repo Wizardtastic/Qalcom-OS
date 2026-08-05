@@ -16,6 +16,8 @@ Use this checklist before calling a milestone complete.
 - [ ] Every built-in application has a versioned capability manifest.
 - [ ] Role policy and approval behavior are documented; trusted Lua is not treated as sandboxed.
 - [ ] Capability policy limitations are documented; no sandbox claim is made.
+- [ ] Managed context wrappers cover filesystem, peripheral, redstone, label, and power actions used by built-in apps.
+- [ ] Safe Mode blocks sensitive managed actions while preserving permitted read-only inspection.
 - [ ] Compact terminal behavior is checked at 30 x 14 and at a normal terminal size.
 - [ ] Native UI shadows and animations are checked for bounds, responsiveness, and memory impact.
 - [ ] Recovery and CraftOS escape paths remain available.
@@ -40,11 +42,13 @@ Use this checklist before calling a milestone complete.
 - [ ] Boot, login, logout, recovery, resize, app-failure, task cleanup, and power-confirmation paths were tested.
 - [ ] Manual restart limits and recovery diagnostics were checked.
 - [ ] Capability inspector, role decisions, account-role approvals/denials, and power approval events were checked.
+- [ ] Managed action approvals and denials, including Safe Mode denials, were checked in the UI and audit log.
 - [ ] Known limitations are recorded in the README and release notes.
 
 ## Version and documentation
 
 - [ ] `/qalcom/version.lua` has the new version.
+- [ ] `/qalcom/lib/managed.lua` is included in installation and upgrade instructions.
 - [ ] Role schema/version migration is documented in the README and roadmap.
 - [ ] User-facing version text is current.
 - [ ] `ROADMAP.md` marks the milestone complete and preserves future work.

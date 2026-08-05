@@ -18,18 +18,14 @@ return function(ctx)
     local function refresh()
         entries = {}
         if cwd ~= "/" then entries[#entries + 1] = { name = "..", path = fs.getDir(cwd), dir = true, parent = true } end
-        if fs.exists(cwd) and fs.isDir(cwd) then
-            local names = fs.list(cwd)
-            table.sort(names, function(a, b)
-                local ad = fs.isDir(fs.combine(cwd, a))
-                local bd = fs.isDir(fs.combine(cwd, b))
-                if ad ~= bd then return ad end
-                return a:lower() < b:lower()
-            end)
-            for _, name in ipairs(names) do
-                local path = fs.combine(cwd, name)
-                entries[#entries + 1] = { name = name, path = path, dir = fs.isDir(path) }
-            end
+        local listed, reason = ctx:listDirectory(cwd)
+        if reason then status = reason end
+        table.sort(listed, function(a, b)
+            if a.dir ~= b.dir then return a.dir end
+            return a.name:lower() < b.name:lower()
+        end)
+        for _, item in ipairs(listed) do
+            entries[#entries + 1] = item
         end
         selected = math.min(math.max(1, selected), math.max(1, #entries))
     end
@@ -83,15 +79,14 @@ return function(ctx)
     local function deleteSelected()
         local item = selectedItem()
         if not item or item.parent then return end
-        if fs.isReadOnly(item.path) then status = "Read-only: " .. item.name; render(); return end
+        local info, infoReason = ctx:readPath(item.path)
+        if not info then status = infoReason or "Unable to inspect path"; render(); return end
+        if info.readOnly then status = "Read-only: " .. item.name; render(); return end
         local task = ctx:launch("dialog", { modal = true, dialogTitle = "Delete " .. item.name .. "?", dialogMessage = "This cannot be undone." })
         if task then
             task.context.dialogCallback = function()
-                if not fs.exists(item.path) then
-                    return false, "Path no longer exists"
-                end
-                local ok, result = pcall(fs.delete, item.path)
-                if not ok or result == false then
+                local ok, result = ctx:deletePath(item.path)
+                if not ok then
                     return false, "Delete failed: " .. tostring(result or "filesystem error")
                 end
                 refresh()
@@ -106,12 +101,14 @@ return function(ctx)
         local name = "New Folder"
         local path = fs.combine(cwd, name)
         local suffix = 1
-        while fs.exists(path) do
+        while true do
+            local info = ctx:readPath(path)
+            if not info or not info.exists then break end
             suffix = suffix + 1
             path = fs.combine(cwd, name .. " " .. suffix)
         end
-        local ok, result = pcall(fs.makeDir, path)
-        if not ok or result == false then
+        local ok, result = ctx:makeDir(path)
+        if not ok then
             status = "Create failed: " .. tostring(result or "filesystem error")
             render()
             return
@@ -131,16 +128,18 @@ return function(ctx)
     end
 
     local function pasteClipboard()
-        if not clipboard or not fs.exists(clipboard) then status = "Clipboard is empty"; render(); return end
+        local clipboardInfo = clipboard and ctx:readPath(clipboard)
+        if not clipboard or not clipboardInfo or not clipboardInfo.exists then status = "Clipboard is empty"; render(); return end
         local destination = fs.combine(cwd, fs.getName(clipboard))
-        if fs.exists(destination) then status = "Already exists: " .. fs.getName(destination); render(); return end
-        if fs.isDir(clipboard) and (destination == clipboard or destination:sub(1, #clipboard + 1) == clipboard .. "/") then
+        local destinationInfo = ctx:readPath(destination)
+        if destinationInfo and destinationInfo.exists then status = "Already exists: " .. fs.getName(destination); render(); return end
+        if clipboardInfo.directory and (destination == clipboard or destination:sub(1, #clipboard + 1) == clipboard .. "/") then
             status = "Cannot paste a folder into itself"
             render()
             return
         end
-        local ok, result = pcall(fs.copy, clipboard, destination)
-        if not ok or result == false then
+        local ok, result = ctx:copyPath(clipboard, destination)
+        if not ok then
             status = "Paste failed: " .. tostring(result or "filesystem error")
             render()
             return

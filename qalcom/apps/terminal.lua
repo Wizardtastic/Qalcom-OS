@@ -49,9 +49,11 @@ return function(ctx)
         local base = prefix:match("(.*/)") or ""
         local namePrefix = prefix:sub(#base + 1)
         local directory = absolute(base == "" and cwd or base)
-        if not fs.exists(directory) or not fs.isDir(directory) then return end
+        local directoryInfo = ctx:readPath(directory)
+        if not directoryInfo or not directoryInfo.exists or not directoryInfo.directory then return end
         local matches = {}
-        for _, name in ipairs(fs.list(directory)) do
+        for _, item in ipairs(ctx:listDirectory(directory) or {}) do
+            local name = item.name
             if name:sub(1, #namePrefix):lower() == namePrefix:lower() then matches[#matches + 1] = name end
         end
         if #matches == 1 then
@@ -86,37 +88,61 @@ return function(ctx)
         elseif name == "about" then append("Qalcom OS " .. VERSION .. " | Windows-inspired CC:T desktop")
         elseif name == "ls" or name == "dir" then
             local path = absolute(args[2] or cwd)
-            if not fs.exists(path) or not fs.isDir(path) then append("Not a directory: " .. path)
+            local info, reason = ctx:readPath(path)
+            if not info or not info.exists or not info.directory then append(reason or ("Not a directory: " .. path))
             else
-                local entries = fs.list(path); table.sort(entries)
-                for _, entry in ipairs(entries) do append((fs.isDir(fs.combine(path, entry)) and "[DIR] " or "      ") .. entry) end
+                local entries = ctx:listDirectory(path) or {}
+                table.sort(entries, function(a, b) return a.name < b.name end)
+                for _, entry in ipairs(entries) do append((entry.dir and "[DIR] " or "      ") .. entry.name) end
             end
         elseif name == "cd" then
             local path = absolute(args[2] or "/")
-            if fs.exists(path) and fs.isDir(path) then cwd = path else append("Directory not found: " .. path) end
+            local info, reason = ctx:readPath(path)
+            if info and info.exists and info.directory then cwd = path else append(reason or ("Directory not found: " .. path)) end
         elseif name == "cat" or name == "type" or name == "view" then
             local path = absolute(args[2])
-            if not args[2] or not fs.exists(path) or fs.isDir(path) then append("File not found: " .. tostring(args[2]))
-            else
-                local file = fs.open(path, "r")
-                if file then append(file.readAll() or ""); file.close() else append("Unable to read: " .. path) end
-            end
+            local text, reason
+            if args[2] then text, reason = ctx:readFile(path) end
+            if not args[2] or not text then append(reason or ("File not found: " .. tostring(args[2])))
+            else append(text) end
         elseif name == "mkdir" then
-            if not args[2] then append("Usage: mkdir <directory>") else fs.makeDir(absolute(args[2])); append("Created " .. absolute(args[2])) end
+            if not args[2] then append("Usage: mkdir <directory>") else
+                local ok, reason = ctx:makeDir(absolute(args[2]))
+                if ok then append("Created " .. absolute(args[2])) else append(reason or "Unable to create directory") end
+            end
         elseif name == "touch" then
-            if not args[2] then append("Usage: touch <file>") else local file = fs.open(absolute(args[2]), "a"); if file then file.close(); append("Touched " .. absolute(args[2])) end end
+            if not args[2] then append("Usage: touch <file>") else
+                local ok, reason = ctx:touch(absolute(args[2]))
+                if ok then append("Touched " .. absolute(args[2])) else append(reason or "Unable to create file") end
+            end
         elseif name == "rm" then
             local path = args[2] and absolute(args[2])
-            if not path then append("Usage: rm <path>") elseif not fs.exists(path) then append("Path not found") elseif fs.isReadOnly(path) then append("Read-only path") else fs.delete(path); append("Deleted " .. path) end
+            local info, reason = path and ctx:readPath(path) or nil, nil
+            if not path then append("Usage: rm <path>") elseif not info or not info.exists then append(reason or "Path not found") elseif info.readOnly then append("Read-only path") else
+                local ok, failure = ctx:deletePath(path)
+                if ok then append("Deleted " .. path) else append(failure or "Unable to delete path") end
+            end
         elseif name == "cp" or name == "mv" then
             if not args[2] or not args[3] then append("Usage: " .. name .. " <source> <destination>")
             else
                 local source, destination = absolute(args[2]), absolute(args[3])
-                if not fs.exists(source) then append("Source not found") elseif name == "cp" then fs.copy(source, destination); append("Copied") else fs.move(source, destination); append("Moved") end
+                local sourceInfo, sourceReason = ctx:readPath(source)
+                if not sourceInfo or not sourceInfo.exists then append(sourceReason or "Source not found")
+                elseif name == "cp" then
+                    local ok, reason = ctx:copyPath(source, destination)
+                    if ok then append("Copied") else append(reason or "Unable to copy") end
+                else
+                    local ok, reason = ctx:movePath(source, destination)
+                    if ok then append("Moved") else append(reason or "Unable to move") end
+                end
             end
         elseif name == "logout" then os.queueEvent("qalcom_logout")
-        elseif name == "reboot" then ctx:requestPower("reboot"); append("Reboot requested; confirm through the desktop if prompted.")
-        elseif name == "shutdown" then ctx:requestPower("shutdown"); append("Shutdown requested; confirm through the desktop if prompted.")
+        elseif name == "reboot" then
+            local ok, reason = ctx:managedPower("reboot")
+            append(ok and "Reboot requested; confirm through the desktop if prompted." or (reason or "Reboot denied"))
+        elseif name == "shutdown" then
+            local ok, reason = ctx:managedPower("shutdown")
+            append(ok and "Shutdown requested; confirm through the desktop if prompted." or (reason or "Shutdown denied"))
         else append("Command not found: " .. tostring(name)) end
     end
 

@@ -1,6 +1,11 @@
 local System = {}
 
-local function safeFreeSpace()
+local function safeFreeSpace(ctx)
+    if ctx and ctx.freeSpace then
+        local value = ctx:freeSpace()
+        if value then return value end
+        return "denied"
+    end
     if fs.getFreeSpace then
         local ok, value = pcall(fs.getFreeSpace, "/")
         if ok and value then return value end
@@ -19,15 +24,25 @@ local function safeMemory()
     return "unavailable"
 end
 
-function System.info()
+function System.info(ctx)
     local width, height = term.getSize()
     local peripherals = {}
-    local okNames, names = pcall(peripheral.getNames)
-    if okNames and type(names) == "table" then peripherals = names end
+    if ctx and ctx.peripheralNames then
+        peripherals = ctx:peripheralNames() or {}
+    else
+        local okNames, names = pcall(peripheral.getNames)
+        if okNames and type(names) == "table" then peripherals = names end
+    end
     local modemCount = 0
     for _, name in ipairs(peripherals) do
-        local okType, peripheralType = pcall(peripheral.getType, name)
-        if okType and peripheralType == "modem" then modemCount = modemCount + 1 end
+        local peripheralType
+        if ctx and ctx.peripheralType then
+            peripheralType = ctx:peripheralType(name)
+        else
+            local okType, value = pcall(peripheral.getType, name)
+            if okType then peripheralType = value end
+        end
+        if peripheralType == "modem" then modemCount = modemCount + 1 end
     end
     return {
         computerId = os.getComputerID(),
@@ -35,7 +50,7 @@ function System.info()
         width = width,
         height = height,
         memory = safeMemory(),
-        freeSpace = safeFreeSpace(),
+        freeSpace = safeFreeSpace(ctx),
         peripherals = peripherals,
         modems = modemCount,
         time = os.clock(),

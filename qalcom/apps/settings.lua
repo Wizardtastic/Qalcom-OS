@@ -33,14 +33,18 @@ return function(ctx)
     end
 
     local function saveLabel()
+        local ok, reason
         if labelInput ~= "" then
-            os.setComputerLabel(labelInput)
-            ctx:notify("Computer label updated", UI.colors.success)
+            ok, reason = ctx:setComputerLabel(labelInput)
         else
-            os.setComputerLabel(nil)
-            ctx:notify("Computer label cleared", UI.colors.warning)
+            ok, reason = ctx:setComputerLabel(nil)
         end
-        editingLabel = false
+        if ok then
+            ctx:notify(labelInput ~= "" and "Computer label updated" or "Computer label cleared", labelInput ~= "" and UI.colors.success or UI.colors.warning)
+            editingLabel = false
+        else
+            ctx:notify(reason or "Computer label change denied", UI.colors.danger)
+        end
     end
 
     local function render()

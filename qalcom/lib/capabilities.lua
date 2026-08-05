@@ -1,5 +1,13 @@
 local Capabilities = {}
-local Roles = dofile("/qalcom/lib/roles.lua")
+local function loadRoles()
+    local candidates = { "qalcom/lib/roles.lua", "../qalcom/lib/roles.lua", "/qalcom/lib/roles.lua" }
+    for _, path in ipairs(candidates) do
+        local ok, module = pcall(dofile, path)
+        if ok and type(module) == "table" then return module end
+    end
+    error("Unable to load Qalcom roles")
+end
+local Roles = loadRoles()
 
 Capabilities.schemaVersion = 1
 Capabilities.policySchemaVersion = Roles.schemaVersion
@@ -13,6 +21,7 @@ Capabilities.names = {
     "redstone.control",
     "network.send",
     "network.receive",
+    "system.label",
     "system.reboot",
     "system.shutdown",
 }
@@ -27,6 +36,7 @@ Capabilities.descriptions = {
     ["redstone.control"] = "Change managed redstone outputs",
     ["network.send"] = "Send approved network messages",
     ["network.receive"] = "Receive approved network messages",
+    ["system.label"] = "Change the computer label",
     ["system.reboot"] = "Request a computer reboot",
     ["system.shutdown"] = "Request a computer shutdown",
 }
@@ -36,7 +46,7 @@ Capabilities.descriptions = {
 local manifests = {
     terminal = {
         title = "Terminal", trusted = true,
-        requested = { "fs.read", "fs.write", "system.reboot", "system.shutdown" },
+        requested = { "fs.read", "fs.write", "system.label", "system.reboot", "system.shutdown" },
         unmanaged = { "term", "os.pullEvent" },
     },
     explorer = {
@@ -51,8 +61,8 @@ local manifests = {
     },
     settings = {
         title = "Settings", trusted = true,
-        requested = { "fs.read", "fs.write" },
-        unmanaged = { "settings", "os.setComputerLabel", "os.pullEvent" },
+        requested = { "fs.read", "fs.write", "system.label" },
+        unmanaged = { "settings", "os.pullEvent" },
     },
     account = {
         title = "Account", trusted = true,
@@ -71,7 +81,7 @@ local manifests = {
     },
     control = {
         title = "Control Center", trusted = true,
-        requested = {},
+        requested = { "fs.read", "peripheral.read" },
         unmanaged = { "os.pullEvent" },
     },
     logs = {
@@ -138,24 +148,34 @@ function Capabilities.roleAllows(role, capability)
     return Roles.allows(role, capability)
 end
 
-function Capabilities.effective(role, appName, capability)
-    return Capabilities.roleAllows(role, capability) and Capabilities.has(appName, capability)
+local function safeModeBlocks(capability)
+    return capability == "fs.write" or capability == "peripheral.control"
+        or capability == "redstone.control" or capability == "system.label"
+        or capability == "system.reboot" or capability == "system.shutdown"
 end
 
-function Capabilities.policy(role, appName, capability)
+function Capabilities.effective(role, appName, capability, safeMode)
+    return not (safeMode == true and safeModeBlocks(capability))
+        and Capabilities.roleAllows(role, capability) and Capabilities.has(appName, capability)
+end
+
+function Capabilities.policy(role, appName, capability, safeMode)
     local appKnown = Capabilities.manifest(appName) ~= nil
     local roleKnown = Roles.exists(role)
     local declared = appKnown and Capabilities.has(appName, capability) or false
-    local allowed = roleKnown and declared and Roles.allows(role, capability) or false
+    local safeModeDenied = safeMode == true and safeModeBlocks(capability)
+    local allowed = roleKnown and declared and Roles.allows(role, capability) and not safeModeDenied or false
     return {
         role = Roles.normalize(role),
         app = appName,
         capability = capability,
         declared = declared,
         allowed = allowed,
+        safeMode = safeMode == true,
         reason = not appKnown and "unknown application"
             or not roleKnown and "unknown role"
             or not declared and "application did not declare capability"
+            or safeModeDenied and "Safe Mode blocks sensitive actions"
             or not Roles.allows(role, capability) and "role policy denied"
             or "allowed",
     }

@@ -1,6 +1,6 @@
 # Qalcom OS Testing Guide
 
-The current source version is 0.2.1. The 0.1.x and 0.2.0 sections below remain required regression checks; the role/approval checks cover the current milestone. No local Lua runtime or CC:T instance is available in this checkout, so automated and in-game validation remain pending.
+The current source version is 0.2.2. The 0.1.x, 0.2.0, and 0.2.1 checks below remain required regression checks; the managed-context and Safe Mode checks cover the current milestone. No local Lua runtime or CC:T instance is available in this checkout, so automated and in-game validation remain pending.
 
 ## Offline pure-helper checks
 
@@ -18,6 +18,7 @@ Covered helper behavior:
 - Username validation
 - Account record shape validation
 - Role normalization and role capability policy
+- Safe Mode policy decisions for sensitive and read-only capabilities
 - Log line retention
 - Integer setting clamping
 - Window geometry fitting
@@ -107,6 +108,21 @@ Run these checks on a fresh copy and again over an existing 0.1.x installation.
 - [ ] Capabilities shows role decisions without implying enforcement beyond managed Qalcom actions.
 - [ ] The UI clearly states that the policy is not a secure CC:T sandbox.
 - [ ] Missing or malformed audit storage does not prevent Qalcom from booting.
+
+### 0.2.2 managed context and Safe Mode
+
+- [ ] Terminal `ls`, `cd`, `cat`, `mkdir`, `touch`, `rm`, `cp`, and `mv` use managed checks and show useful failures when denied.
+- [ ] Explorer refresh, folder creation, deletion, and paste use managed filesystem helpers.
+- [ ] Text Viewer reads through the managed helper and Safe Mode denies Ctrl+S with a visible message.
+- [ ] System Log reads through the managed helper and remains available in Safe Mode.
+- [ ] Settings label changes use the managed system helper; Safe Mode denies label changes with a notification and audit entry.
+- [ ] System Monitor lists peripherals through the managed peripheral helpers and handles detach/attach safely.
+- [ ] Control Center free-space and peripheral reporting remain visible only when the role policy allows them.
+- [ ] Safe Mode blocks managed filesystem writes, peripheral controls, redstone controls, label changes, reboot, and shutdown, while read-only inspection remains available.
+- [ ] Every managed denial shows a notification/status message and creates a `denied` audit entry.
+- [ ] The Capabilities inspector shows Safe Mode-sensitive capabilities as denied while preserving allowed read-only decisions.
+- [ ] Trusted built-in Lua still has normal CC:T globals; managed helpers are an application boundary, not a secure sandbox.
+- [ ] Settings and Recovery persistence are treated as trusted kernel/recovery service paths, not as third-party filesystem capability enforcement.
 
 ### Session and resize behavior
 

@@ -9,10 +9,8 @@ return function(ctx)
 
     local function load()
         lines = {}
-        local file = fs.open("/qalcom/logs/system.log", "r")
-        if file then
-            local text = file.readAll() or ""
-            file.close()
+        local text = ctx:readFile("/qalcom/logs/system.log")
+        if text then
             for line in (text .. "\n"):gmatch("(.-)\n") do
                 if line ~= "" and (filter == "all" or line:lower():find(filter, 1, true)) then lines[#lines + 1] = line end
             end

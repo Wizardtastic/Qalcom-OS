@@ -9,7 +9,7 @@ local definitions = {
         label = "Administrator",
         description = "Full local administrative access",
         capabilities = {
-            "fs.read", "fs.write", "peripheral.read", "peripheral.control", "account.manage",
+            "fs.read", "fs.write", "system.label", "peripheral.read", "peripheral.control", "account.manage",
             "redstone.read", "redstone.control", "network.send", "network.receive",
             "system.reboot", "system.shutdown",
         },

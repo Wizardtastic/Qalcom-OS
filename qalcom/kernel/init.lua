@@ -5,6 +5,7 @@ local Auth = dofile("/qalcom/lib/auth.lua")
 local System = dofile("/qalcom/lib/system.lua")
 local Capabilities = dofile("/qalcom/lib/capabilities.lua")
 local Roles = dofile("/qalcom/lib/roles.lua")
+local Managed = dofile("/qalcom/lib/managed.lua")
 local unpack = table.unpack or unpack
 local config = Config.load()
 Config.apply(UI, config)
@@ -192,13 +193,14 @@ local function makeContext(task)
         title = task.meta.title,
         user = state.user,
         role = state.role,
+        safeMode = config.safeMode == true,
         modifiers = state.modifiers,
         win = task.window,
         declaredCapabilities = Capabilities.namesFor(task.name),
         capabilities = (function()
             local approved = {}
             for _, capability in ipairs(Capabilities.namesFor(task.name)) do
-                if Capabilities.effective(state.role, task.name, capability) then approved[#approved + 1] = capability end
+                if Capabilities.effective(state.role, task.name, capability, config.safeMode) then approved[#approved + 1] = capability end
             end
             return approved
         end)(),
@@ -256,11 +258,25 @@ local function makeContext(task)
     end
 
     function context:hasCapability(name)
-        return Capabilities.effective(state.role, task.name, name)
+        return Capabilities.effective(state.role, task.name, name, config.safeMode)
     end
 
     function context:policy(name)
-        return Capabilities.policy(state.role, task.name, name)
+        return Capabilities.policy(state.role, task.name, name, config.safeMode)
+    end
+
+    function context:isSafeMode()
+        return config.safeMode == true
+    end
+
+    function context:refreshCapabilities()
+        self.safeMode = config.safeMode == true
+        self.capabilities = {}
+        for _, capability in ipairs(self.declaredCapabilities or {}) do
+            if Capabilities.effective(state.role, task.name, capability, config.safeMode) then
+                self.capabilities[#self.capabilities + 1] = capability
+            end
+        end
     end
 
     function context:accounts()
@@ -274,7 +290,7 @@ local function makeContext(task)
     end
 
     function context:updateAccountRole(username, role)
-        local decision = Capabilities.policy(state.role, task.name, "account.manage")
+        local decision = Capabilities.policy(state.role, task.name, "account.manage", config.safeMode)
         if not decision.allowed then
             Capabilities.auditRoleChange(state.user, state.role, username, nil, role, "denial", "policy")
             return false, decision.reason
@@ -294,9 +310,10 @@ local function makeContext(task)
 
     function context:requestPower(action)
         local capability = action == "reboot" and "system.reboot" or action == "shutdown" and "system.shutdown"
-        local decision = capability and Capabilities.policy(state.role, task.name, capability) or nil
+        local decision = capability and Capabilities.policy(state.role, task.name, capability, config.safeMode) or nil
         if not decision or not decision.allowed then
-            Capabilities.auditDecision(decision or { role = state.role, capability = capability, allowed = false }, state.user, "power request")
+            local deniedDecision = decision or { role = state.role, capability = capability, allowed = false, reason = "unknown power action" }
+            Capabilities.auditDecision(deniedDecision, state.user, "power request action=" .. tostring(action) .. " safeMode=" .. tostring(config.safeMode), "denial")
             notify("Capability denied: " .. tostring(capability or action), UI.colors.danger)
             return false
         end
@@ -318,6 +335,82 @@ local function makeContext(task)
         return true
     end
 
+    function context:readPath(path)
+        return Managed.pathInfo(self, path)
+    end
+
+    function context:listDirectory(path)
+        return Managed.listDirectory(self, path)
+    end
+
+    function context:readFile(path)
+        return Managed.readFile(self, path)
+    end
+
+    function context:writeFile(path, text)
+        return Managed.writeFile(self, path, text)
+    end
+
+    function context:touch(path)
+        return Managed.touch(self, path)
+    end
+
+    function context:makeDir(path)
+        return Managed.makeDir(self, path)
+    end
+
+    function context:deletePath(path)
+        return Managed.delete(self, path)
+    end
+
+    function context:copyPath(source, destination)
+        return Managed.copy(self, source, destination)
+    end
+
+    function context:movePath(source, destination)
+        return Managed.move(self, source, destination)
+    end
+
+    function context:peripheralNames()
+        return Managed.peripheralNames(self)
+    end
+
+    function context:peripheralType(name)
+        return Managed.peripheralType(self, name)
+    end
+
+    function context:peripheralMethods(name)
+        return Managed.peripheralMethods(self, name)
+    end
+
+    function context:redstoneInput(side)
+        return Managed.redstoneInput(self, side)
+    end
+
+    function context:redstoneOutput(side, value)
+        return Managed.redstoneOutput(self, side, value)
+    end
+
+    function context:setComputerLabel(label)
+        return Managed.setLabel(self, label)
+    end
+
+    function context:managedPower(action)
+        return Managed.power(self, action)
+    end
+
+    function context:freeSpace()
+        if not self:hasCapability("fs.read") then
+            local reason = "Capability denied: fs.read"
+            self:audit("denied", "fs.read free space")
+            self:notify(reason, UI.colors.danger)
+            return nil, reason
+        end
+        if not fs.getFreeSpace then return nil, "Free-space reporting unavailable" end
+        local ok, value = pcall(fs.getFreeSpace, "/")
+        return ok and value or nil, ok and nil or tostring(value)
+    end
+
     function context:systemDiagnostics()
         local diagnostics = { bootStages = {}, crashes = {} }
         for index, stage in ipairs(state.bootStages) do
@@ -336,7 +429,8 @@ local function makeContext(task)
     end
 
     function context:systemInfo()
-        local info = System.info()
+        local info = System.info(self)
+
         info.user = state.user
         info.role = state.role
         info.tasks = {}
@@ -362,7 +456,7 @@ local function makeContext(task)
                 approvedCapabilities = (function()
                     local approved = {}
                     for _, capability in ipairs(Capabilities.namesFor(candidate.name)) do
-                        if Capabilities.effective(state.role, candidate.name, capability) then approved[#approved + 1] = capability end
+                        if Capabilities.effective(state.role, candidate.name, capability, config.safeMode) then approved[#approved + 1] = capability end
                     end
                     return approved
                 end)(),
@@ -776,6 +870,9 @@ local function dispatch(event)
     elseif name == "qalcom_config_changed" then
         config = Config.load()
         Config.apply(UI, config)
+        for _, task in ipairs(state.tasks) do
+            if task.context and task.context.refreshCapabilities then task.context:refreshCapabilities() end
+        end
         LAUNCHER_APPS = config.safeMode and SAFE_LAUNCHER_APPS or NORMAL_LAUNCHER_APPS
         if config.safeMode then
             for _, task in ipairs(state.tasks) do
@@ -851,6 +948,9 @@ while true do
         recordBootStage("desktop reauthenticated")
         config = Config.load()
         Config.apply(UI, config)
+        for _, task in ipairs(state.tasks) do
+            if task.context and task.context.refreshCapabilities then task.context:refreshCapabilities() end
+        end
         LAUNCHER_APPS = config.safeMode and SAFE_LAUNCHER_APPS or NORMAL_LAUNCHER_APPS
         log("login success: " .. state.user)
         Capabilities.audit("login", state.user)

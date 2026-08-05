@@ -32,6 +32,16 @@ local function loadRoles()
 end
 
 local Roles = loadRoles()
+local function loadCapabilities()
+    local candidates = { "qalcom/lib/capabilities.lua", "../qalcom/lib/capabilities.lua", "/qalcom/lib/capabilities.lua" }
+    for _, path in ipairs(candidates) do
+        local ok, module = pcall(dofile, path)
+        if ok and type(module) == "table" then return module end
+    end
+    fail("Unable to load qalcom/lib/capabilities.lua")
+end
+
+local Capabilities = loadCapabilities()
 local function loadAnimation()
     local candidates = { "qalcom/lib/ui/animation.lua", "../qalcom/lib/ui/animation.lua", "/qalcom/lib/ui/animation.lua" }
     for _, path in ipairs(candidates) do
@@ -77,6 +87,13 @@ test("validates roles and policies", function()
     truthy(Pure.validateRole("Observer", Roles.names()), "valid role")
     equal(Pure.validateRole("Unknown", Roles.names()), false, "invalid role")
     truthy(Pure.validatePolicyDecision({ role = "Observer", capability = "fs.read", allowed = true }), "valid decision")
+    local allowed = Capabilities.policy("Administrator", "terminal", "fs.write", false)
+    truthy(allowed.allowed, "administrator filesystem policy")
+    local safe = Capabilities.policy("Administrator", "terminal", "fs.write", true)
+    equal(safe.allowed, false, "Safe Mode blocks filesystem writes")
+    equal(safe.reason, "Safe Mode blocks sensitive actions", "Safe Mode reason")
+    local readOnly = Capabilities.policy("Observer", "monitor", "peripheral.read", true)
+    truthy(readOnly.allowed, "Safe Mode preserves read-only inspection")
 end)
 
 test("retains newest log lines", function()
