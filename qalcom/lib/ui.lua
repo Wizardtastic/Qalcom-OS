@@ -286,23 +286,25 @@ function UI.header(target, title, subtitle)
     UI.divider(target, 1, 3, width, UI.colors.borderStrong)
 end
 
-function UI.titleBar(target, x, y, width, title, icon, active)
-    local color = active and UI.colors.accent or UI.colors.border
+function UI.titleBar(target, x, y, width, title, icon, active, maximized)
+    -- A simple, bright desktop chrome inspired by the supplied reference: the
+    -- entire title row is yellow, controls sit on the left, and the content
+    -- area below remains a clean white surface.
+    local color = colors.yellow
+    local foreground = colors.black
+    local titleForeground = active and colors.black or colors.gray
     UI.fill(target, x, y, width, 1, color)
-    if width < 10 then
-        UI.text(target, x + 1, y, tostring(icon or "") .. " " .. tostring(title or ""), colors.white, color, width - 2)
+    if width < 9 then
+        UI.text(target, x + 1, y, "x-+", foreground, color, math.max(1, width - 2))
         return
     end
-    local controlsWidth = 7
-    local titleWidth = math.max(1, width - controlsWidth - 2)
+    UI.text(target, x + 1, y, "x", foreground, color, 1)
+    UI.text(target, x + 3, y, "-", foreground, color, 1)
+    UI.text(target, x + 5, y, maximized and "=" or "+", foreground, color, 1)
     local titleText = tostring(icon or "") .. "  " .. tostring(title or "")
-    local titleX = x + 1 + math.max(0, math.floor((titleWidth - #titleText) / 2))
-    UI.text(target, titleX, y, titleText, colors.white, color, titleWidth)
-    local minX = x + width - controlsWidth
-    UI.fill(target, minX, y, 3, 1, UI.colors.borderStrong)
-    UI.text(target, minX + 1, y, "-", colors.white, UI.colors.borderStrong, 1)
-    UI.fill(target, minX + 3, y, 4, 1, UI.colors.danger)
-    UI.text(target, minX + 4, y, "x", colors.white, UI.colors.danger, 1)
+    local titleWidth = math.max(1, width - 8)
+    local titleX = x + 8 + math.max(0, math.floor((titleWidth - #titleText) / 2))
+    UI.text(target, titleX, y, titleText, titleForeground, color, titleWidth)
 end
 
 function UI.desktopBackground(target, width, height)

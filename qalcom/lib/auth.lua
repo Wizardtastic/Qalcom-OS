@@ -194,11 +194,8 @@ local function drawScreen(target, UI, version, mode, fields, selected, message, 
         UI.center(target, 2, "Secure local sign-in", UI.colors.accentLight, UI.colors.desktop, width)
     end
 
-    UI.shadow(target, layout.panelX, layout.panelY, layout.panelWidth, layout.panelHeight, 1)
-    UI.card(target, layout.panelX, layout.panelY, layout.panelWidth, layout.panelHeight, nil, nil, false)
-    UI.fill(target, layout.panelX + 1, layout.panelY + 1, layout.panelWidth - 2, 2, UI.colors.accent)
-    UI.text(target, layout.panelX + 2, layout.panelY + 1, "Qalcom OS", colors.white, UI.colors.accent, layout.panelWidth - 4)
-    UI.text(target, layout.panelX + 2, layout.panelY + 2, mode == "setup" and "First-time setup" or "Sign in to continue", colors.lightBlue, UI.colors.accent, layout.panelWidth - 4)
+    UI.panel(target, layout.panelX, layout.panelY, layout.panelWidth, layout.panelHeight, colors.white, colors.yellow)
+    UI.fill(target, layout.panelX, layout.panelY, layout.panelWidth, 1, colors.yellow)
 
     local fieldX = layout.panelX + 3
     local fieldWidth = layout.panelWidth - 6

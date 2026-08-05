@@ -49,7 +49,7 @@ Reboot the computer. Qalcom starts through `/startup.lua`, shows the first-run a
 - Sign in at boot; the first boot creates a local administrator account.
 - Click the green **Q** button at the bottom-left to open the Windows-style Start menu above the taskbar; type in its search bar to find programs, or choose from recently used apps below it. Use Up/Down and Enter while it is open.
 - Taskbar applications use compact icons immediately after the green Q button; they are left-aligned, and the active app is marked with a subtle light-blue underline. Hover with the mouse to see the application name.
-- Click `-` in a window title bar to minimize it; click its taskbar button to restore it.
+- Window headers are yellow with white bodies; click the left-side `x` to close, `-` to minimize, and `+` to expand/restore. Click the remaining header area to drag.
 - Click an active taskbar icon to minimize its window; click it again to restore it, or click another app icon to focus that window. Hovering still shows the app name.
 - Click a window title bar to focus it.
 - Click `x` in a title bar to close an application.

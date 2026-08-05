@@ -642,6 +642,8 @@ local function startTask(name, options)
         cleanups = {},
         cleanupRan = false,
         hidden = (options and options.hidden) == true or meta.hidden == true,
+        maximized = false,
+        restoreGeometry = nil,
     }
     state.nextPid = state.nextPid + 1
     task.window = window.create(native, x + 1, y + 1, w - 2, h - 2, true)
@@ -743,8 +745,8 @@ local function drawDesktop()
         if not task.minimized and not task.hidden then
             -- Keep the frame flush with its content; no shadow may protrude into
             -- neighboring windows or the taskbar.
-            UI.fill(native, task.x, task.y, task.width, task.height, UI.colors.border)
-            UI.titleBar(native, task.x, task.y, task.width, task.meta.title, task.meta.icon, focused)
+            UI.fill(native, task.x, task.y, task.width, task.height, colors.white)
+            UI.titleBar(native, task.x, task.y, task.width, task.meta.title, task.meta.icon, focused, task.maximized)
             if task.failed then
                 task.window.setBackgroundColor(colors.black)
                 task.window.setTextColor(colors.white)
@@ -753,6 +755,9 @@ local function drawDesktop()
                 UI.text(task.window, 2, 4, "Open Control Center", colors.yellow, colors.black, task.width - 5)
                 UI.text(task.window, 2, 5, "to restart this process", colors.yellow, colors.black, task.width - 5)
             else
+                -- Normalize the shared body surface before each app redraw;
+                -- individual screens may still choose their own text colors.
+                task.window.setBackgroundColor(colors.white)
                 task.window.redraw()
             end
         end
@@ -965,18 +970,38 @@ local function handleMouse(button, x, y)
         state.dirty = true
         return
     end
-    if y == task.y and x >= task.x + task.width - 4 then
+    if y == task.y and x == task.x + 1 then
         removeTask(task)
         return
     end
-    if y == task.y and x >= task.x + task.width - 7 then
+    if y == task.y and x == task.x + 3 then
         task.minimized = true
         task.window.setVisible(false)
         if state.focused == task then focusOtherVisibleTask(task) end
         state.dirty = true
         return
     end
-    if y == task.y then
+    if y == task.y and x == task.x + 5 then
+        if task.maximized then
+            local restore = task.restoreGeometry
+            if restore then
+                task.x, task.y = restore.x, restore.y
+                task.width, task.height = restore.width, restore.height
+                task.window.reposition(task.x + 1, task.y + 1, task.width - 2, task.height - 2)
+            end
+            task.maximized = false
+            task.restoreGeometry = nil
+        else
+            task.restoreGeometry = { x = task.x, y = task.y, width = task.width, height = task.height }
+            task.x, task.y = 2, 2
+            task.width, task.height = math.max(20, width - 2), math.max(8, height - 4)
+            task.window.reposition(task.x + 1, task.y + 1, task.width - 2, task.height - 2)
+            task.maximized = true
+        end
+        state.dirty = true
+        return
+    end
+    if y == task.y and x >= task.x + 7 then
         state.drag = { task = task, offsetX = x - task.x, offsetY = y - task.y }
         return
     end
@@ -1201,10 +1226,18 @@ while true do
             width, height = native.getSize()
         end
         for _, task in ipairs(state.tasks) do
-            task.width = math.min(task.width, math.max(20, width - 2))
-            task.height = math.min(task.height, math.max(8, height - 4))
+            local minimumWidth = math.max(20, width - 2)
+            local minimumHeight = math.max(8, height - 4)
+            task.width = math.min(task.width, minimumWidth)
+            task.height = math.min(task.height, minimumHeight)
             task.x = math.max(2, math.min(task.x, width - task.width))
             task.y = math.max(2, math.min(task.y, height - task.height - 2))
+            if task.restoreGeometry then
+                task.restoreGeometry.width = math.min(task.restoreGeometry.width, minimumWidth)
+                task.restoreGeometry.height = math.min(task.restoreGeometry.height, minimumHeight)
+                task.restoreGeometry.x = math.max(2, math.min(task.restoreGeometry.x, width - task.restoreGeometry.width))
+                task.restoreGeometry.y = math.max(2, math.min(task.restoreGeometry.y, height - task.restoreGeometry.height - 2))
+            end
             task.window.reposition(task.x + 1, task.y + 1, task.width - 2, task.height - 2)
         end
         state.dirty = true

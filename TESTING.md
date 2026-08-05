@@ -42,7 +42,7 @@ Run these checks on a fresh copy and again over an existing 0.1.x installation.
 ### Desktop and applications
 
 - [ ] The native UI foundation renders without an external dependency.
-- [ ] The login screen shows a colorful Qalcom OS wordmark above the credential inputs, keeps the setup button inside the card, and remains readable in compact mode.
+- [ ] The login screen shows a centered Qalcom OS wordmark in its yellow header with no window controls or offset grey shadow; the white body and credential controls remain usable in compact mode.
 - [ ] Login, Settings, Recovery, Control Center, Diagnostics, Monitor, System Log, Explorer, Terminal, Account, and Editor share the refreshed visual language.
 - [ ] Window shadows remain inside the terminal and do not corrupt adjacent windows.
 - [ ] Notifications animate in without blocking input; Reduced motion disables the transition.
@@ -87,7 +87,7 @@ Run these checks on a fresh copy and again over an existing 0.1.x installation.
 - [ ] Taskbar app icons have no selected/hover overlay; the active app is marked only by a subtle light-blue underline.
 - [ ] Clicking the active taskbar icon minimizes its window; clicking it again restores it, and clicking another icon focuses that app.
 - [ ] Hover labels remain inside the terminal and do not cover the taskbar controls unexpectedly; if the runtime lacks `mouse_move`, the desktop still remains usable via click and keyboard.
-- [ ] Window frames are flush, title-bar controls line up with close/minimize hit areas, and no frame/shadow protrudes into neighboring content.
+- [ ] Window frames are flush, yellow title bars show left-side `x`, `-`, and `+` controls, those hit areas close/minimize/expand correctly, resize preserves valid restore geometry, and no frame/shadow protrudes into neighboring content.
 - [ ] Window title text remains clipped cleanly on narrow windows.
 
 ### Native UI foundation
