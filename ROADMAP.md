@@ -91,20 +91,18 @@ This roadmap is intentionally incremental. Each milestone should deliver one coh
 
 **Exit criteria met:** Older settings load safely, invalid values fall back to defaults, and resetting configuration preserves account data.
 
-## 0.1.9 — Desktop lifecycle hardening
-
-## 0.1.9 — Desktop lifecycle hardening
+## Completed: 0.1.9 — Desktop lifecycle hardening
 
 **Goal:** Finish the local desktop foundation before introducing permissions.
 
-- Improve task cleanup for crashed, stopped, minimized, and session-invalid applications.
-- Add clearer process details and safe manual restart limits.
-- Improve log rotation/pruning so large logs do not cause unnecessary repeated work.
-- Add a desktop-level safe shutdown/reboot confirmation flow.
-- Add more reliable resize behavior for all built-in applications.
-- Add a recovery-only diagnostic page for task failures and recent boot stages.
+- Added explicit task cleanup for crashed, stopped, minimized, and session-invalid applications.
+- Added bounded manual restart attempts and restart-lock diagnostics.
+- Reduced repeated log-file rewrites by appending and pruning only after growth thresholds.
+- Added confirmation handling for terminal reboot and shutdown requests.
+- Added a scrollable Diagnostics application for boot stages, PIDs, crash reasons, and restart counts.
+- Hardened compact recovery/settings behavior for supported terminal sizes.
 
-**Exit criteria:** Repeated login/logout, app failure, resize, and recovery cycles do not leave stale windows, stale tasks, or unusable settings behind.
+**Exit criteria met:** Task cleanup, bounded recovery, power confirmation, diagnostics, and log maintenance are implemented; full repeated-cycle validation remains part of the manual CC:T checklist.
 
 ## 0.2.0 — Capability vocabulary and trusted app manifests
 

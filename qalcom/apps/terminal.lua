@@ -116,8 +116,8 @@ return function(ctx)
                 if not fs.exists(source) then append("Source not found") elseif name == "cp" then fs.copy(source, destination); append("Copied") else fs.move(source, destination); append("Moved") end
             end
         elseif name == "logout" then os.queueEvent("qalcom_logout")
-        elseif name == "reboot" then os.reboot()
-        elseif name == "shutdown" then os.shutdown()
+        elseif name == "reboot" then ctx:requestPower("reboot"); append("Reboot requested; confirm through the desktop if prompted.")
+        elseif name == "shutdown" then ctx:requestPower("shutdown"); append("Shutdown requested; confirm through the desktop if prompted.")
         else append("Command not found: " .. tostring(name)) end
     end
 

@@ -1,4 +1,4 @@
-# Qalcom OS 0.1.8
+# Qalcom OS 0.1.9
 
 Qalcom OS is a clean, Windows-inspired desktop environment for ComputerCraft: Tweaked. This milestone runs entirely inside CC:T and does not require a Minecraft mod or CraftOS modification.
 
@@ -23,11 +23,12 @@ Copy the repository contents to the root of a CC:T computer so the layout looks 
 /qalcom/apps/control.lua
 /qalcom/apps/logs.lua
 /qalcom/apps/recovery.lua
+/qalcom/apps/diagnostics.lua
 /qalcom/lib/system.lua
 /qalcom/lib/pure.lua
 ```
 
-Reboot the computer. Qalcom starts through `/startup.lua`, shows the first-run account setup, and will enter a small recovery prompt if the kernel fails to load. When upgrading from 0.1.7, copy the updated `/qalcom/lib/config.lua`, `/qalcom/apps/settings.lua`, and `/qalcom/apps/recovery.lua` files. Configuration schema migration runs automatically; account data in `/qalcom/data/accounts` is preserved.
+Reboot the computer. Qalcom starts through `/startup.lua`, shows the first-run account setup, and will enter a small recovery prompt if the kernel fails to load. When upgrading from 0.1.8, copy the updated `/qalcom/kernel/init.lua`, `/qalcom/apps/control.lua`, `/qalcom/apps/recovery.lua`, `/qalcom/apps/diagnostics.lua`, `/qalcom/apps/terminal.lua`, and `/qalcom/version.lua` files. Configuration schema migration runs automatically; account data in `/qalcom/data/accounts` is preserved.
 
 ## Controls
 
@@ -46,7 +47,7 @@ Reboot the computer. Qalcom starts through `/startup.lua`, shows the first-run a
 - File Explorer supports mouse selection, keyboard navigation, opening directories, and refresh.
 - System Monitor is available from Start and reports peripheral/modem status; it does not launch automatically.
 - Open **Control Center** from Start to inspect processes, memory, storage, and services.
-- Open **Recovery** from Start to clear notifications, reset the theme, toggle Safe Mode, restore Qalcom defaults, or open the system log.
+- Open **Recovery** from Start to clear notifications, reset the theme, toggle Safe Mode, restore Qalcom defaults, view diagnostics, or open the system log.
 - In **Settings**, select Safe Mode or Log retention and press Enter to change them. Restore defaults to reset Qalcom settings without deleting accounts.
 - In **System Log**, press F to cycle through all, failure, and login entries.
 - Open **System Log** from Start to inspect recent Qalcom events and errors.
@@ -59,15 +60,16 @@ Reboot the computer. Qalcom starts through `/startup.lua`, shows the first-run a
 - **File Explorer**: Browse the local CC:T filesystem.
 - **System Monitor**: Computer identity, memory, terminal size, peripherals, and modem count. Launch it from Start when needed; it is not a boot service.
 - **Control Center**: Process states, crash visibility, restart actions, memory, free space, and service information.
-- **Recovery**: Local recovery actions and access to diagnostics.
+- **Recovery**: Local recovery actions and access to diagnostics/logs.
+- **Diagnostics**: Scrollable boot-stage and recent-crash details.
 - **System Log**: Scrollable recent system events with failure/login filtering and retention limits.
 - **Settings**: Edit the computer label, change themes, toggle Safe Mode, view settings categories, and adjust log retention.
 - **Account**: View the current session and sign out to the login screen.
 - **Text Viewer**: View and edit local text, Lua, and log files.
 
-## Version 0.1.8
+## Version 0.1.9
 
-This release adds versioned configuration migration, safe validation and clamping of persisted settings, configuration-change logging, and restore-defaults actions that preserve account data. The 0.1.7 testing foundation and the earlier watchdog, Safe Mode, settings, and log features remain available. Watchdog status is diagnostic only: it appears after a handler yields back to the kernel, and Qalcom does not automatically terminate healthy or stalled applications.
+This release hardens desktop task cleanup, bounds manual process restarts, adds boot/crash diagnostics, reduces repeated log-file rewrites, and routes terminal reboot/shutdown commands through confirmation dialogs. The 0.1.8 configuration migration and restore-defaults features remain available. Watchdog status remains diagnostic only.
 
 Run `lua tests/pure_test.lua` when a local Lua interpreter is available. This covers only CC:T-independent helpers; complete the in-game checklist in [TESTING.md](TESTING.md) as well.
 

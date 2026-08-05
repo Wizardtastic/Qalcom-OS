@@ -2,6 +2,7 @@ local UI = dofile("/qalcom/lib/ui.lua")
 local VERSION = dofile("/qalcom/version.lua")
 
 local function taskDetail(task)
+    if task.restartLocked then return "restart locked", colors.red end
     if task.failed then return "crashed", colors.red end
     if task.watchdog == "slow" then return "slow", colors.yellow end
     if task.state == "stopped" then return "stopped", UI.colors.muted end
@@ -76,8 +77,9 @@ return function(ctx)
             local background = active and UI.colors.accentLight or UI.colors.surface
             local foreground = active and colors.white or UI.colors.text
             local marker = task.failed and "! " or (task.minimized and "_ " or "> ")
-            local label = marker .. tostring(task.pid) .. " " .. task.title
-            local detail, detailColor = taskDetail(task)
+            local label = marker .. tostring(task.pid) .. " " .. task.title                local detail, detailColor = taskDetail(task)
+                if task.failed and task.crashReason then detail = tostring(task.crashReason):sub(1, 18) end
+
             UI.fill(ctx.win, 2, row, width - 3, 1, background)
             UI.text(ctx.win, 3, row, label, foreground, background, math.floor(width * 0.62))
             UI.text(ctx.win, math.floor(width * 0.65), row, detail, detailColor, background, width - math.floor(width * 0.65) - 1)
@@ -103,10 +105,10 @@ return function(ctx)
             elseif value == keys.r then
                 local task = info.tasks[selected]
                 if task and task.failed then
-                    ctx:restartProcess(task.pid)
-                    status = "Restart requested for " .. task.title
+                    local restarted, reason = ctx:restartProcess(task.pid)
+                    status = restarted and ("Restart requested for " .. task.title) or (reason or "Restart unavailable for " .. task.title)
                 else
-                    status = "Select a crashed process to restart"
+                    status = task and task.restartLocked and "Restart limit reached for " .. task.title or "Select a crashed process to restart"
                 end
                 render()
             elseif value == keys.escape then

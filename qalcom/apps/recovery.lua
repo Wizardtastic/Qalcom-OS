@@ -3,7 +3,7 @@ local Config = dofile("/qalcom/lib/config.lua")
 
 return function(ctx)
     local selected = 1
-    local items = { "Clear notifications", "Reset desktop theme", "Safe Mode: toggle", "Restore Qalcom defaults", "Open system log", "Return" }
+    local items = { "Clear notifications", "Reset desktop theme", "Safe Mode: toggle", "Restore Qalcom defaults", "Open diagnostics", "Open system log", "Return" }
     local status = "Local recovery tools"
 
     local function visibleItems(height)
@@ -62,9 +62,12 @@ return function(ctx)
             status = "Defaults restored; accounts preserved"
             ctx:notify(status, UI.colors.success)
         elseif actualIndex == 5 then
+            local task = ctx:launch("diagnostics")
+            status = task and "Opened diagnostics" or "Unable to open diagnostics"
+        elseif actualIndex == 6 then
             local task = ctx:launch("logs")
             status = task and "Opened system log" or "Unable to open system log"
-        elseif actualIndex == 6 then
+        elseif actualIndex == 7 then
             ctx:close()
         end
         render()

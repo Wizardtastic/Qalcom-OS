@@ -8,7 +8,7 @@ return function(ctx)
     local labelInput = ""
     local themes = { "blue", "dark", "green" }
     local categories = { "Personalization", "Account", "Display", "Startup", "Security", "Storage", "Peripherals", "Network", "Recovery" }
-    local rowOrder = { 1, 2, 3, 4, 5, 6, 7, 8, 9, 10 }
+    local rowOrder = { 1, 2, 3, 4, 5, 6, 7, 8, 10 }
     local config = Config.load()
     Config.apply(UI, config)
 

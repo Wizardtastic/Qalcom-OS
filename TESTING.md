@@ -35,12 +35,16 @@ Run these checks on a fresh copy and again over an existing 0.1.x installation.
 ### Desktop and applications
 
 - [ ] Start opens and closes with mouse and keyboard.
+- [ ] Terminal `reboot` and `shutdown` open a confirmation dialog instead of powering off immediately.
+- [ ] Cancelling the power dialog leaves the desktop running.
 - [ ] Terminal, Explorer, Settings, Account, Recovery, System Log, Control Center, and System Monitor launch.
 - [ ] System Monitor does not launch automatically after login.
 - [ ] Windows can be focused, dragged, minimized, restored, and closed.
 - [ ] Alt+Tab and Alt+F4 behave as documented.
 - [ ] An app failure leaves a visible recovery screen and a log entry.
+- [ ] Recovery opens Diagnostics and shows recent boot stages, PIDs, crash reasons, and restart counts.
 - [ ] Control Center can identify and restart a failed app.
+- [ ] Repeated manual restarts eventually show a restart-limit state instead of looping indefinitely.
 
 ### Settings and Safe Mode
 
@@ -62,12 +66,16 @@ Run these checks on a fresh copy and again over an existing 0.1.x installation.
 ### Logs and recovery
 
 - [ ] System Log opens when entries exist and when it is empty.
+- [ ] Repeated logging appends normally and remains bounded after pruning.
 - [ ] Scrolling, refresh, and all/failure/login filters work.
 - [ ] Recovery can clear notifications, reset the theme, toggle Safe Mode, and open System Log.
 - [ ] Log retention prevents unbounded growth.
 - [ ] `/qalcom/logs/system.log` records boot, login, failure, and recovery events.
 
 ### Session and resize behavior
+
+- [ ] Closing an app releases its task/window and does not leave a ghost taskbar entry.
+- [ ] Crashed and stopped tasks are removed cleanly after closure.
 
 - [ ] Account logout returns to login.
 - [ ] Apps from the previous session are closed after logout.

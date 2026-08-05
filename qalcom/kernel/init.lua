@@ -17,6 +17,7 @@ local APP_PATHS = {
     control = "/qalcom/apps/control.lua",
     logs = "/qalcom/apps/logs.lua",
     recovery = "/qalcom/apps/recovery.lua",
+    diagnostics = "/qalcom/apps/diagnostics.lua",
 }
 
 local APP_META = {
@@ -30,6 +31,7 @@ local APP_META = {
     control = { title = "Control Center", icon = "!", x = 5, y = 3, width = 48, height = 20 },
     logs = { title = "System Log", icon = "L", x = 4, y = 3, width = 48, height = 19 },
     recovery = { title = "Recovery", icon = "R", x = 7, y = 4, width = 42, height = 16 },
+    diagnostics = { title = "Diagnostics", icon = "D", x = 6, y = 3, width = 48, height = 19 },
 }
 
 local NORMAL_LAUNCHER_APPS = { "terminal", "explorer", "monitor", "control", "settings", "recovery", "logs", "account" }
@@ -47,9 +49,12 @@ if width < 30 or height < 14 then
     print("Resize the terminal or use CraftOS recovery.")
     return
 end
+local MAX_MANUAL_RESTARTS = 3
 local state = {
     user = nil,
     session = 0,
+    bootStages = {},
+    crashes = {},
     tasks = {},
     nextPid = 100,
     focused = nil,
@@ -65,23 +70,49 @@ local state = {
 local function log(message)
     if not fs.exists("/qalcom/logs") then fs.makeDir("/qalcom/logs") end
     local path = "/qalcom/logs/system.log"
-    local lines = {}
-    local existing = fs.open(path, "r")
-    if existing then
-        local text = existing.readAll() or ""
-        existing.close()
-        for line in (text .. "\n"):gmatch("(.-)\n") do
-            if line ~= "" then lines[#lines + 1] = line end
-        end
-    end
-    lines[#lines + 1] = os.date("!%Y-%m-%dT%H:%M:%SZ") .. " " .. tostring(message)
-    local limit = config.logLimit or 200
-    while #lines > limit do table.remove(lines, 1) end
-    local file = fs.open(path, "w")
+    local file = fs.open(path, "a")
     if file then
-        file.write(table.concat(lines, "\n") .. "\n")
+        file.writeLine(os.date("!%Y-%m-%dT%H:%M:%SZ") .. " " .. tostring(message))
         file.close()
     end
+    -- Avoid rewriting the whole file for every event; prune only after it grows beyond a safe estimate.
+    local size = fs.getSize and fs.getSize(path) or 0
+    local limit = config.logLimit or 200
+    if size > limit * 180 then
+        local lines = {}
+        local existing = fs.open(path, "r")
+        if existing then
+            local text = existing.readAll() or ""
+            existing.close()
+            for line in (text .. "\n"):gmatch("(.-)\n") do
+                if line ~= "" then lines[#lines + 1] = line end
+            end
+        end
+        while #lines > limit do table.remove(lines, 1) end
+        local compacted = fs.open(path, "w")
+        if compacted then
+            compacted.write(table.concat(lines, "\n") .. "\n")
+            compacted.close()
+        end
+    end
+end
+
+local function recordBootStage(stage)
+    state.bootStages[#state.bootStages + 1] = { stage = tostring(stage), at = os.clock() }
+    while #state.bootStages > 20 do table.remove(state.bootStages, 1) end
+    log("stage " .. tostring(stage))
+end
+
+local function recordCrash(task, reason)
+    local detail = tostring(reason or task.crashReason or "unknown error")
+    state.crashes[#state.crashes + 1] = {
+        pid = task.pid,
+        name = task.name,
+        reason = detail,
+        restartCount = task.restartCount or 0,
+        at = os.clock(),
+    }
+    while #state.crashes > 20 do table.remove(state.crashes, 1) end
 end
 
 local function notify(message, color)
@@ -98,6 +129,9 @@ local function closeAllTasks()
     for index = #state.tasks, 1, -1 do
         local task = state.tasks[index]
         if task.window then task.window.setVisible(false) end
+        task.co = nil
+        task.context = nil
+        task.window = nil
         table.remove(state.tasks, index)
     end
     state.focused = nil
@@ -202,6 +236,38 @@ local function makeContext(task)
         log("[" .. task.name .. "] " .. tostring(message))
     end
 
+    function context:requestPower(action)
+        if action ~= "reboot" and action ~= "shutdown" then return false end
+        local task = spawn("dialog", {
+            modal = true,
+            dialogTitle = action == "reboot" and "Confirm reboot" or "Confirm shutdown",
+            dialogMessage = "Close Qalcom and " .. action .. " this computer?",
+        })
+        if not task then return false end
+        task.context.dialogCallback = function()
+            os.queueEvent("qalcom_power_confirmed", action)
+            return true
+        end
+        return true
+    end
+
+    function context:systemDiagnostics()
+        local diagnostics = { bootStages = {}, crashes = {} }
+        for index, stage in ipairs(state.bootStages) do
+            diagnostics.bootStages[index] = { stage = stage.stage, at = stage.at }
+        end
+        for index, crash in ipairs(state.crashes) do
+            diagnostics.crashes[index] = {
+                pid = crash.pid,
+                name = crash.name,
+                reason = crash.reason,
+                restartCount = crash.restartCount,
+                at = crash.at,
+            }
+        end
+        return diagnostics
+    end
+
     function context:systemInfo()
         local info = System.info()
         info.user = state.user
@@ -223,6 +289,7 @@ local function makeContext(task)
                 watchdog = candidate.watchdog,
                 watchdogSince = candidate.watchdogSince,
                 lastRunDuration = candidate.lastRunDuration,
+                restartLocked = candidate.restartLocked,
             }
         end
         return info
@@ -234,7 +301,13 @@ local function makeContext(task)
                 local name = candidate.name
                 local options = {}
                 for key, value in pairs(candidate.options or {}) do options[key] = value end
-                options.restartCount = (candidate.restartCount or 0) + 1
+                local restartCount = candidate.restartCount or 0
+                if restartCount >= MAX_MANUAL_RESTARTS then
+                    candidate.restartLocked = true
+                    state.dirty = true
+                    return false, "Restart limit reached"
+                end
+                options.restartCount = restartCount + 1
                 removeTask(candidate)
                 return spawn(name, options)
             end
@@ -276,6 +349,7 @@ local function startTask(name, options)
         crashReason = nil,
         kind = meta.service and "service" or "application",
         restartCount = (options and options.restartCount) or 0,
+        restartLocked = false,
         startedAt = os.clock(),
         lastEventAt = os.clock(),
         eventCount = 0,
@@ -316,7 +390,9 @@ local function startTask(name, options)
     end
     if task.failed then
         task.state = "crashed"
+        task.restartLocked = task.restartCount >= MAX_MANUAL_RESTARTS
         task.crashReason = task.failed
+        recordCrash(task, task.failed)
         log("app failure " .. name .. ": " .. task.failed)
         notify(meta.title .. " failed to start", UI.colors.danger)
         state.dirty = true
@@ -350,7 +426,9 @@ local function send(task, event)
     if not ok then task.failed = tostring(err) end
     if task.failed then
         task.state = "crashed"
+        task.restartLocked = task.restartCount >= MAX_MANUAL_RESTARTS
         task.crashReason = task.failed
+        recordCrash(task, task.failed)
         log("app failure " .. task.name .. ": " .. task.failed)
         notify(APP_META[task.name].title .. " stopped; open Control Center to restart", UI.colors.danger)
         task.window.setVisible(true)
@@ -642,6 +720,7 @@ local function dispatch(event)
     end
 end
 
+recordBootStage("kernel loaded")
 log("boot Qalcom OS " .. VERSION)
 local authenticated = Auth.login(native, UI, VERSION)
 if not authenticated then
@@ -649,6 +728,7 @@ if not authenticated then
 end
 state.session = state.session + 1
 state.user = authenticated.username
+recordBootStage("desktop authenticated")
 log("login success: " .. state.user)
 if config.safeMode then notify("Safe Mode enabled", UI.colors.warning) end
 notify("Welcome, " .. state.user, UI.colors.accent)
@@ -671,6 +751,10 @@ while true do
         state.modifiers.shift = false
         notify("Ctrl+T is handled by Qalcom; close apps from their title bars.", UI.colors.warning)
         state.dirty = true
+    elseif event[1] == "qalcom_power_confirmed" then
+        closeAllTasks()
+        recordBootStage("power " .. tostring(event[2]))
+        if event[2] == "reboot" then os.reboot() else os.shutdown() end
     elseif event[1] == "qalcom_logout" then
         closeAllTasks()
         state.launcher = false
@@ -682,6 +766,7 @@ while true do
         if not authenticated then return end
         state.session = state.session + 1
         state.user = authenticated.username
+        recordBootStage("desktop reauthenticated")
         config = Config.load()
         Config.apply(UI, config)
         LAUNCHER_APPS = config.safeMode and SAFE_LAUNCHER_APPS or NORMAL_LAUNCHER_APPS

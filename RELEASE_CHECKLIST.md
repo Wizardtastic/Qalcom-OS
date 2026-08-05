@@ -31,7 +31,8 @@ Use this checklist before calling a milestone complete.
 - [ ] `git diff --check` passes.
 - [ ] Offline pure-helper tests pass when a Lua interpreter is available.
 - [ ] Manual CC:T checklist in `TESTING.md` is complete.
-- [ ] Boot, login, logout, recovery, resize, and app-failure paths were tested.
+- [ ] Boot, login, logout, recovery, resize, app-failure, task cleanup, and power-confirmation paths were tested.
+- [ ] Manual restart limits and recovery diagnostics were checked.
 - [ ] Known limitations are recorded in the README and release notes.
 
 ## Version and documentation
