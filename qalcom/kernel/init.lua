@@ -6,6 +6,8 @@ local System = dofile("/qalcom/lib/system.lua")
 local Capabilities = dofile("/qalcom/lib/capabilities.lua")
 local Roles = dofile("/qalcom/lib/roles.lua")
 local Managed = dofile("/qalcom/lib/managed.lua")
+local Infrastructure = dofile("/qalcom/lib/infrastructure.lua")
+local Jobs = dofile("/qalcom/lib/jobs.lua")
 local unpack = table.unpack or unpack
 local config = Config.load()
 Config.apply(UI, config)
@@ -23,6 +25,10 @@ local APP_PATHS = {
     recovery = "/qalcom/apps/recovery.lua",
     diagnostics = "/qalcom/apps/diagnostics.lua",
     capabilities = "/qalcom/apps/capabilities.lua",
+    peripherals = "/qalcom/apps/peripherals.lua",
+    infrastructure = "/qalcom/apps/infrastructure.lua",
+    jobs = "/qalcom/apps/jobs.lua",
+    jobs_service = "/qalcom/apps/jobs_service.lua",
 }
 
 local APP_META = {
@@ -38,10 +44,14 @@ local APP_META = {
     recovery = { title = "Recovery", icon = "R", x = 7, y = 4, width = 42, height = 16 },
     diagnostics = { title = "Diagnostics", icon = "D", x = 6, y = 3, width = 48, height = 19 },
     capabilities = { title = "Capabilities", icon = "C", x = 8, y = 3, width = 50, height = 20 },
+    peripherals = { title = "Peripheral Manager", icon = "P", x = 4, y = 3, width = 54, height = 21 },
+    infrastructure = { title = "Infrastructure", icon = "I", x = 3, y = 3, width = 56, height = 21 },
+    jobs = { title = "Automation Jobs", icon = "J", x = 3, y = 3, width = 56, height = 21 },
+    jobs_service = { title = "Automation Service", icon = "J", x = 3, y = 3, width = 20, height = 8, service = true, hidden = true },
 }
 
-local NORMAL_LAUNCHER_APPS = { "terminal", "explorer", "monitor", "control", "capabilities", "settings", "recovery", "logs", "account" }
-local SAFE_LAUNCHER_APPS = { "recovery", "logs", "terminal", "settings" }
+local NORMAL_LAUNCHER_APPS = { "terminal", "explorer", "monitor", "peripherals", "infrastructure", "jobs", "control", "capabilities", "settings", "recovery", "logs", "account" }
+local SAFE_LAUNCHER_APPS = { "recovery", "logs", "terminal", "settings", "peripherals", "infrastructure", "jobs" }
 local LAUNCHER_APPS = config.safeMode and SAFE_LAUNCHER_APPS or NORMAL_LAUNCHER_APPS
 
 local native = term.native()
@@ -66,11 +76,16 @@ local state = {
     focused = nil,
     launcher = false,
     launcherSelection = 1,
+    launcherSearch = "",
+    launcherSearchFocused = true,
+    recentApps = {},
     notifications = {},
     clockTimer = nil,
     uiTimer = nil,
     dirty = true,
     drag = nil,
+    mouseX = 1,
+    mouseY = 1,
     modifiers = { alt = false, ctrl = false, shift = false },
 }
 
@@ -135,9 +150,18 @@ local function notify(message, color)
     state.dirty = true
 end
 
+local function runCleanup(task)
+    if task.cleanupRan then return end
+    task.cleanupRan = true
+    for index = #task.cleanups, 1, -1 do
+        pcall(task.cleanups[index])
+    end
+end
+
 local function closeAllTasks()
     for index = #state.tasks, 1, -1 do
         local task = state.tasks[index]
+        runCleanup(task)
         if task.window then task.window.setVisible(false) end
         task.co = nil
         task.context = nil
@@ -149,6 +173,7 @@ local function closeAllTasks()
 end
 
 local function removeTask(task)
+    runCleanup(task)
     if task.window then task.window.setVisible(false) end
     for index, candidate in ipairs(state.tasks) do
         if candidate == task then
@@ -160,7 +185,7 @@ local function removeTask(task)
         state.focused = nil
         for index = #state.tasks, 1, -1 do
             local candidate = state.tasks[index]
-            if not candidate.modal and not candidate.minimized then
+            if not candidate.modal and not candidate.minimized and not candidate.hidden then
                 state.focused = candidate
                 break
             end
@@ -172,7 +197,7 @@ local function removeTask(task)
 end
 
 local function focusTask(task)
-    if not task or task.modal then return end
+    if not task or task.modal or task.hidden then return end
     state.focused = task
     for index, candidate in ipairs(state.tasks) do
         if candidate == task then
@@ -185,6 +210,18 @@ local function focusTask(task)
 end
 
 local spawn
+
+local function focusOtherVisibleTask(exclude)
+    state.focused = nil
+    for index = #state.tasks, 1, -1 do
+        local candidate = state.tasks[index]
+        if candidate ~= exclude and not candidate.modal and not candidate.minimized and not candidate.hidden then
+            focusTask(candidate)
+            return candidate
+        end
+    end
+    return nil
+end
 
 local function makeContext(task)
     local context = {
@@ -235,6 +272,14 @@ local function makeContext(task)
 
     function context:close()
         task.closeRequested = true
+    end
+
+    function context:registerCleanup(callback)
+        if type(callback) == "function" then
+            task.cleanups[#task.cleanups + 1] = callback
+            return true
+        end
+        return false
     end
 
     function context:redraw()
@@ -383,12 +428,68 @@ local function makeContext(task)
         return Managed.peripheralMethods(self, name)
     end
 
+    function context:peripheralRead(name, method, ...)
+        return Managed.peripheralRead(self, name, method, ...)
+    end
+
+    function context:peripheralInventory()
+        return Managed.peripheralInventory(self)
+    end
+
+    function context:peripheralMetadataFile()
+        return Managed.peripheralMetadataFile(self)
+    end
+
+    function context:writePeripheralMetadata(text)
+        return Managed.writePeripheralMetadata(self, text)
+    end
+
     function context:redstoneInput(side)
         return Managed.redstoneInput(self, side)
     end
 
     function context:redstoneOutput(side, value)
         return Managed.redstoneOutput(self, side, value)
+    end
+
+    function context:redstoneState(side)
+        return Managed.redstoneState(self, side)
+    end
+
+    function context:redstoneWrite(side, value)
+        return Managed.redstoneWrite(self, side, value)
+    end
+
+    function context:infrastructureProfiles()
+        local text = self:readFile("/qalcom/data/infrastructure.meta")
+        return Infrastructure.parse(text or "")
+    end
+
+    function context:writeInfrastructureProfiles(data)
+        return self:writeFile("/qalcom/data/infrastructure.meta", Infrastructure.serialize(data))
+    end
+
+    function context:infrastructureState(profile)
+        return Infrastructure.state(self, profile)
+    end
+
+    function context:jobDefinitions()
+        local text, reason = self:readFile("/qalcom/data/jobs.meta")
+        local data = Jobs.parse(text or "")
+        if not text and reason then data.error = reason end
+        return data
+    end
+
+    function context:writeJobDefinitions(data)
+        return self:writeFile("/qalcom/data/jobs.meta", Jobs.serialize(data))
+    end
+
+    function context:jobInfrastructureProfiles()
+        return self:infrastructureProfiles()
+    end
+
+    function context:jobInfrastructureState(profile)
+        return self:infrastructureState(profile)
     end
 
     function context:setComputerLabel(label)
@@ -488,10 +589,18 @@ local function makeContext(task)
     return context
 end
 
+local function recordRecentApp(name)
+    for index = #state.recentApps, 1, -1 do
+        if state.recentApps[index] == name then table.remove(state.recentApps, index) end
+    end
+    table.insert(state.recentApps, 1, name)
+    while #state.recentApps > 6 do table.remove(state.recentApps) end
+end
+
 local function startTask(name, options)
     local meta = APP_META[name]
     local path = APP_PATHS[name]
-    if config.safeMode and name ~= "recovery" and name ~= "logs" and name ~= "terminal" and name ~= "settings" then
+    if config.safeMode and name ~= "recovery" and name ~= "logs" and name ~= "terminal" and name ~= "settings" and name ~= "peripherals" and name ~= "infrastructure" and name ~= "jobs" and name ~= "jobs_service" then
         notify("Safe Mode blocked " .. tostring(name), UI.colors.warning)
         return nil
     end
@@ -530,6 +639,9 @@ local function startTask(name, options)
         lastRunDuration = 0,
         watchdog = nil,
         watchdogSince = nil,
+        cleanups = {},
+        cleanupRan = false,
+        hidden = (options and options.hidden) == true or meta.hidden == true,
     }
     state.nextPid = state.nextPid + 1
     task.window = window.create(native, x + 1, y + 1, w - 2, h - 2, true)
@@ -555,7 +667,7 @@ local function startTask(name, options)
     else
         focusTask(task)
     end
-    task.window.setVisible(true)
+    task.window.setVisible(not task.hidden)
     local resumed, err = coroutine.resume(task.co)
     if not resumed then
         task.failed = tostring(err)
@@ -571,6 +683,7 @@ local function startTask(name, options)
         return task
     end
     task.state = "running"
+    if options and options.fromLauncher then recordRecentApp(name) end
     state.dirty = true
     return task
 end
@@ -597,13 +710,14 @@ local function send(task, event)
     end
     if not ok then task.failed = tostring(err) end
     if task.failed then
+        runCleanup(task)
         task.state = "crashed"
         task.restartLocked = task.restartCount >= MAX_MANUAL_RESTARTS
         task.crashReason = task.failed
         recordCrash(task, task.failed)
         log("app failure " .. task.name .. ": " .. task.failed)
         notify(APP_META[task.name].title .. " stopped; open Control Center to restart", UI.colors.danger)
-        task.window.setVisible(true)
+        if not task.hidden then task.window.setVisible(true) end
         task.minimized = false
         task.closeRequested = false
     elseif coroutine.status(task.co) == "dead" then
@@ -623,14 +737,12 @@ local function drawDesktop()
     native.clear()
 
     UI.desktopBackground(native, width, height)
-    UI.text(native, 2, 2, "QALCOM", colors.white, UI.colors.desktop, 10)
-    UI.text(native, 2, 3, "A calm command center", colors.lightBlue, UI.colors.desktop, math.min(28, width - 3))
-    UI.text(native, width - 18, 2, "User: " .. tostring(state.user or "-"), colors.lightBlue, UI.colors.desktop, 17)
 
     for _, task in ipairs(state.tasks) do
         local focused = task == state.focused
-        if not task.minimized then
-            UI.shadow(native, task.x, task.y, task.width, task.height, 1)
+        if not task.minimized and not task.hidden then
+            -- Keep the frame flush with its content; no shadow may protrude into
+            -- neighboring windows or the taskbar.
             UI.fill(native, task.x, task.y, task.width, task.height, UI.colors.border)
             UI.titleBar(native, task.x, task.y, task.width, task.meta.title, task.meta.icon, focused)
             if task.failed then
@@ -648,7 +760,7 @@ local function drawDesktop()
 
     local now = os.clock()
     for _, task in ipairs(state.tasks) do
-        if task.failed then
+        if task.failed and not task.hidden then
             task.window.setVisible(true)
         end
     end
@@ -664,35 +776,48 @@ local function drawDesktop()
     end
 
     if state.launcher then
-        local menuX, menuY, menuWidth, menuHeight, visibleCount = launcherGeometry()
-        local start = math.max(1, math.min(state.launcherSelection - visibleCount + 1, #LAUNCHER_APPS - visibleCount + 1))
-        UI.shadow(native, menuX, menuY, menuWidth, menuHeight, 1)
-        UI.card(native, menuX, menuY, menuWidth, menuHeight, nil, nil, false)
-        UI.fill(native, menuX + 1, menuY + 1, menuWidth - 2, 3, UI.colors.accent)
-        UI.text(native, menuX + 3, menuY + 1, "Qalcom", colors.white, UI.colors.accent, menuWidth - 5)
-        UI.text(native, menuX + 3, menuY + 2, "Pinned apps", colors.lightBlue, UI.colors.accent, menuWidth - 5)
-        local names = LAUNCHER_APPS
-        UI.text(native, menuX + 3, menuY + 3, "Choose an app", colors.white, UI.colors.accent, menuWidth - 5)
-        for offset = 1, visibleCount do
-            local index = start + offset - 1
-            local name = names[index]
-            local itemY = menuY + 3 + offset
-            local active = index == state.launcherSelection
-            local background = active and UI.colors.accentLight or UI.colors.surface
-            local foreground = active and colors.white or UI.colors.text
-            UI.fill(native, menuX + 2, itemY, menuWidth - 4, 1, background)
-            UI.text(native, menuX + 4, itemY, APP_META[name].icon .. "  " .. APP_META[name].title, foreground, background, menuWidth - 8)
+        local menuX, menuY, menuWidth, menuHeight, visibleCount, items, start = launcherGeometry()
+        UI.shadow(native, menuX, menuY, menuWidth, menuHeight, 1, UI.colors.shadow)
+        UI.panel(native, menuX, menuY, menuWidth, menuHeight, UI.colors.surface, UI.colors.borderStrong)
+        UI.fill(native, menuX + 1, menuY + 1, menuWidth - 2, 1, UI.colors.accent)
+        UI.text(native, menuX + 2, menuY + 1, "Q  Qalcom", colors.white, UI.colors.accent, menuWidth - 4)
+        UI.text(native, menuX + menuWidth - 11, menuY + 1, tostring(state.user or "-"), UI.colors.lightBlue, UI.colors.accent, 9)
+
+        local searchBackground = state.launcherSearchFocused and UI.colors.accentLight or UI.colors.surfaceAlt
+        local searchForeground = state.launcherSearchFocused and colors.white or UI.colors.text
+        UI.fill(native, menuX + 2, menuY + 2, menuWidth - 4, 1, searchBackground)
+        local searchText = state.launcherSearch == "" and "Search programs" or state.launcherSearch
+        if state.launcherSearchFocused and state.launcherSearch ~= "" then searchText = searchText .. "_" end
+        UI.text(native, menuX + 3, menuY + 2, searchText, searchForeground, searchBackground, menuWidth - 6)
+
+        local heading = state.launcherSearch == "" and (#state.recentApps > 0 and "Recent apps" or "All apps") or "Search results"
+        UI.text(native, menuX + 2, menuY + 3, heading, UI.colors.muted, UI.colors.surface, menuWidth - 4)
+        if #items == 0 then
+            UI.text(native, menuX + 3, menuY + 4, "No matching programs", UI.colors.muted, UI.colors.surface, menuWidth - 6)
+        else
+            for offset = 1, visibleCount do
+                local index = start + offset - 1
+                local name = items[index]
+                if name then
+                    local itemY = menuY + 3 + offset
+                    local active = index == state.launcherSelection
+                    local background = active and UI.colors.accentLight or UI.colors.surface
+                    local foreground = active and colors.white or UI.colors.text
+                    UI.fill(native, menuX + 2, itemY, menuWidth - 4, 1, background)
+                    UI.text(native, menuX + 4, itemY, APP_META[name].icon .. "  " .. APP_META[name].title, foreground, background, menuWidth - 8)
+                end
+            end
         end
     end
 
-    local barY = height - 1
-    UI.taskbar(native, width, barY, state.tasks, state.focused, state.launcher, 15)
+    local barY = math.max(1, height - 2)
+    UI.taskbar(native, width, barY, state.tasks, state.focused, state.launcher, 15, state.mouseX, state.mouseY)
 end
 
 local function hitTask(x, y)
     for index = #state.tasks, 1, -1 do
         local task = state.tasks[index]
-        if x >= task.x and x < task.x + task.width and y >= task.y and y < task.y + task.height then
+        if not task.hidden and x >= task.x and x < task.x + task.width and y >= task.y and y < task.y + task.height then
             return task
         end
     end
@@ -705,35 +830,84 @@ local function activeModal()
     return nil
 end
 
+local function launcherItems()
+    local query = string.lower(tostring(state.launcherSearch or ""))
+    local items = {}
+    local seen = {}
+    local function add(name)
+        if not seen[name] and APP_META[name] and (query == "" or string.find(string.lower(name), query, 1, true) or string.find(string.lower(APP_META[name].title), query, 1, true)) then
+            seen[name] = true
+            items[#items + 1] = name
+        end
+    end
+    if query == "" then
+        for _, name in ipairs(state.recentApps) do
+            for _, allowed in ipairs(LAUNCHER_APPS) do
+                if name == allowed then add(name) break end
+            end
+        end
+        -- Once an app has been used, keep the Start menu focused on recent
+        -- programs; the search field remains the way to reach every app.
+        if #items == 0 then
+            for _, name in ipairs(LAUNCHER_APPS) do add(name) end
+        end
+    else
+        for _, name in ipairs(LAUNCHER_APPS) do add(name) end
+    end
+    return items
+end
+
 launcherGeometry = function()
-    local menuWidth = math.min(36, width - 4)
-    local visibleCount = math.max(1, math.min(#LAUNCHER_APPS, height - 8))
-    local menuHeight = visibleCount + 4
-    local menuX = math.max(2, math.floor((width - menuWidth) / 2) + 1)
-    local menuY = math.max(2, height - menuHeight - 3)
-    return menuX, menuY, menuWidth, menuHeight, visibleCount
+    local items = launcherItems()
+    local menuWidth = math.min(38, width - 2)
+    local barY = math.max(1, height - 2)
+    local menuHeight = math.min(barY - 1, math.max(7, math.min(#items + 5, height - 2)))
+    local visibleCount = math.max(1, menuHeight - 4)
+    local menuX = 1
+    -- Leave a clean gap between the menu shadow and the three-row taskbar.
+    local menuY = math.max(1, barY - menuHeight - 1)
+    if #items > 0 then
+        state.launcherSelection = math.max(1, math.min(state.launcherSelection, #items))
+    else
+        state.launcherSelection = 1
+    end
+    local start = math.max(1, math.min(state.launcherSelection - visibleCount + 1, math.max(1, #items - visibleCount + 1)))
+    return menuX, menuY, menuWidth, menuHeight, visibleCount, items, start
 end
 
 local function handleLauncherClick(x, y)
-    local menuX, menuY, menuWidth, menuHeight, visibleCount = launcherGeometry()
+    local menuX, menuY, menuWidth, menuHeight, visibleCount, items, start = launcherGeometry()
     if x < menuX or x >= menuX + menuWidth or y < menuY or y >= menuY + menuHeight then return false end
+    if y == menuY + 2 then
+        state.launcherSearchFocused = true
+        state.dirty = true
+        return true
+    end
     local index = y - (menuY + 3)
-    local start = math.max(1, math.min(state.launcherSelection - visibleCount + 1, #LAUNCHER_APPS - visibleCount + 1))
     local actual = start + index - 1
-    if index >= 1 and index <= visibleCount and actual <= #LAUNCHER_APPS then
+    if index >= 1 and index <= visibleCount and items[actual] then
         state.launcherSelection = actual
         state.launcher = false
-        spawn(LAUNCHER_APPS[actual])
+        state.launcherSearch = ""
+        spawn(items[actual], { fromLauncher = true })
     end
     return true
 end
 
 local function handleMouse(button, x, y)
-    if state.launcher and handleLauncherClick(x, y) then
+    if state.launcher then
+        if handleLauncherClick(x, y) then
+            state.dirty = true
+            return
+        end
+        -- Match the normal Start-menu behavior: clicking outside dismisses it,
+        -- while the original click can still focus a taskbar item or window.
+        state.launcher = false
+        state.launcherSearch = ""
+        state.launcherSearchFocused = true
         state.dirty = true
-        return
     end
-    if y >= height - 1 then
+    if y >= height - 2 then
         if activeModal() then return end
         local items = UI.taskbarLayout(width, state.tasks, 15)
         for _, item in ipairs(items) do
@@ -741,12 +915,30 @@ local function handleMouse(button, x, y)
                 if item.kind == "start" then
                     state.launcher = not state.launcher
                     state.launcherSelection = 1
+                    state.launcherSearch = ""
+                    state.launcherSearchFocused = true
+                elseif item.kind == "overflow" then
+                    state.launcher = true
+                    state.launcherSelection = 1
+                    state.launcherSearch = ""
+                    state.launcherSearchFocused = true
                 elseif item.task then
-                    if item.task.minimized then
-                        item.task.minimized = false
-                        item.task.window.setVisible(true)
+                    local task = item.task
+                    if task.minimized then
+                        -- A second click restores a minimized task, matching the
+                        -- familiar taskbar toggle behavior.
+                        task.minimized = false
+                        task.window.setVisible(true)
+                        focusTask(task)
+                    elseif task == state.focused then
+                        -- Clicking the active task button minimizes its window
+                        -- instead of opening another app-name action/tooltip.
+                        task.minimized = true
+                        task.window.setVisible(false)
+                        focusOtherVisibleTask(task)
+                    else
+                        focusTask(task)
                     end
-                    focusTask(item.task)
                 end
                 state.dirty = true
                 return
@@ -773,13 +965,14 @@ local function handleMouse(button, x, y)
         state.dirty = true
         return
     end
-    if y == task.y and x >= task.x + task.width - 5 then
+    if y == task.y and x >= task.x + task.width - 4 then
         removeTask(task)
         return
     end
-    if y == task.y and x >= task.x + task.width - 8 then
+    if y == task.y and x >= task.x + task.width - 7 then
         task.minimized = true
         task.window.setVisible(false)
+        if state.focused == task then focusOtherVisibleTask(task) end
         state.dirty = true
         return
     end
@@ -795,8 +988,13 @@ end
 local function dispatch(event)
     local name = event[1]
     if name == "mouse_click" then
+        state.mouseX, state.mouseY = event[3], event[4]
         handleMouse(event[2], event[3], event[4])
+    elseif name == "mouse_move" then
+        state.mouseX, state.mouseY = event[2], event[3]
+        state.dirty = true
     elseif name == "mouse_drag" then
+        state.mouseX, state.mouseY = event[3], event[4]
         if state.drag then
             local task = state.drag.task
             task.x = math.max(2, math.min(width - task.width, event[3] - state.drag.offsetX))
@@ -808,12 +1006,14 @@ local function dispatch(event)
             send(task, { name, event[2], event[3] - task.x, event[4] - task.y })
         end
     elseif name == "mouse_up" then
+        state.mouseX, state.mouseY = event[3], event[4]
         state.drag = nil
         if state.focused then
             local task = state.focused
             send(task, { name, event[2], event[3] - task.x, event[4] - task.y })
         end
     elseif name == "mouse_scroll" then
+        state.mouseX, state.mouseY = event[3] or state.mouseX, event[4] or state.mouseY
         if state.focused then send(state.focused, event) end
     elseif name == "key" or name == "char" or name == "paste" or name == "key_up" then
         if name == "key" then
@@ -845,24 +1045,49 @@ local function dispatch(event)
             if event[2] == keys.leftCtrl or event[2] == keys.rightCtrl then state.modifiers.ctrl = false end
             if event[2] == keys.leftShift or event[2] == keys.rightShift then state.modifiers.shift = false end
         end
-        if name == "key" and state.launcher then
-            if event[2] == keys.up then
-                state.launcherSelection = math.max(1, state.launcherSelection - 1)
+        if state.launcher then
+            if name == "char" and state.launcherSearchFocused then
+                state.launcherSearch = state.launcherSearch .. tostring(event[2] or "")
+                state.launcherSelection = 1
                 state.dirty = true
                 return
-            elseif event[2] == keys.down then
-                state.launcherSelection = math.min(#LAUNCHER_APPS, state.launcherSelection + 1)
+            elseif name == "paste" and state.launcherSearchFocused then
+                state.launcherSearch = state.launcherSearch .. tostring(event[2] or "")
+                state.launcherSelection = 1
                 state.dirty = true
                 return
-            elseif event[2] == keys.enter then
-                state.launcher = false
-                spawn(LAUNCHER_APPS[state.launcherSelection])
-                return
-            elseif event[2] == keys.escape then
-                state.launcher = false
-                state.dirty = true
-                return
+            elseif name == "key" then
+                local items = launcherItems()
+                if event[2] == keys.backspace and state.launcherSearchFocused then
+                    state.launcherSearch = state.launcherSearch:sub(1, math.max(0, #state.launcherSearch - 1))
+                    state.launcherSelection = 1
+                    state.dirty = true
+                    return
+                elseif event[2] == keys.up then
+                    state.launcherSelection = math.max(1, state.launcherSelection - 1)
+                    state.dirty = true
+                    return
+                elseif event[2] == keys.down then
+                    state.launcherSelection = math.min(math.max(1, #items), state.launcherSelection + 1)
+                    state.dirty = true
+                    return
+                elseif event[2] == keys.enter then
+                    local selected = items[state.launcherSelection]
+                    if selected then
+                        state.launcher = false
+                        state.launcherSearch = ""
+                        spawn(selected, { fromLauncher = true })
+                    end
+                    return
+                elseif event[2] == keys.escape then
+                    state.launcher = false
+                    state.launcherSearch = ""
+                    state.launcherSearchFocused = true
+                    state.dirty = true
+                    return
+                end
             end
+            return
         end
         if state.focused then send(state.focused, event) end
     elseif name == "timer" or name == "alarm" or name == "redstone" or name == "term_resize" or name == "peripheral" or name == "peripheral_detach" or name == "disk" or name == "disk_eject" or name == "rednet_message" or name == "modem_message" then
@@ -876,7 +1101,7 @@ local function dispatch(event)
         LAUNCHER_APPS = config.safeMode and SAFE_LAUNCHER_APPS or NORMAL_LAUNCHER_APPS
         if config.safeMode then
             for _, task in ipairs(state.tasks) do
-                if task.name ~= "recovery" and task.name ~= "logs" and task.name ~= "terminal" and task.name ~= "settings" then
+                if task.name ~= "recovery" and task.name ~= "logs" and task.name ~= "terminal" and task.name ~= "settings" and task.name ~= "peripherals" and task.name ~= "infrastructure" and task.name ~= "jobs" and task.name ~= "jobs_service" then
                     task.closeRequested = true
                 end
             end
@@ -904,6 +1129,7 @@ log("login success: " .. state.user)
 Capabilities.audit("login", state.user)
 if config.safeMode then notify("Safe Mode enabled", UI.colors.warning) end
 notify("Welcome, " .. state.user, UI.colors.accent)
+spawn("jobs_service", { hidden = true })
 state.clockTimer = os.startTimer(1)
 state.uiTimer = os.startTimer(0.1)
 drawDesktop()
@@ -934,6 +1160,8 @@ while true do
     elseif event[1] == "qalcom_logout" then
         closeAllTasks()
         state.launcher = false
+        state.launcherSearch = ""
+        state.launcherSearchFocused = true
         state.user = nil
         state.role = nil
         state.modifiers.alt = false
@@ -956,6 +1184,7 @@ while true do
         Capabilities.audit("login", state.user)
         if config.safeMode then notify("Safe Mode enabled", UI.colors.warning) end
         notify("Welcome, " .. state.user, UI.colors.accent)
+        spawn("jobs_service", { hidden = true })
         state.clockTimer = os.startTimer(1)
         state.uiTimer = os.startTimer(0.1)
         state.dirty = true

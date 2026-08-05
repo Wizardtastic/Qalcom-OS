@@ -1,4 +1,36 @@
 local Managed = {}
+local unpack = table.unpack or unpack
+
+local READ_ONLY_METHODS = {
+    getStatus = true,
+    getState = true,
+    getInfo = true,
+    getHealth = true,
+    getSignalStrength = true,
+    getRange = true,
+    isConnected = true,
+    getContacts = true,
+    getScan = true,
+    getPosition = true,
+    getHeading = true,
+    getVersion = true,
+    getName = true,
+    getType = true,
+    getFuel = true,
+    getEnergy = true,
+    getPower = true,
+    getTemperature = true,
+    getReadiness = true,
+    getAmmo = true,
+    getInventory = true,
+}
+
+local function hasMethod(methods, wanted)
+    for _, method in ipairs(methods or {}) do
+        if method == wanted then return true end
+    end
+    return false
+end
 
 local function clean(value)
     return tostring(value or "unknown"):gsub("[\r\n]", " "):sub(1, 120)
@@ -142,6 +174,70 @@ function Managed.peripheralMethods(ctx, name)
     return methods
 end
 
+function Managed.peripheralRead(ctx, name, method, ...)
+    local ok, reason = allowed(ctx, "peripheral.read", name .. ":" .. tostring(method))
+    if not ok then return nil, reason end
+    if type(method) ~= "string" or not READ_ONLY_METHODS[method] then
+        return nil, "Method is not allowlisted for read-only inspection"
+    end
+    local methods = Managed.peripheralMethods(ctx, name)
+    if not hasMethod(methods, method) then return nil, "Peripheral method unavailable" end
+    local args = { ... }
+    local value
+    local failure
+    local success = pcall(function()
+        local wrapped = peripheral.wrap(name)
+        if not wrapped or type(wrapped[method]) ~= "function" then
+            failure = "Peripheral method unavailable"
+            return
+        end
+        value = wrapped[method](unpack(args))
+    end)
+    if not success then return nil, "Peripheral read failed" end
+    if failure then return nil, failure end
+    return value
+end
+
+function Managed.peripheralMetadata(ctx, name)
+    local methods, reason = Managed.peripheralMethods(ctx, name)
+    if not methods then return nil, reason end
+    return { name = name, type = Managed.peripheralType(ctx, name), methods = methods }
+end
+
+function Managed.peripheralInventory(ctx)
+    local names, reason = Managed.peripheralNames(ctx)
+    if not names then return {}, reason end
+    local inventory = {}
+    for _, name in ipairs(names) do
+        local metadata = Managed.peripheralMetadata(ctx, name)
+        if metadata then inventory[#inventory + 1] = metadata end
+    end
+    return inventory
+end
+
+function Managed.peripheralMetadataFile(ctx)
+    local ok, reason = allowed(ctx, "fs.read", "/qalcom/data/peripherals.meta")
+    if not ok then return nil, reason end
+    if not fs.exists("/qalcom/data/peripherals.meta") then return nil end
+    local file = fs.open("/qalcom/data/peripherals.meta", "r")
+    if not file then return nil, "Peripheral metadata unavailable" end
+    local success, text = pcall(file.readAll)
+    pcall(file.close)
+    if not success then return nil, "Peripheral metadata unavailable" end
+    return text or ""
+end
+
+function Managed.writePeripheralMetadata(ctx, text)
+    local ok, reason = allowed(ctx, "fs.write", "/qalcom/data/peripherals.meta")
+    if not ok then return false, reason end
+    if not fs.exists("/qalcom/data") then fs.makeDir("/qalcom/data") end
+    local file = fs.open("/qalcom/data/peripherals.meta", "w")
+    if not file then return false, "Unable to save peripheral metadata" end
+    local success, failure = pcall(file.write, tostring(text or ""))
+    pcall(file.close)
+    return success, success and nil or tostring(failure or "Unable to save peripheral metadata")
+end
+
 function Managed.redstoneInput(ctx, side)
     local ok, reason = allowed(ctx, "redstone.read", side)
     if not ok then return nil, reason end
@@ -150,10 +246,23 @@ function Managed.redstoneInput(ctx, side)
 end
 
 function Managed.redstoneOutput(ctx, side, value)
+    return Managed.redstoneWrite(ctx, side, value)
+end
+
+function Managed.redstoneState(ctx, side)
+    local ok, reason = allowed(ctx, "redstone.read", side)
+    if not ok then return nil, reason end
+    local value = call("redstone.getOutput", function() return redstone.getOutput(side) end)
+    if value == nil then return nil, "Redstone output state unavailable" end
+    return value == true
+end
+
+function Managed.redstoneWrite(ctx, side, value)
     local ok, reason = allowed(ctx, "redstone.control", side)
     if not ok then return false, reason end
     local success, failure = pcall(redstone.setOutput, side, value == true)
-    return success, success and nil or tostring(failure or "Unable to set redstone output")
+    if not success then return false, tostring(failure or "Unable to set redstone output") end
+    return true
 end
 
 function Managed.setLabel(ctx, label)

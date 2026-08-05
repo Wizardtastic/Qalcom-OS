@@ -203,13 +203,13 @@ The profile intentionally separates direct integrations from libraries, performa
 - Added a Safe Mode policy that disables sensitive managed writes, controls, label changes, and power actions while preserving permitted read-only inspection.
 - Documented that trusted Lua code still has normal CC:T global access until a stronger boundary exists.
 
-**Implementation status:** The kernel now exposes approved capability metadata and managed context methods. Built-in applications route their Qalcom-controlled filesystem, peripheral, label, and power operations through those methods. Safe Mode is enforced by the shared policy decision layer, and denied managed operations notify the operator and write an audit entry. Redstone wrappers are available for the next allowlisted infrastructure feature but no built-in app performs redstone control yet. Core settings/account persistence remains a kernel/recovery service path rather than an app-controlled filesystem operation; it is not presented as third-party capability enforcement.
+**Implementation status:** The kernel now exposes approved capability metadata and managed context methods. Built-in applications route their Qalcom-controlled filesystem, peripheral, label, and power operations through those methods. Safe Mode is enforced by the shared policy decision layer, and denied managed operations notify the operator and write an audit entry. Redstone wrappers are available through the managed Infrastructure Controls app; output writes remain allowlisted, role-gated, explicitly confirmed where configured, and audited. Core settings/account persistence remains a kernel/recovery service path rather than an app-controlled filesystem operation; it is not presented as third-party capability enforcement.
 
 **Exit criteria:** New Qalcom-managed features consistently check capabilities, and denied actions are visible in the UI and audit log. Manual CC:T validation remains required before this milestone is considered fully validated.
 
 **Deferred:** Peripheral inventory applications, mod-device adapters, redstone control UI, and stronger process/security isolation remain future work. Trusted built-in Lua still has normal CC:T globals; this is not a secure sandbox.
 
-## 0.2.3 — Peripheral and mod-device inventory
+## Implemented — validation pending: 0.2.3 — Peripheral and mod-device inventory
 
 **Goal:** Read and understand local devices before controlling war-server systems.
 
@@ -223,9 +223,11 @@ The profile intentionally separates direct integrations from libraries, performa
 - Add persistent blocklists and trusted-device markers.
 - Keep inspection read-only in this milestone.
 
+**Implementation status:** The Peripheral Manager performs defensive attach/detach-aware discovery, uses allowlisted read-only managed calls, reports a versioned adapter contract and degraded state, normalizes bounded radar contacts, and persists aliases, blocklists, and trusted markers. It never exposes device control commands. Manual CC:T validation remains required.
+
 **Exit criteria:** Operators can identify local mod devices and their status without issuing control commands, each discovered integration reports a compatible adapter contract and health state, radar contacts are safely normalized without claiming certainty, and an absent integration does not prevent Qalcom from booting.
 
-## 0.2.4 — Local base and infrastructure controls
+## Implemented — validation pending: 0.2.4 — Local base and infrastructure controls
 
 **Goal:** Add narrowly scoped manual control for local bases and support systems before controlling vehicles or artillery.
 
@@ -237,18 +239,22 @@ The profile intentionally separates direct integrations from libraries, performa
 - Respect device blocklists, war-server zones, and role capabilities.
 - Do not add firing, launch, propulsion, or movement controls in this milestone.
 
+**Implementation status:** Infrastructure Controls now provides versioned named redstone profiles, read-only live state, confirmed output toggles, globally and per-profile bounded pulses, emergency safe-state, audit entries, blocklist checks, role/capability checks, and graceful offline behavior. It does not issue peripheral, vehicle, artillery, propulsion, or network commands. Manual CC:T validation remains required.
+
 **Exit criteria:** Manual infrastructure controls are allowlisted, reversible where possible, auditable, and safe when a peripheral disappears.
 
-## 0.2.5 — Local jobs and structured automation
+## Implemented — validation pending: 0.2.5 — Local jobs and structured automation
 
 **Goal:** Automate local actions without executing arbitrary Lua strings.
 
-- Add a local job scheduler with named jobs.
-- Support structured triggers such as timer, redstone input, peripheral attach, radar contact, and manual run.
-- Add retry limits, cooldowns, timeouts, and execution history.
-- Add pause, resume, disable, and emergency-stop controls.
-- Add per-job capability declarations.
-- Store actions as validated data structures rather than arbitrary code.
+- Added a local kernel-launched job service and an Automation Jobs application.
+- Supports structured manual, timer, and redstone-input triggers; peripheral/radar triggers remain deferred.
+- Added bounded retry limits, cooldowns, validated timeout fields, and persisted execution history.
+- Added pause, resume, disable, and emergency-stop controls.
+- Added jobs.manage plus infrastructure capability intersection checks and Safe Mode blocking.
+- Stores actions as validated data structures rather than arbitrary code.
+
+**Implementation status:** Jobs are persisted in `/qalcom/data/jobs.meta` with bounded `/qalcom/data/jobs.history`; the hidden service continues scheduling after the UI closes, validates side transitions, applies cooldowns/retries, and fails closed on unavailable infrastructure. Manual CC:T validation remains required.
 
 **Exit criteria:** A small automation job can be created, observed, stopped, and recovered without unrestricted script execution.
 

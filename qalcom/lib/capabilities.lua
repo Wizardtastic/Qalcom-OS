@@ -19,6 +19,9 @@ Capabilities.names = {
     "peripheral.control",
     "redstone.read",
     "redstone.control",
+    "infrastructure.control",
+    "infrastructure.emergency",
+    "jobs.manage",
     "network.send",
     "network.receive",
     "system.label",
@@ -34,6 +37,9 @@ Capabilities.descriptions = {
     ["peripheral.control"] = "Invoke allowlisted peripheral controls",
     ["redstone.read"] = "Read redstone state",
     ["redstone.control"] = "Change managed redstone outputs",
+    ["infrastructure.control"] = "Control named local infrastructure profiles",
+    ["infrastructure.emergency"] = "Set named infrastructure outputs to safe state",
+    ["jobs.manage"] = "Create, pause, and stop structured local jobs",
     ["network.send"] = "Send approved network messages",
     ["network.receive"] = "Receive approved network messages",
     ["system.label"] = "Change the computer label",
@@ -104,6 +110,26 @@ local manifests = {
         requested = { "fs.read" },
         unmanaged = { "os.pullEvent" },
     },
+    peripherals = {
+        title = "Peripheral Manager", trusted = true,
+        requested = { "fs.read", "fs.write", "peripheral.read" },
+        unmanaged = { "os.pullEvent" },
+    },
+    infrastructure = {
+        title = "Infrastructure", trusted = true,
+        requested = { "fs.read", "fs.write", "redstone.read", "redstone.control", "infrastructure.control", "infrastructure.emergency" },
+        unmanaged = { "os.pullEvent" },
+    },
+    jobs = {
+        title = "Automation Jobs", trusted = true,
+        requested = { "fs.read", "fs.write", "jobs.manage", "redstone.read", "redstone.control", "infrastructure.control", "infrastructure.emergency" },
+        unmanaged = { "os.pullEvent" },
+    },
+    jobs_service = {
+        title = "Automation Service", trusted = true,
+        requested = { "fs.read", "fs.write", "jobs.manage", "redstone.read", "redstone.control", "infrastructure.control", "infrastructure.emergency" },
+        unmanaged = { "os.pullEvent" },
+    },
 }
 
 local function contains(list, value)
@@ -150,7 +176,8 @@ end
 
 local function safeModeBlocks(capability)
     return capability == "fs.write" or capability == "peripheral.control"
-        or capability == "redstone.control" or capability == "system.label"
+        or capability == "redstone.control" or capability == "infrastructure.control"
+        or capability == "infrastructure.emergency" or capability == "jobs.manage" or capability == "system.label"
         or capability == "system.reboot" or capability == "system.shutdown"
 end
 

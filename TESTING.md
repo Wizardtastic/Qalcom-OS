@@ -1,6 +1,8 @@
 # Qalcom OS Testing Guide
 
-The current source version is 0.2.2. The 0.1.x, 0.2.0, and 0.2.1 checks below remain required regression checks; the managed-context and Safe Mode checks cover the current milestone. No local Lua runtime or CC:T instance is available in this checkout, so automated and in-game validation remain pending.
+The current source version is 0.2.5. The 0.1.x, 0.2.0, 0.2.1, 0.2.2, and 0.2.3 checks below remain required regression checks; the Infrastructure Controls and Automation Jobs checks cover the current milestones. No local Lua runtime or CC:T instance is available in this checkout, so automated and in-game validation remain pending.
+
+The 0.2.5 service is intentionally conservative: only manual, timer, and redstone-edge triggers are implemented; peripheral-attach and radar-contact triggers are deferred. The hidden service is launched after login and continues while the Automation Jobs window is closed.
 
 ## Offline pure-helper checks
 
@@ -40,12 +42,15 @@ Run these checks on a fresh copy and again over an existing 0.1.x installation.
 ### Desktop and applications
 
 - [ ] The native UI foundation renders without an external dependency.
+- [ ] The login screen shows a colorful Qalcom OS wordmark above the credential inputs, keeps the setup button inside the card, and remains readable in compact mode.
 - [ ] Login, Settings, Recovery, Control Center, Diagnostics, Monitor, System Log, Explorer, Terminal, Account, and Editor share the refreshed visual language.
 - [ ] Window shadows remain inside the terminal and do not corrupt adjacent windows.
 - [ ] Notifications animate in without blocking input; Reduced motion disables the transition.
-- [ ] The centered taskbar and floating Start menu open and close with mouse and keyboard.
-- [ ] Taskbar buttons remain correctly hit-testable after centering.
-- [ ] Start opens and closes with mouse and keyboard.
+- [ ] The bottom-left green Q opens a Windows-style Start menu above the taskbar, with a search field and recent-app list.
+- [ ] Start-menu typing, backspace, paste, Up/Down selection, Enter launch, Escape close, and mouse selection work without leaking input to the focused app.
+- [ ] Taskbar applications render as centered icon buttons and mouse hover displays the full application name.
+- [ ] Taskbar icon buttons remain correctly hit-testable after centering, including the bottom-left Q button.
+- [ ] Start opens and closes with mouse and keyboard, remains anchored to the bottom-left, and stays above the taskbar/start button at 30×14 and normal sizes.
 - [ ] Terminal `reboot` and `shutdown` open a confirmation dialog instead of powering off immediately.
 - [ ] Cancelling the power dialog leaves the desktop running.
 - [ ] Terminal, Explorer, Settings, Account, Recovery, System Log, Control Center, System Monitor, and Capabilities launch.
@@ -74,6 +79,16 @@ Run these checks on a fresh copy and again over an existing 0.1.x installation.
 - [ ] Compact Settings still exposes Safe Mode, log retention, Reduced motion, and restore defaults.
 - [ ] Changing Reduced motion persists after reboot and does not affect account data.
 - [ ] Settings and Recovery remain usable at the supported minimum size.
+
+### Taskbar and window chrome polish
+
+- [ ] The green Q launcher is flush to the bottom-left and never displays the old Start label.
+- [ ] Taskbar icons are vertically centered, begin immediately after the green Q button, and do not hug the top edge at 30×14 and a normal terminal size.
+- [ ] Taskbar app icons have no selected/hover overlay; the active app is marked only by a subtle light-blue underline.
+- [ ] Clicking the active taskbar icon minimizes its window; clicking it again restores it, and clicking another icon focuses that app.
+- [ ] Hover labels remain inside the terminal and do not cover the taskbar controls unexpectedly; if the runtime lacks `mouse_move`, the desktop still remains usable via click and keyboard.
+- [ ] Window frames are flush, title-bar controls line up with close/minimize hit areas, and no frame/shadow protrudes into neighboring content.
+- [ ] Window title text remains clipped cleanly on narrow windows.
 
 ### Native UI foundation
 
@@ -123,6 +138,50 @@ Run these checks on a fresh copy and again over an existing 0.1.x installation.
 - [ ] The Capabilities inspector shows Safe Mode-sensitive capabilities as denied while preserving allowed read-only decisions.
 - [ ] Trusted built-in Lua still has normal CC:T globals; managed helpers are an application boundary, not a secure sandbox.
 - [ ] Settings and Recovery persistence are treated as trusted kernel/recovery service paths, not as third-party filesystem capability enforcement.
+
+### 0.2.3 Peripheral Manager
+
+- [ ] Peripheral Manager appears in Start and launches in Normal Mode.
+- [ ] Safe Mode lists Peripheral Manager alongside Recovery, Logs, Terminal, and Settings; it permits read-only inspection while denying metadata writes.
+- [ ] Attached peripherals display side/name, type, method count, and safe status without invoking arbitrary methods.
+- [ ] Peripheral attach and detach events refresh the inventory without crashing the app or desktop.
+- [ ] Aeronautics, CBC, Create: Propulsion, Create Radar, and Create Aero Radar detection is capability-based and does not require fixed peripheral names.
+- [ ] Adapter rows show contract version, availability, and stale/failure state when an integration is absent or a read fails.
+- [ ] Radar contacts are bounded, timestamped, confidence-aware, and labeled unverified/ambiguous rather than treated as hostile identity.
+- [ ] A edits an alias, B toggles a staged blocklist marker, T toggles a staged trusted marker, and S saves `/qalcom/data/peripherals.meta`.
+- [ ] Safe Mode permits inventory inspection but denies metadata writes with a visible status/audit entry.
+- [ ] No Peripheral Manager action changes a peripheral, redstone output, network state, vehicle, artillery, or propulsion system.
+
+### 0.2.4 Infrastructure Controls
+
+- [ ] Infrastructure Controls appears in Start and remains available in Safe Mode for inspection.
+- [ ] Automation Jobs appears in Start, remains inspectable in Safe Mode, and has no arbitrary Lua/script execution path.
+- [ ] `/qalcom/data/infrastructure.meta` profiles parse defensively, cap profile count/size, and persist after N/S save; profile fields and local/base zone restrictions are understood.
+- [ ] Named input profiles show live redstone input state and become visibly offline when the side is unavailable.
+- [ ] Named output profiles show output state and never invoke arbitrary peripheral methods; non-local/base zones remain blocked for writes.
+- [ ] Enter on an output requires confirmation when configured; cancellation leaves the output unchanged and is audited.
+- [ ] Output changes are role/capability-gated, audited, and fail safely when the side disappears.
+- [ ] P pulses only output profiles, requires confirmation, and rejects invalid, global-over-limit, or profile-over-limit durations.
+- [ ] Pulse completion returns the output to its configured safe state and audits success/failure.
+- [ ] E emergency safe-state requires confirmation, checks the emergency capability, applies every enabled output safe state, and reports partial failures.
+- [ ] Blocklisted profiles cannot be controlled; safe-state and control failures remain visible.
+- [ ] Safe Mode permits read-only state inspection but denies output writes and profile persistence.
+- [ ] No Infrastructure Controls action issues vehicle, artillery, propulsion, peripheral, network, or arbitrary Lua commands.
+
+### 0.2.5 Automation Jobs
+
+- [ ] `/qalcom/data/jobs.meta` parses defensively, rejects unsupported trigger/action values, caps input bytes/job count, and persists after S save.
+- [ ] The hidden scheduler service continues timer/redstone jobs after the Automation Jobs window is closed and reloads definitions safely.
+- [ ] N creates a structured starter job and the definition remains data-only.
+- [ ] Manual jobs run only after capability, cooldown, target, and action validation.
+- [ ] Timer jobs obey their interval and cooldown without starving the desktop.
+- [ ] Redstone jobs respond only to validated side:on/off triggers and remain rate-limited.
+- [ ] Space pauses/resumes a job; D disables/enables it; R refreshes saved definitions.
+- [ ] E pauses all jobs immediately and writes an audit record.
+- [ ] Run history is bounded and shows success, failure, skipped, or denied outcomes.
+- [ ] Missing, blocked, disabled, or offline infrastructure targets fail safely and visibly.
+- [ ] Safe Mode blocks job management/execution while preserving read-only job inspection.
+- [ ] Jobs never execute arbitrary Lua strings, shell commands, unrestricted peripheral calls, or network commands.
 
 ### Session and resize behavior
 

@@ -154,7 +154,7 @@ local function screenLayout(target, mode)
     local width, height = target.getSize()
     local compact = height < 22
     local panelWidth = math.min(38, width - 6)
-    local panelHeight = compact and (mode == "setup" and 11 or 9) or (mode == "setup" and 13 or 11)
+    local panelHeight = compact and (mode == "setup" and 12 or 10) or (mode == "setup" and 13 or 11)
     local panelX = math.floor((width - panelWidth) / 2) + 1
     local panelY = compact and 3 or math.max(6, math.floor((height - panelHeight) / 2))
     local firstField = 4
@@ -181,15 +181,23 @@ local function drawScreen(target, UI, version, mode, fields, selected, message, 
     target.setTextColor(colors.white)
     target.clear()
 
-    UI.center(target, layout.compact and 1 or 3, "QALCOM", colors.white, UI.colors.desktop, width)
+    local brandY = layout.compact and 1 or 3
+    local brand = "Qalcom OS"
+    local brandX = math.max(1, math.floor((width - #brand) / 2) + 1)
+    -- Give the login screen the same identity as the desktop: a bright green Q
+    -- followed by a clean, high-contrast wordmark above the credential fields.
+    UI.text(target, brandX, brandY, "Q", colors.lime, UI.colors.desktop, 1)
+    UI.text(target, brandX + 1, brandY, "alcom OS", colors.white, UI.colors.desktop, #brand - 1)
     if not layout.compact then
         UI.center(target, 4, mode == "setup" and "Create your administrator account" or "Welcome back", colors.lightBlue, UI.colors.desktop, width)
+    else
+        UI.center(target, 2, "Secure local sign-in", UI.colors.accentLight, UI.colors.desktop, width)
     end
 
     UI.shadow(target, layout.panelX, layout.panelY, layout.panelWidth, layout.panelHeight, 1)
     UI.card(target, layout.panelX, layout.panelY, layout.panelWidth, layout.panelHeight, nil, nil, false)
     UI.fill(target, layout.panelX + 1, layout.panelY + 1, layout.panelWidth - 2, 2, UI.colors.accent)
-    UI.text(target, layout.panelX + 2, layout.panelY + 1, "QALCOM", colors.white, UI.colors.accent, layout.panelWidth - 4)
+    UI.text(target, layout.panelX + 2, layout.panelY + 1, "Qalcom OS", colors.white, UI.colors.accent, layout.panelWidth - 4)
     UI.text(target, layout.panelX + 2, layout.panelY + 2, mode == "setup" and "First-time setup" or "Sign in to continue", colors.lightBlue, UI.colors.accent, layout.panelWidth - 4)
 
     local fieldX = layout.panelX + 3
@@ -205,8 +213,12 @@ local function drawScreen(target, UI, version, mode, fields, selected, message, 
     local buttonY = layout.panelY + layout.buttonOffset
     UI.button(target, fieldX, buttonY, fieldWidth, mode == "setup" and "Create account" or "Sign in", selected == (mode == "setup" and 3 or 2))
     if message and message ~= "" then
-        local messageY = math.min(height - 2, layout.panelY + layout.panelHeight + 1)
-        UI.center(target, messageY, message, messageColor or colors.yellow, UI.colors.desktop, width)
+        local messageY = layout.panelY + layout.panelHeight + 1
+        -- Compact setup uses the available height for the third field; avoid
+        -- painting status text back over the card or the footer.
+        if messageY < height - 1 then
+            UI.center(target, messageY, message, messageColor or colors.yellow, UI.colors.desktop, width)
+        end
     end
     UI.center(target, height, "Qalcom OS " .. version .. "  |  Tab switches fields  |  Esc shuts down", colors.gray, UI.colors.desktop, width)
 end

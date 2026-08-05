@@ -52,6 +52,36 @@ local function loadAnimation()
 end
 
 local Animation = loadAnimation()
+local function loadPeripherals()
+    local candidates = { "qalcom/lib/peripherals.lua", "../qalcom/lib/peripherals.lua", "/qalcom/lib/peripherals.lua" }
+    for _, path in ipairs(candidates) do
+        local ok, module = pcall(dofile, path)
+        if ok and type(module) == "table" then return module end
+    end
+    fail("Unable to load qalcom/lib/peripherals.lua")
+end
+
+local Peripherals = loadPeripherals()
+local function loadInfrastructure()
+    local candidates = { "qalcom/lib/infrastructure.lua", "../qalcom/lib/infrastructure.lua", "/qalcom/lib/infrastructure.lua" }
+    for _, path in ipairs(candidates) do
+        local ok, module = pcall(dofile, path)
+        if ok and type(module) == "table" then return module end
+    end
+    fail("Unable to load qalcom/lib/infrastructure.lua")
+end
+
+local Infrastructure = loadInfrastructure()
+local function loadJobs()
+    local candidates = { "qalcom/lib/jobs.lua", "../qalcom/lib/jobs.lua", "/qalcom/lib/jobs.lua" }
+    for _, path in ipairs(candidates) do
+        local ok, module = pcall(dofile, path)
+        if ok and type(module) == "table" then return module end
+    end
+    fail("Unable to load qalcom/lib/jobs.lua")
+end
+
+local Jobs = loadJobs()
 local passed = 0
 
 local function test(label, callback)
@@ -83,6 +113,8 @@ test("validates roles and policies", function()
     equal(Roles.normalize("invalid", true), "Observer", "invalid role fallback")
     truthy(Roles.allows("Administrator", "system.shutdown"), "administrator shutdown")
     truthy(Roles.allows("Administrator", "account.manage"), "administrator account management")
+    truthy(Roles.allows("Administrator", "infrastructure.control"), "administrator infrastructure control")
+    truthy(Capabilities.policy("Operations officer", "infrastructure", "infrastructure.control", false).allowed, "operations infrastructure policy")
     equal(Roles.allows("Observer", "system.shutdown"), false, "observer shutdown")
     truthy(Pure.validateRole("Observer", Roles.names()), "valid role")
     equal(Pure.validateRole("Unknown", Roles.names()), false, "invalid role")
@@ -94,6 +126,66 @@ test("validates roles and policies", function()
     equal(safe.reason, "Safe Mode blocks sensitive actions", "Safe Mode reason")
     local readOnly = Capabilities.policy("Observer", "monitor", "peripheral.read", true)
     truthy(readOnly.allowed, "Safe Mode preserves read-only inspection")
+end)
+
+test("normalizes peripheral metadata and radar contacts", function()
+    local metadata = Peripherals.parseMetadata("schema|1\nalias|left|Main Radar\nblocked|right\ntrusted|left\n")
+    truthy(metadata.aliases.left == "Main Radar", "alias parsed")
+    local safeName = Peripherals.parseMetadata("alias|front|North\n").aliases.front
+    truthy(safeName == "North", "metadata name preserves letters")
+    truthy(metadata.blocked.right, "block marker parsed")
+    truthy(metadata.trusted.left, "trusted marker parsed")
+    local serialized = Peripherals.serializeMetadata(metadata)
+    truthy(serialized:find("alias|left|Main Radar", 1, true) ~= nil, "alias serialized")
+    local contacts = Peripherals.normalizeContacts({
+        { id = "contact-1", timestamp = 8, position = { x = 1, y = 2, z = 3 }, confidence = 0.75 },
+        { ambiguous = true },
+    }, "radar-left", 10, 2)
+    equal(#contacts, 2, "contact limit")
+    equal(contacts[1].age, 2, "contact age")
+    equal(contacts[1].identityStatus, "unverified", "unknown identity status")
+    equal(contacts[2].identityStatus, "ambiguous", "ambiguous identity status")
+    local adapters = Peripherals.adapterFor("create radar", { "getContacts" })
+    equal(adapters[1].name, "create_radar", "radar adapter discovery")
+    equal(adapters[1].contractVersion, 1, "adapter contract version")
+    local contactsMany = {}
+    for index = 1, 200 do contactsMany[index] = { id = tostring(index) } end
+    equal(#Peripherals.normalizeContacts(contactsMany, "radar", 1, 32), 32, "contact output bound")
+end)
+
+test("normalizes infrastructure profiles and pulse limits", function()
+    local data = Infrastructure.parse("schema|1\nprofile|alarm|Base Alarm|output|front|false|true|base|3|true|false\nprofile|input|Door Sensor|input|left|false|true|base|0|true|false\n")
+    equal(#data.profiles, 2, "profile count")
+    equal(data.profiles[1].id, "alarm", "profile id")
+    equal(data.profiles[1].maxPulse, 3, "profile pulse limit")
+    equal(data.profiles[1].blocked, false, "profile block marker")
+    truthy(Infrastructure.zoneAllowed(data.profiles[1]), "local zone allowed")
+    truthy(Infrastructure.canPulse(data.profiles[1], 2), "valid pulse")
+    equal(Infrastructure.canPulse(data.profiles[1], 4), false, "profile pulse cap")
+    equal(Infrastructure.canPulse(data.profiles[2], 1), false, "input cannot pulse")
+    local serialized = Infrastructure.serialize(data)
+    truthy(serialized:find("profile|alarm|Base Alarm", 1, true) ~= nil, "profile serialized")
+end)
+
+test("validates structured jobs and bounds execution helpers", function()
+    local data = Jobs.parse("schema|1\njob|door|Door Watch|true|timer|10|infrastructure_toggle|door-a|toggle|5|1|3|false\njob|bad|Bad|true|lua|x|shell|x|toggle|0|99|99|false\n")
+    equal(#data.jobs, 2, "job count")
+    equal(data.jobs[1].trigger, "timer", "timer trigger")
+    equal(data.jobs[2].trigger, "manual", "invalid trigger fallback")
+    equal(data.jobs[2].action, "infrastructure_safe_state", "invalid action fallback")
+    equal(Jobs.timerInterval(data.jobs[1]), 10, "timer interval")
+    local side, value = Jobs.redstoneTrigger(Jobs.normalize({ trigger = "redstone", triggerValue = "front:on" }))
+    equal(side, "front", "redstone side")
+    equal(value, true, "redstone value")
+    local allowed = Jobs.canRun(Jobs.normalize({ cooldown = 5 }), 10, 4)
+    equal(allowed, true, "cooldown elapsed")
+    local blocked = Jobs.canRun(Jobs.normalize({ cooldown = 5 }), 10, 8)
+    equal(blocked, false, "cooldown active")
+    local history = {}
+    for index = 1, 60 do history = Jobs.addHistory(history, { id = "job", outcome = "success", at = index }) end
+    equal(#history, Jobs.maxHistory, "history bound")
+    local serialized = Jobs.serialize(data)
+    truthy(serialized:find("job|door|Door Watch", 1, true) ~= nil, "job serialized")
 end)
 
 test("retains newest log lines", function()

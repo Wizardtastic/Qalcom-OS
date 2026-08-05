@@ -17,6 +17,9 @@ Use this checklist before calling a milestone complete.
 - [ ] Role policy and approval behavior are documented; trusted Lua is not treated as sandboxed.
 - [ ] Capability policy limitations are documented; no sandbox claim is made.
 - [ ] Managed context wrappers cover filesystem, peripheral, redstone, label, and power actions used by built-in apps.
+- [ ] Peripheral Manager discovery, adapter health, normalized contacts, aliases, blocklists, and trusted markers remain read-only and bounded.
+- [ ] Infrastructure profiles, role/capability checks, confirmations, pulse limits, safe-state behavior, offline failures, and audit entries are bounded and allowlisted.
+- [ ] Structured jobs validate triggers/actions, enforce cooldowns and capability checks, bound history, and never execute arbitrary Lua.
 - [ ] Safe Mode blocks sensitive managed actions while preserving permitted read-only inspection.
 - [ ] Compact terminal behavior is checked at 30 x 14 and at a normal terminal size.
 - [ ] Native UI shadows and animations are checked for bounds, responsiveness, and memory impact.
@@ -48,7 +51,7 @@ Use this checklist before calling a milestone complete.
 ## Version and documentation
 
 - [ ] `/qalcom/version.lua` has the new version.
-- [ ] `/qalcom/lib/managed.lua` is included in installation and upgrade instructions.
+- [ ] `/qalcom/lib/managed.lua`, `/qalcom/lib/peripherals.lua`, `/qalcom/lib/infrastructure.lua`, `/qalcom/lib/jobs.lua`, `/qalcom/apps/peripherals.lua`, `/qalcom/apps/infrastructure.lua`, `/qalcom/apps/jobs.lua`, and `/qalcom/apps/jobs_service.lua` are included in installation and upgrade instructions.
 - [ ] Role schema/version migration is documented in the README and roadmap.
 - [ ] User-facing version text is current.
 - [ ] `ROADMAP.md` marks the milestone complete and preserves future work.

@@ -10,7 +10,7 @@ local definitions = {
         description = "Full local administrative access",
         capabilities = {
             "fs.read", "fs.write", "system.label", "peripheral.read", "peripheral.control", "account.manage",
-            "redstone.read", "redstone.control", "network.send", "network.receive",
+            "redstone.read", "redstone.control", "infrastructure.control", "infrastructure.emergency", "jobs.manage", "network.send", "network.receive",
             "system.reboot", "system.shutdown",
         },
     },
@@ -18,7 +18,7 @@ local definitions = {
         label = "Commander",
         description = "Strategic operations and emergency oversight",
         capabilities = {
-            "fs.read", "peripheral.read", "redstone.read", "redstone.control",
+            "fs.read", "peripheral.read", "redstone.read", "redstone.control", "infrastructure.control", "infrastructure.emergency", "jobs.manage",
             "network.send", "network.receive", "system.reboot",
         },
     },
@@ -26,7 +26,7 @@ local definitions = {
         label = "Operations officer",
         description = "Base operations and approved infrastructure response",
         capabilities = {
-            "fs.read", "peripheral.read", "redstone.read", "redstone.control",
+            "fs.read", "peripheral.read", "redstone.read", "redstone.control", "infrastructure.control", "jobs.manage",
             "network.send", "network.receive",
         },
     },
@@ -42,7 +42,7 @@ local definitions = {
         description = "Vehicle, propulsion, and infrastructure telemetry",
         capabilities = {
             "fs.read", "peripheral.read", "peripheral.control", "redstone.read",
-            "redstone.control", "network.receive",
+            "redstone.control", "infrastructure.control", "infrastructure.emergency", "network.receive",
         },
     },
     ["Logistics officer"] = {
@@ -61,9 +61,9 @@ local definitions = {
     },
     ["Automation service"] = {
         label = "Automation service",
-        description = "Bounded service identity for future structured jobs",
+        description = "Bounded service identity for structured local jobs",
         capabilities = {
-            "fs.read", "peripheral.read", "redstone.read", "redstone.control",
+            "fs.read", "peripheral.read", "redstone.read", "redstone.control", "infrastructure.control", "jobs.manage",
             "network.send", "network.receive",
         },
     },

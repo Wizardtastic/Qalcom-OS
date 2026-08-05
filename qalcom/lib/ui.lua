@@ -185,55 +185,87 @@ end
 function UI.taskbarLayout(width, tasks, trayWidth)
     width = math.max(1, math.floor(tonumber(width) or 1))
     trayWidth = UI.taskbarTrayWidth(width, trayWidth)
-    local firstX = 2
-    local lastX = math.max(firstX, width - trayWidth - 1)
-    local available = math.max(8, lastX - firstX + 1)
-    local startWidth = available >= 20 and 8 or 5
-    local items = { { kind = "start", x = firstX, width = startWidth, label = "Start" } }
-    local total = startWidth
-    local hidden = 0
+    local visibleTasks = {}
     for _, task in ipairs(tasks or {}) do
-        local label = tostring(task.meta.icon or "") .. (task.minimized and " + " or " ") .. tostring(task.meta.title or "")
-        local normalWidth = math.min(16, math.max(8, #label + 2))
-        local buttonWidth = normalWidth
-        if total + 1 + buttonWidth > available then buttonWidth = 4 end
-        if total + 1 + buttonWidth <= available then
-            items[#items + 1] = { kind = "task", task = task, x = firstX, width = buttonWidth, label = buttonWidth == 4 and tostring(task.meta.icon or "?") or label }
-            total = total + 1 + buttonWidth
-        else
-            hidden = hidden + 1
+        if not task.hidden then visibleTasks[#visibleTasks + 1] = task end
+    end
+    local taskCount = #visibleTasks
+    local startWidth = width >= 36 and 5 or 3
+    local firstAppX = startWidth + 1
+    local lastX = math.max(firstAppX, width - trayWidth - 1)
+    local available = math.max(1, lastX - firstAppX + 1)
+    local gap = width >= 42 and 1 or 0
+    local preferredIconWidth = width >= 64 and 5 or 3
+    local iconWidth = preferredIconWidth
+    local count = taskCount
+    if taskCount > 0 then
+        local fitted = math.floor((available + gap) / (iconWidth + gap))
+        if fitted < count then
+            iconWidth = 2
+            fitted = math.floor((available + gap) / (iconWidth + gap))
+        end
+        if fitted < count then
+            iconWidth = 1
+            gap = 0
+            fitted = available
+        end
+        count = math.min(taskCount, math.max(0, fitted))
+        if count > 0 and count == taskCount then
+            iconWidth = math.max(1, math.min(preferredIconWidth, math.floor((available - math.max(0, count - 1) * gap) / count)))
         end
     end
-    if hidden > 0 and total + 1 + 3 <= available then
-        items[#items + 1] = { kind = "overflow", x = firstX, width = 3, label = "..", hidden = hidden }
-        total = total + 1 + 3
+    local items = { { kind = "start", x = 1, width = startWidth, label = "Q", title = "Qalcom" } }
+    -- Keep applications anchored to the left edge like a Windows taskbar:
+    -- the first icon begins immediately after the Q launcher instead of being
+    -- centered across the remaining tray space.
+    local cursor = firstAppX
+    for index = 1, count do
+        local task = visibleTasks[index]
+        items[#items + 1] = {
+            kind = "task",
+            task = task,
+            x = cursor,
+            width = iconWidth,
+            label = tostring(task.meta.icon or "?"),
+            title = tostring(task.meta.title or task.name or "Application"),
+        }
+        cursor = cursor + iconWidth + gap
     end
-    local start = firstX + math.max(0, math.floor((available - total) / 2))
-    local cursor = start
-    for _, item in ipairs(items) do
-        item.x = cursor
-        cursor = cursor + item.width + 1
+    if count < taskCount and cursor <= lastX then
+        items[#items + 1] = { kind = "overflow", x = cursor, width = math.min(3, lastX - cursor + 1), label = "..", title = tostring(taskCount - count) .. " more applications" }
     end
-    return items, start, total
+    return items, firstAppX, available
 end
 
-function UI.taskbar(target, width, y, tasks, focused, launcher, trayWidth)
+function UI.taskbar(target, width, y, tasks, focused, launcher, trayWidth, hoverX, hoverY)
     width = math.max(1, math.floor(tonumber(width) or 1))
     y = math.floor(tonumber(y) or 1)
     trayWidth = UI.taskbarTrayWidth(width, trayWidth)
-    UI.fill(target, 1, y, width, 2, UI.colors.surfaceAlt)
+    local height = math.min(3, select(2, target.getSize()) - y + 1)
+    UI.fill(target, 1, y, width, height, UI.colors.surfaceAlt)
     local items = UI.taskbarLayout(width, tasks, trayWidth)
+    local hovered
     for _, item in ipairs(items) do
+        item.hovered = hoverX and hoverY and hoverX >= item.x and hoverX < item.x + item.width and hoverY >= y and hoverY < y + height
+        if item.hovered then hovered = item end
         if item.kind == "start" then
-            UI.taskButton(target, item.x, y, item.width, launcher and "Q" or "Start", launcher)
+            UI.taskbarStart(target, item.x, y, item.width, launcher, item.hovered)
         elseif item.kind == "task" then
-            UI.taskButton(target, item.x, y, item.width, item.label, item.task == focused and not item.task.minimized)
+            UI.taskbarIcon(target, item.x, y, item.width, item.label, item.task == focused and not item.task.minimized, item.hovered)
         else
-            UI.taskButton(target, item.x, y, item.width, item.label, false)
+            UI.taskbarIcon(target, item.x, y, item.width, item.label, false, item.hovered)
         end
     end
-    UI.text(target, width - trayWidth, y, os.date("%H:%M"), UI.colors.text, UI.colors.surfaceAlt, 6)
-    UI.text(target, width - 8, y, "ID " .. tostring(os.getComputerID()), UI.colors.muted, UI.colors.surfaceAlt, 7)
+    local trayX = width - trayWidth
+    UI.text(target, trayX, y + math.max(0, math.floor((height - 1) / 2)), os.date("%H:%M"), UI.colors.text, UI.colors.surfaceAlt, 6)
+    UI.text(target, width - 8, y + math.max(0, math.floor((height - 1) / 2)), "ID " .. tostring(os.getComputerID()), UI.colors.muted, UI.colors.surfaceAlt, 7)
+    if hovered and hovered.title and hovered.kind ~= "start" then
+        local tipWidth = math.min(width - 2, math.max(8, #hovered.title + 2))
+        local tipX = math.max(1, math.min(width - tipWidth + 1, hovered.x + math.floor((hovered.width - tipWidth) / 2)))
+        local tipY = math.max(1, y - 1)
+        UI.fill(target, tipX, tipY, tipWidth, 1, UI.colors.surfaceStrong)
+        UI.text(target, tipX + 1, tipY, hovered.title, UI.colors.text, UI.colors.surfaceStrong, tipWidth - 2)
+    end
 end
 
 function UI.status(target, x, y, label, color, width)
@@ -257,25 +289,27 @@ end
 function UI.titleBar(target, x, y, width, title, icon, active)
     local color = active and UI.colors.accent or UI.colors.border
     UI.fill(target, x, y, width, 1, color)
-    local titleWidth = math.max(1, width - 12)
-    local titleText = tostring(icon or "") .. "  " .. tostring(title or "")
-    local titleX = x + math.max(2, math.floor((titleWidth - #titleText) / 2) + 1)
-    UI.text(target, titleX, y, titleText, colors.white, color, titleWidth)
-    if width >= 10 then
-        UI.fill(target, x + width - 8, y, 3, 1, UI.colors.muted)
-        UI.text(target, x + width - 7, y, "-", colors.white, UI.colors.muted, 1)
-        UI.fill(target, x + width - 4, y, 3, 1, UI.colors.danger)
-        UI.text(target, x + width - 3, y, "x", colors.white, UI.colors.danger, 1)
+    if width < 10 then
+        UI.text(target, x + 1, y, tostring(icon or "") .. " " .. tostring(title or ""), colors.white, color, width - 2)
+        return
     end
+    local controlsWidth = 7
+    local titleWidth = math.max(1, width - controlsWidth - 2)
+    local titleText = tostring(icon or "") .. "  " .. tostring(title or "")
+    local titleX = x + 1 + math.max(0, math.floor((titleWidth - #titleText) / 2))
+    UI.text(target, titleX, y, titleText, colors.white, color, titleWidth)
+    local minX = x + width - controlsWidth
+    UI.fill(target, minX, y, 3, 1, UI.colors.borderStrong)
+    UI.text(target, minX + 1, y, "-", colors.white, UI.colors.borderStrong, 1)
+    UI.fill(target, minX + 3, y, 4, 1, UI.colors.danger)
+    UI.text(target, minX + 4, y, "x", colors.white, UI.colors.danger, 1)
 end
 
 function UI.desktopBackground(target, width, height)
+    -- Keep the desktop itself clean and uninterrupted. Window chrome and the
+    -- taskbar provide the visual structure; the old branded strip at the top
+    -- consumed desktop space and made the workspace look like a second bar.
     UI.fill(target, 1, 1, width, math.max(1, height - 2), UI.colors.desktop)
-    if height >= 8 then
-        UI.fill(target, 1, 1, width, 1, UI.colors.desktopDark)
-        UI.fill(target, 1, 4, width, 1, UI.colors.desktopDark)
-        UI.fill(target, 1, 5, width, 1, UI.colors.desktop)
-    end
 end
 
 function UI.taskButton(target, x, y, width, label, active)
@@ -284,6 +318,29 @@ function UI.taskButton(target, x, y, width, label, active)
     UI.fill(target, x, y, width, 2, background)
     UI.text(target, x + 1, y, label, foreground, background, math.max(1, width - 2))
     if active then UI.fill(target, x, y + 1, width, 1, UI.colors.accentLight) end
+end
+
+function UI.taskbarIcon(target, x, y, width, icon, active, hovered)
+    local background = UI.colors.surfaceAlt
+    local foreground = UI.colors.text
+    local height = math.min(3, select(2, target.getSize()) - y + 1)
+    -- Icons stay visually quiet on the taskbar. Hover is communicated by the
+    -- name tooltip; selection is communicated only by the thin underline.
+    UI.fill(target, x, y, width, height, background)
+    local iconWidth = math.max(1, width - 2)
+    local iconText = tostring(icon or "?")
+    local iconX = x + math.max(0, math.floor((width - math.min(#iconText, iconWidth)) / 2))
+    local iconY = y + math.floor((height - 1) / 2)
+    UI.text(target, iconX, iconY, iconText, foreground, background, iconWidth)
+    if active then UI.fill(target, x, y + height - 1, width, 1, UI.colors.accentLight) end
+end
+
+function UI.taskbarStart(target, x, y, width, active, hovered)
+    local background = hovered and colors.lime or colors.green
+    local foreground = colors.white
+    local height = math.min(3, select(2, target.getSize()) - y + 1)
+    UI.fill(target, x, y, width, height, background)
+    UI.center(target, y + math.floor((height - 1) / 2), "Q", foreground, background, width)
 end
 
 function UI.composite(target, layers)
