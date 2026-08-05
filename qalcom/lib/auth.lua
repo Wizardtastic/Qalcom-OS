@@ -1,4 +1,5 @@
 local Auth = {}
+local Pure = dofile("/qalcom/lib/pure.lua")
 
 local ACCOUNT_PATH = "/qalcom/data/accounts"
 local MAX_INPUT = 24
@@ -17,10 +18,7 @@ local function readAccounts()
     if type(data) ~= "table" then return {} end
     local accounts = {}
     for _, account in ipairs(data) do
-        if type(account) == "table"
-            and type(account.username) == "string"
-            and type(account.salt) == "string"
-            and type(account.digest) == "string" then
+        if Pure.validateAccountRecord(account) then
             accounts[#accounts + 1] = account
         end
     end
@@ -53,7 +51,7 @@ local function newSalt()
 end
 
 local function validUsername(username)
-    return type(username) == "string" and username:match("^[%w_%-]+$") ~= nil and #username >= 2 and #username <= MAX_INPUT
+    return Pure.validateUsername(username, MAX_INPUT)
 end
 
 function Auth.accounts()

@@ -1,4 +1,5 @@
 local Config = {}
+local Pure = dofile("/qalcom/lib/pure.lua")
 
 Config.themes = {
     blue = { name = "Ocean", desktop = colors.blue, accent = colors.blue, accentLight = colors.lightBlue },
@@ -35,7 +36,7 @@ function Config.load()
     local themeName = settings.get("qalcom.theme", Config.defaults.theme)
     if not Config.themes[themeName] then themeName = Config.defaults.theme end
     local logLimit = tonumber(settings.get("qalcom.log_limit", Config.defaults.logLimit)) or Config.defaults.logLimit
-    logLimit = math.max(50, math.min(1000, math.floor(logLimit)))
+    logLimit = Pure.clampInteger(logLimit, 50, 1000, Config.defaults.logLimit)
     return {
         theme = themeName,
         colors = Config.themes[themeName],
@@ -60,7 +61,7 @@ function Config.setSafeMode(enabled)
 end
 
 function Config.setLogLimit(limit)
-    limit = math.max(50, math.min(1000, math.floor(tonumber(limit) or Config.defaults.logLimit)))
+    limit = Pure.clampInteger(limit, 50, 1000, Config.defaults.logLimit)
     settings.set("qalcom.log_limit", limit)
     settings.save()
     os.queueEvent("qalcom_config_changed")

@@ -1,4 +1,4 @@
-# Qalcom OS 0.1.6
+# Qalcom OS 0.1.7
 
 Qalcom OS is a clean, Windows-inspired desktop environment for ComputerCraft: Tweaked. This milestone runs entirely inside CC:T and does not require a Minecraft mod or CraftOS modification.
 
@@ -24,9 +24,10 @@ Copy the repository contents to the root of a CC:T computer so the layout looks 
 /qalcom/apps/logs.lua
 /qalcom/apps/recovery.lua
 /qalcom/lib/system.lua
+/qalcom/lib/pure.lua
 ```
 
-Reboot the computer. Qalcom starts through `/startup.lua`, shows the first-run account setup, and will enter a small recovery prompt if the kernel fails to load.
+Reboot the computer. Qalcom starts through `/startup.lua`, shows the first-run account setup, and will enter a small recovery prompt if the kernel fails to load. When upgrading from 0.1.6, copy the new `/qalcom/lib/pure.lua` file as well as the updated files; the authentication and configuration modules depend on it.
 
 ## Controls
 
@@ -66,9 +67,11 @@ Reboot the computer. Qalcom starts through `/startup.lua`, shows the first-run a
 
 ## Version 0.1.6
 
-This release adds watchdog visibility for slow application event handlers, Safe Mode, categorized Settings information, configurable log retention, and filtered system logs. Watchdog status is diagnostic only: it appears after a handler yields back to the kernel, and Qalcom does not automatically terminate healthy or stalled applications.
+This release adds a lightweight pure-Lua validation layer, an offline helper test runner, manual CC:T testing documentation, a release checklist, and clearer recovery/migration guidance. The 0.1.6 watchdog, Safe Mode, settings, and log features remain available. Watchdog status is diagnostic only: it appears after a handler yields back to the kernel, and Qalcom does not automatically terminate healthy or stalled applications.
 
-The complete future roadmap is preserved in [ROADMAP.md](ROADMAP.md).
+Run `lua tests/pure_test.lua` when a local Lua interpreter is available. This covers only CC:T-independent helpers; complete the in-game checklist in [TESTING.md](TESTING.md) as well.
+
+The complete future roadmap is preserved in [ROADMAP.md](ROADMAP.md). See [TESTING.md](TESTING.md) for manual validation and [RELEASE_CHECKLIST.md](RELEASE_CHECKLIST.md) for milestone completion requirements.
 
 ## Design boundary
 
