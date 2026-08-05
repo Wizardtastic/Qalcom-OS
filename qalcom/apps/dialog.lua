@@ -14,7 +14,6 @@ return function(ctx)
         local buttonWidth = math.floor((width - 7) / 2)
         UI.button(ctx.win, 3, height - 3, buttonWidth, "Yes", selected == 1, { background = colors.gray })
         UI.button(ctx.win, 5 + buttonWidth, height - 3, buttonWidth, "No", selected == 2, { background = colors.gray })
-        UI.text(ctx.win, 3, height, "Left/Right choose   Enter confirm", UI.colors.muted, UI.colors.surface, width - 5)
     end
 
     render()

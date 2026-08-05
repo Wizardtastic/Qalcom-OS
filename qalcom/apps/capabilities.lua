@@ -10,12 +10,13 @@ return function(ctx)
 
     local function render()
         local width, height = ctx.win.getSize()
-        local _, _, contentStart = Screen.begin(ctx.win, "Capabilities", status, { ui = UI })
+        local _, _, contentStart = Screen.begin(ctx.win, "Capabilities", nil, { ui = UI })
+        UI.text(ctx.win, 2, contentStart, status, UI.colors.muted, UI.colors.surface, width - 3)
         local manifest = Capabilities.manifest(apps[selected])
         local role = Roles.definition(ctx.role)
-        local footer = math.max(contentStart, height - 1)
+        local footer = height + 1
         local split = math.max(12, math.floor(width * 0.43))
-        local row = contentStart
+        local row = contentStart + 1
         UI.sectionHeader(ctx.win, 2, row, split - 3, "Applications", { background = colors.yellow, foreground = colors.black })
         UI.sectionHeader(ctx.win, split, row, width - split - 1, "Requested capabilities", { background = colors.yellow, foreground = colors.black })
         row = row + 1
@@ -48,10 +49,6 @@ return function(ctx)
                 UI.text(ctx.win, split, row, "No managed capabilities requested", UI.colors.muted, UI.colors.surface, width - split - 1)
             end
         end
-        UI.footer(ctx.win, {
-            "Up/Down select   R refresh audit   Esc close",
-            "Role policy only; trusted Lua still has CC:T globals",
-        }, { row = height - 1, background = UI.colors.surfaceAlt })
     end
 
     local function auditView()

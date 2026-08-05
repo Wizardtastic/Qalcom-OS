@@ -52,14 +52,16 @@ return function(ctx)
 
     local function render()
         local width, height = ctx.win.getSize()
-        local _, _, contentStart = Screen.begin(ctx.win, "Peripheral Manager", status, { ui = UI })
-        local footer = math.max(contentStart, height - 1)
+        local _, _, contentStart = Screen.begin(ctx.win, "Peripheral Manager", nil, { ui = UI })
+        UI.text(ctx.win, 2, contentStart, editingAlias and ("Alias: " .. aliasInput .. "_") or status, UI.colors.muted, UI.colors.surface, width - 3)
+        local bodyStart = contentStart + 1
+        local footer = height + 1
         local split = math.max(15, math.floor(width * 0.42))
         local device = selectedDevice()
 
-        UI.sectionHeader(ctx.win, 2, contentStart, split - 3, "Attached devices", { background = colors.yellow, foreground = colors.black })
-        UI.sectionHeader(ctx.win, split, contentStart, width - split - 1, "Inspection", { background = colors.yellow, foreground = colors.black })
-        local row = contentStart + 1
+        UI.sectionHeader(ctx.win, 2, bodyStart, split - 3, "Attached devices", { background = colors.yellow, foreground = colors.black })
+        UI.sectionHeader(ctx.win, split, bodyStart, width - split - 1, "Inspection", { background = colors.yellow, foreground = colors.black })
+        local row = bodyStart + 1
         local visible = math.max(0, footer - row)
         local start = math.max(1, math.min(selected - visible + 1, #devices - visible + 1))
         for index = start, math.min(#devices, start + visible - 1) do
@@ -117,14 +119,6 @@ return function(ctx)
             UI.text(ctx.win, split, row, "No device selected", UI.colors.muted, UI.colors.surface, width - split - 1)
         end
 
-        UI.fill(ctx.win, 1, height - 1, width, 2, UI.colors.surfaceAlt)
-        if editingAlias then
-            UI.text(ctx.win, 2, height - 1, "Type alias, then Enter   Backspace edits", colors.white, UI.colors.accentLight, width - 3)
-            UI.text(ctx.win, 2, height, "Escape cancels   S saves metadata", colors.white, UI.colors.accentLight, width - 3)
-        else
-            UI.text(ctx.win, 2, height - 1, "Up/Down select   A alias   R refresh   B block   T trust", UI.colors.muted, UI.colors.surfaceAlt, width - 3)
-            UI.text(ctx.win, 2, height, "S save metadata   Esc close   No device controls", UI.colors.muted, UI.colors.surfaceAlt, width - 3)
-        end
     end
 
     refresh()

@@ -334,20 +334,6 @@ function UI.meter(target, x, y, width, value, color, background)
     return { x = x, y = y, width = width, height = 1, value = value }
 end
 
-function UI.footer(target, lines, options)
-    options = options or {}
-    local width, height = target.getSize()
-    local values = type(lines) == "table" and lines or { lines }
-    local row = options.row or math.max(1, height - #values + 1)
-    local background = options.background or UI.colors.surface
-    UI.fill(target, 1, row, width, height - row + 1, background)
-    for index, line in ipairs(values) do
-        if row + index - 1 <= height then
-            UI.text(target, 2, row + index - 1, line, options.foreground or UI.colors.muted, background, width - 3)
-        end
-    end
-end
-
 function UI.status(target, x, y, label, color, width)
     return UI.badge(target, x, y, label, color or UI.colors.accent, width)
 end
@@ -356,12 +342,12 @@ function UI.divider(target, x, y, width, background)
     UI.fill(target, x, y, width, 1, background or UI.colors.border)
 end
 
-function UI.header(target, title, subtitle)
+function UI.header(target, title)
     local width = select(1, target.getSize())
-    UI.fill(target, 1, 1, width, 1, colors.yellow)
-    UI.text(target, 2, 1, title, colors.black, colors.yellow, width - 3)
-    if subtitle then UI.text(target, 2, 2, subtitle, UI.colors.muted, UI.colors.surfaceAlt, width - 3) end
-    UI.divider(target, 1, 3, width, UI.colors.borderStrong)
+    UI.sectionHeader(target, 1, 1, width, title, {
+        background = colors.yellow,
+        foreground = colors.black,
+    })
 end
 
 function UI.titleBar(target, x, y, width, title, icon, active, maximized)

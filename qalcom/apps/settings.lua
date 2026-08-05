@@ -19,14 +19,14 @@ return function(ctx)
     local function availableRows(height)
         -- Keep the compact view focused on editable settings and recovery.
         if height <= 10 then
-            local visibleCount = math.max(1, math.min(4, height - 4))
+            local visibleCount = math.max(1, math.min(4, height - 2))
             local maxOffset = math.max(1, #compactRows - visibleCount + 1)
             compactOffset = math.max(1, math.min(compactOffset, maxOffset))
             local rows = {}
             for index = 1, visibleCount do rows[index] = compactRows[compactOffset + index - 1] end
             return rows
         end
-        local count = math.min(#rowOrder, math.max(1, height - 6))
+        local count = math.min(#rowOrder, math.max(1, height - 2))
         local rows = {}
         for index = 1, count do rows[index] = rowOrder[index] end
         return rows
@@ -52,7 +52,7 @@ return function(ctx)
         local visibleRows = availableRows(height)
         selected = math.min(selected, #visibleRows)
         local compact = height < 10
-        local _, _, contentStart = Screen.begin(ctx.win, "Qalcom Settings", compact and "Compact settings" or "Personalize this computer", { ui = UI })
+        local _, _, contentStart = Screen.begin(ctx.win, "Qalcom Settings", nil, { ui = UI })
 
         local rows = {
             { "Computer label", os.getComputerLabel() or "(none)" },
@@ -85,18 +85,6 @@ return function(ctx)
             })
         end
 
-        if compact then
-            -- All compact rows remain visible; Escape closes because there is no footer row.
-        else
-            UI.fill(ctx.win, 2, height - 1, width - 3, 2, UI.colors.accentLight)
-            if editingLabel then
-                UI.text(ctx.win, 3, height - 1, "Type a label, then press Enter", colors.white, UI.colors.accentLight, width - 5)
-                UI.text(ctx.win, 3, height, "Escape cancels", colors.white, UI.colors.accentLight, width - 5)
-            else
-                UI.text(ctx.win, 3, height - 1, "Up/Down select   Enter apply", colors.white, UI.colors.accentLight, width - 5)
-                UI.text(ctx.win, 3, height, "Left/Right changes theme", colors.white, UI.colors.accentLight, width - 5)
-            end
-        end
     end
 
     local function chooseTheme(direction)
@@ -187,7 +175,7 @@ return function(ctx)
                 render()
             end
         elseif event == "mouse_click" then
-            local displayIndex = y - 4
+            local displayIndex = y - 1
             if displayIndex >= 1 and displayIndex <= #visibleRows then
                 selected = displayIndex
                 applySelected(visibleRows[selected])

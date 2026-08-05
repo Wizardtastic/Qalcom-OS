@@ -70,13 +70,15 @@ return function(ctx)
 
     render = function()
         local width, height = ctx.win.getSize()
-        local _, _, contentStart = Screen.begin(ctx.win, "Infrastructure Controls", status, { ui = UI })
-        local footer = math.max(contentStart, height - 2)
+        local _, _, contentStart = Screen.begin(ctx.win, "Infrastructure Controls", nil, { ui = UI })
+        UI.text(ctx.win, 2, contentStart, editing and ("Pulse seconds: " .. input .. "_") or status, UI.colors.muted, UI.colors.surface, width - 3)
+        local bodyStart = contentStart + 1
+        local footer = height + 1
         local split = math.max(18, math.floor(width * 0.44))
         local active = profile()
-        UI.sectionHeader(ctx.win, 2, contentStart, split - 3, "Named points", { background = colors.yellow, foreground = colors.black })
-        UI.sectionHeader(ctx.win, split, contentStart, width - split - 1, "State and controls", { background = colors.yellow, foreground = colors.black })
-        local row = contentStart + 1
+        UI.sectionHeader(ctx.win, 2, bodyStart, split - 3, "Named points", { background = colors.yellow, foreground = colors.black })
+        UI.sectionHeader(ctx.win, split, bodyStart, width - split - 1, "State and controls", { background = colors.yellow, foreground = colors.black })
+        local row = bodyStart + 1
         local visible = math.max(0, footer - row)
         local start = math.max(1, math.min(selected - visible + 1, #data.profiles - visible + 1))
         for index = start, math.min(#data.profiles, start + visible - 1) do
@@ -120,16 +122,6 @@ return function(ctx)
             end
         elseif row < footer then
             UI.text(ctx.win, split, row, "No infrastructure profile configured", UI.colors.muted, UI.colors.surface, width - split - 1)
-        end
-        UI.fill(ctx.win, 1, height - 2, width, 3, UI.colors.surfaceAlt)
-        if editing then
-            UI.text(ctx.win, 2, height - 2, "Pulse seconds (1-" .. tostring(Infrastructure.maxPulseSeconds) .. "):", colors.white, UI.colors.accentLight, width - 3)
-            UI.text(ctx.win, 2, height - 1, input .. "_", colors.white, UI.colors.accentLight, width - 3)
-            UI.text(ctx.win, 2, height, "Enter continue   Esc cancel", colors.white, UI.colors.accentLight, width - 3)
-        else
-            UI.text(ctx.win, 2, height - 2, "Up/Down select   N new output   Enter toggle", UI.colors.muted, UI.colors.surfaceAlt, width - 3)
-            UI.text(ctx.win, 2, height - 1, "P pulse   E safe-state   S save   I refresh", UI.colors.muted, UI.colors.surfaceAlt, width - 3)
-            UI.text(ctx.win, 2, height, "Esc close   Profile labels/sides are stored metadata", UI.colors.muted, UI.colors.surfaceAlt, width - 3)
         end
     end
 

@@ -29,19 +29,15 @@ return function(ctx)
 
     local function render()
         local width, height = ctx.win.getSize()
-        local _, _, contentStart = Screen.begin(ctx.win, "Terminal", cwd, { ui = UI })
-        local usable = math.max(1, height - contentStart - 2)
+        local _, _, contentStart = Screen.begin(ctx.win, "Terminal", nil, { ui = UI })
+        local usable = math.max(1, height - contentStart)
         local first = math.max(1, #lines - usable + 1)
         for row = 1, usable do
             local line = lines[first + row - 1]
             if line then UI.text(ctx.win, 2, contentStart + row - 1, line, UI.colors.text, UI.colors.surface, width - 2) end
         end
-        UI.footer(ctx.win, {
-            cwd,
-            "> " .. input,
-        }, { row = height - 1, background = UI.colors.surfaceAlt, foreground = UI.colors.text })
-        UI.text(ctx.win, 2, height - 1, cwd, UI.colors.accent, UI.colors.surfaceAlt, width - 4)
-        ctx.win.setCursorPos(math.min(width, 4 + cursor), height)
+        UI.text(ctx.win, 2, height, cwd .. " > " .. input, UI.colors.accent, UI.colors.surface, width - 3)
+        ctx.win.setCursorPos(math.min(width, 5 + #cwd + cursor), height)
         ctx.win.setCursorBlink(true)
     end
 

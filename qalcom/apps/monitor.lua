@@ -5,9 +5,9 @@ local VERSION = dofile("/qalcom/version.lua")
 return function(ctx)
     local function render()
         local width, height = ctx.win.getSize()
-        local _, _, contentStart = Screen.begin(ctx.win, "System overview", os.date("%H:%M:%S"), { ui = UI })
+        local _, _, contentStart = Screen.begin(ctx.win, "System overview", nil, { ui = UI })
 
-        local row = contentStart + 1
+        local row = contentStart
         local footerRow = math.max(1, height)
         local function stat(label, value, color)
             if row < footerRow then
@@ -24,6 +24,7 @@ return function(ctx)
         stat("Computer ID", tostring(os.getComputerID()))
         stat("Label", os.getComputerLabel() or "(none)")
         stat("Terminal", tostring(select(1, term.getSize())) .. " x " .. tostring(select(2, term.getSize())))
+        stat("Updated", os.date("%H:%M:%S"), UI.colors.accent)
         local memory = "unavailable"
         if type(collectgarbage) == "function" then
             local ok, value = pcall(collectgarbage, "count")

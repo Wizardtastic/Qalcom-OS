@@ -32,9 +32,10 @@ return function(ctx)
 
     local function render()
         local width, height = ctx.win.getSize()
-        local _, _, contentStart = Screen.begin(ctx.win, "File Explorer", cwd .. "  |  " .. status, { ui = UI })
+        local _, _, contentStart = Screen.begin(ctx.win, "File Explorer", nil, { ui = UI })
+        UI.text(ctx.win, 2, contentStart, cwd .. "  |  " .. status, UI.colors.muted, UI.colors.surface, width - 3)
 
-        local visible = math.max(1, height - contentStart - 2)
+        local visible = math.max(1, height - contentStart)
         local start = math.max(1, selected - visible + 1)
         for row = 1, visible do
             local index = start + row - 1
@@ -43,7 +44,7 @@ return function(ctx)
                 local active = index == selected
                 local bg = active and UI.colors.accentLight or UI.colors.surface
                 local fg = active and colors.white or UI.colors.text
-                local itemY = contentStart + row - 1
+                local itemY = contentStart + row
                 local icon = item.dir and "▸ " or "· "
                 UI.listRow(ctx.win, 2, itemY, width - 3, icon .. item.name, nil, active, {
                     activeBackground = UI.colors.accentLight,
@@ -53,8 +54,6 @@ return function(ctx)
                 })
             end
         end
-        UI.text(ctx.win, 2, height - 1, "Enter open   N new folder   D delete   C copy   V paste", UI.colors.muted, UI.colors.surface, width - 3)
-        UI.text(ctx.win, 2, height, "R rename   Backspace up   F5 refresh", UI.colors.muted, UI.colors.surface, width - 3)
     end
 
     local function selectedItem()
@@ -171,8 +170,8 @@ return function(ctx)
             elseif value == keys.r then status = "Rename is planned for the next patch"; render()
             end
         elseif event == "mouse_click" then
-            local row = y - 3
-            local visible = math.max(1, select(2, ctx.win.getSize()) - 6)
+            local row = y - 2
+            local visible = math.max(1, select(2, ctx.win.getSize()) - 2)
             local start = math.max(1, selected - visible + 1)
             if row >= 1 and row <= visible and start + row - 1 <= #entries then
                 selected = start + row - 1

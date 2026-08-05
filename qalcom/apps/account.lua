@@ -38,17 +38,18 @@ return function(ctx)
 
     local function render()
         local width, height = ctx.win.getSize()
-        local _, _, contentStart = Screen.begin(ctx.win, "Account", managing and "Administrator role management" or status, { ui = UI })
+        local _, _, contentStart = Screen.begin(ctx.win, "Account", nil, { ui = UI })
+        UI.text(ctx.win, 2, contentStart, managing and "Administrator role management" or status, UI.colors.muted, UI.colors.surface, width - 3)
+        contentStart = contentStart + 1
         if not managing then
             local compact = height < 16
             if compact then
                 UI.text(ctx.win, 2, contentStart, tostring(ctx.user or "Unknown"), UI.colors.accent, UI.colors.surface, width - 3)
                 UI.text(ctx.win, 2, contentStart + 1, "Role: " .. tostring(role and role.label or "Unknown"), UI.colors.text, UI.colors.surface, width - 3)
-                UI.text(ctx.win, 2, contentStart + 2, canManage() and "M manage roles" or "Read-only role", UI.colors.muted, UI.colors.surface, width - 3)
+                UI.text(ctx.win, 2, contentStart + 2, canManage() and "Administrator access" or "Read-only role", UI.colors.muted, UI.colors.surface, width - 3)
                 local manageY, signOutY = compactButtons(height)
                 if canManage() then UI.button(ctx.win, 2, manageY, width - 3, "Manage roles", false) end
                 UI.button(ctx.win, 2, signOutY, width - 3, "Sign out", true)
-                UI.text(ctx.win, 2, height, "Esc close", UI.colors.muted, UI.colors.surface, width - 3)
             else
                 UI.card(ctx.win, 2, contentStart + 1, width - 4, 5, "Current user", UI.colors.surfaceAlt, false)
                 UI.text(ctx.win, 4, contentStart + 3, tostring(ctx.user or "Unknown"), UI.colors.accent, UI.colors.surface, width - 8)
@@ -60,10 +61,9 @@ return function(ctx)
                     UI.button(ctx.win, 3, math.max(11, height - 5), width - 5, "Manage account roles", false)
                 end
                 UI.button(ctx.win, 3, math.max(11, height - 3), width - 5, "Sign out", true)
-                UI.text(ctx.win, 3, height, canManage() and "M manage roles   Enter sign out" or "Enter sign out", UI.colors.muted, UI.colors.surface, width - 5)
             end
         else
-            local footer = math.max(contentStart, height - 2)
+            local footer = height + 1
             UI.text(ctx.win, 2, contentStart, "Accounts", UI.colors.accent, UI.colors.surface, width - 3)
             local row = contentStart + 1
             local visible = math.max(1, footer - row)
@@ -82,10 +82,6 @@ return function(ctx)
                 row = row + 1
             end
             if #accounts == 0 then UI.text(ctx.win, 3, row, "No accounts available", UI.colors.muted, UI.colors.surface, width - 5) end
-            UI.fill(ctx.win, 1, height - 2, width, 3, UI.colors.surfaceAlt)
-            UI.text(ctx.win, 2, height - 2, "Left/Right choose role   Enter apply", UI.colors.muted, UI.colors.surfaceAlt, width - 3)
-            UI.text(ctx.win, 2, height - 1, "M return   Esc close", UI.colors.muted, UI.colors.surfaceAlt, width - 3)
-            UI.text(ctx.win, 2, height, "Administrator only; one Administrator must remain", UI.colors.muted, UI.colors.surfaceAlt, width - 3)
         end
     end
 
@@ -153,12 +149,13 @@ return function(ctx)
         elseif event == "mouse_click" then
             local _, currentHeight = ctx.win.getSize()
             if managing then
-                local footer = math.max(4, currentHeight - 2)
-                local visible = math.max(1, footer - 4)
+                local contentTop = 4
+                local footer = currentHeight + 1
+                local visible = math.max(1, footer - contentTop)
                 local start = math.max(1, math.min(selectedAccount - visible + 1, math.max(1, #accounts - visible + 1)))
-                local clicked = y - 4
+                local clicked = y - contentTop + 1
                 local actual = start + clicked - 1
-                if clicked >= 1 and clicked <= visible and actual <= #accounts and y < footer then
+                if clicked >= 1 and clicked <= visible and actual <= #accounts and y >= contentTop and y < footer then
                     selectedAccount = actual
                     syncSelectedRole()
                     render()

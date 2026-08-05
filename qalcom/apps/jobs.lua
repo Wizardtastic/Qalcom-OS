@@ -123,12 +123,14 @@ return function(ctx)
 
     local function render()
         local width, height = ctx.win.getSize()
-        local _, _, start = Screen.begin(ctx.win, "Automation Jobs", status, { ui = UI })
-        local footer = math.max(start, height - 3)
+        local _, _, start = Screen.begin(ctx.win, "Automation Jobs", nil, { ui = UI })
+        local bodyStart = start + 1
+        UI.text(ctx.win, 2, start, editing and ("New value for " .. tostring(editingField) .. ": " .. input .. "_") or status, UI.colors.muted, UI.colors.surface, width - 3)
+        local footer = height + 1
         local split = math.max(20, math.floor(width * 0.46))
-        UI.sectionHeader(ctx.win, 2, start, split - 3, "Jobs", { background = colors.yellow, foreground = colors.black })
-        UI.sectionHeader(ctx.win, split, start, width - split - 1, "Definition / history", { background = colors.yellow, foreground = colors.black })
-        local row = start + 1
+        UI.sectionHeader(ctx.win, 2, bodyStart, split - 3, "Jobs", { background = colors.yellow, foreground = colors.black })
+        UI.sectionHeader(ctx.win, split, bodyStart, width - split - 1, "Definition / history", { background = colors.yellow, foreground = colors.black })
+        local row = bodyStart + 1
         local visible = math.max(0, footer - row)
         local first = math.max(1, math.min(selected - visible + 1, math.max(1, #data.jobs - visible + 1)))
         for index = first, math.min(#data.jobs, first + visible - 1) do
@@ -174,16 +176,6 @@ return function(ctx)
             end
         else
             UI.text(ctx.win, split, row, "No structured jobs configured", UI.colors.muted, UI.colors.surface, width - split - 1)
-        end
-        UI.fill(ctx.win, 1, height - 2, width, 3, UI.colors.surfaceAlt)
-        if editing then
-            UI.text(ctx.win, 2, height - 2, "New value for " .. tostring(editingField) .. ":", colors.white, UI.colors.accentLight, width - 3)
-            UI.text(ctx.win, 2, height - 1, input .. "_", colors.white, UI.colors.accentLight, width - 3)
-            UI.text(ctx.win, 2, height, "Enter apply   Esc cancel", colors.white, UI.colors.accentLight, width - 3)
-        else
-            UI.text(ctx.win, 2, height - 2, "Up/Down select   N new   Enter run   C trigger", UI.colors.muted, UI.colors.surfaceAlt, width - 3)
-            UI.text(ctx.win, 2, height - 1, "A action   L label   T target   V trigger value", UI.colors.muted, UI.colors.surfaceAlt, width - 3)
-            UI.text(ctx.win, 2, height, "Space pause   D disable   S save   E stop all", UI.colors.muted, UI.colors.surfaceAlt, width - 3)
         end
     end
 

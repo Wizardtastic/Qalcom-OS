@@ -27,22 +27,23 @@ return function(ctx)
     local function render()
         local width, height = ctx.win.getSize()
         local compact = height < 18
-        local _, _, contentStart = Screen.begin(ctx.win, "Control Center", status, { ui = UI })
+        local _, _, contentStart = Screen.begin(ctx.win, "Control Center", nil, { ui = UI })
+        UI.text(ctx.win, 2, contentStart, status, UI.colors.muted, UI.colors.surface, width - 3)
 
-        local footerStart = math.max(contentStart, height - 1)
+        local footerStart = height + 1
         local row
         local maxVisibleTasks = math.max(0, footerStart - 5)
         if compact then maxVisibleTasks = math.max(0, footerStart - 5) end
         if #info.tasks > maxVisibleTasks and selected > maxVisibleTasks then selected = math.max(1, maxVisibleTasks) end
         if compact then
             -- At the minimum terminal size, prioritize process recovery over statistics.
-            row = 4
+            row = contentStart + 1
             if row < footerStart then
-                UI.text(ctx.win, 2, row, "Processes: R restarts failed", UI.colors.accent, UI.colors.surface, width - 3)
+                UI.text(ctx.win, 2, row, "Processes", UI.colors.accent, UI.colors.surface, width - 3)
                 row = row + 1
             end
         else
-            row = 5
+            row = contentStart + 1
             local function stat(label, value, color)
                 if row < footerStart then
                     UI.listRow(ctx.win, 2, row, width - 3, label, value, false, {
@@ -90,10 +91,6 @@ return function(ctx)
             row = row + 1
         end
 
-        UI.footer(ctx.win, {
-            "Up/Down select   R restart crashed",
-            "Esc close   Updates every second",
-        }, { row = height - 1, background = UI.colors.surfaceAlt })
     end
 
     refresh()

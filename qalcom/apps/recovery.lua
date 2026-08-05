@@ -10,7 +10,7 @@ return function(ctx)
     local function visibleItems(height)
         -- Keep the compact recovery view useful: clear, Safe Mode, defaults, and logs.
         if height < 10 then return { 1, 3, 4, 5 } end
-        local count = math.min(#items, math.max(1, height - 6))
+        local count = math.min(#items, math.max(1, height - 2))
         local result = {}
         for index = 1, count do result[index] = index end
         return result
@@ -20,10 +20,10 @@ return function(ctx)
         local width, height = ctx.win.getSize()
         local visible = visibleItems(height)
         selected = math.min(selected, #visible)
-        local compact = height < 10
-        local _, _, contentStart = Screen.begin(ctx.win, "Recovery", status, { ui = UI })
+        local _, _, contentStart = Screen.begin(ctx.win, "Recovery", nil, { ui = UI })
+        UI.text(ctx.win, 2, contentStart, status, UI.colors.muted, UI.colors.surface, width - 3)
         for displayIndex, actualIndex in ipairs(visible) do
-            local y = contentStart + displayIndex - 1
+            local y = contentStart + displayIndex
             local active = displayIndex == selected
             local background = active and UI.colors.accentLight or UI.colors.surface
             UI.listRow(ctx.win, 2, y, width - 3, items[actualIndex], nil, active, {
@@ -31,14 +31,6 @@ return function(ctx)
                 activeForeground = colors.white,
                 background = UI.colors.surface,
             })
-        end
-        if compact then
-            -- Core recovery actions remain visible; Escape closes without a footer.
-        else
-            UI.footer(ctx.win, {
-                "Up/Down select   Enter apply",
-                "Esc close",
-            }, { row = height - 1, background = UI.colors.surfaceAlt })
         end
     end
 
