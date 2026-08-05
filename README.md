@@ -1,4 +1,4 @@
-# Qalcom OS 0.1.9
+# Qalcom OS 0.1.10
 
 Qalcom OS is a clean, Windows-inspired desktop environment for ComputerCraft: Tweaked. This milestone runs entirely inside CC:T and does not require a Minecraft mod or CraftOS modification.
 
@@ -10,6 +10,7 @@ Copy the repository contents to the root of a CC:T computer so the layout looks 
 /startup.lua
 /qalcom/kernel/init.lua
 /qalcom/lib/ui.lua
+/qalcom/lib/ui/animation.lua
 /qalcom/lib/config.lua
 /qalcom/lib/auth.lua
 /qalcom/version.lua
@@ -28,7 +29,7 @@ Copy the repository contents to the root of a CC:T computer so the layout looks 
 /qalcom/lib/pure.lua
 ```
 
-Reboot the computer. Qalcom starts through `/startup.lua`, shows the first-run account setup, and will enter a small recovery prompt if the kernel fails to load. When upgrading from 0.1.8, copy the updated `/qalcom/kernel/init.lua`, `/qalcom/apps/control.lua`, `/qalcom/apps/recovery.lua`, `/qalcom/apps/diagnostics.lua`, `/qalcom/apps/terminal.lua`, and `/qalcom/version.lua` files. Configuration schema migration runs automatically; account data in `/qalcom/data/accounts` is preserved.
+Reboot the computer. Qalcom starts through `/startup.lua`, shows the first-run account setup, and will enter a small recovery prompt if the kernel fails to load. When upgrading from 0.1.9, copy the updated `/qalcom/kernel/init.lua`, `/qalcom/lib/ui.lua`, `/qalcom/lib/ui/animation.lua`, `/qalcom/lib/config.lua`, `/qalcom/apps/settings.lua`, and `/qalcom/version.lua` files. Configuration schema migration runs automatically, including the Reduced motion preference; account data in `/qalcom/data/accounts` is preserved.
 
 ## Controls
 
@@ -48,7 +49,7 @@ Reboot the computer. Qalcom starts through `/startup.lua`, shows the first-run a
 - System Monitor is available from Start and reports peripheral/modem status; it does not launch automatically.
 - Open **Control Center** from Start to inspect processes, memory, storage, and services.
 - Open **Recovery** from Start to clear notifications, reset the theme, toggle Safe Mode, restore Qalcom defaults, view diagnostics, or open the system log.
-- In **Settings**, select Safe Mode or Log retention and press Enter to change them. Restore defaults to reset Qalcom settings without deleting accounts.
+- In **Settings**, select Safe Mode, Log retention, or Reduced motion and press Enter to change them. Restore defaults to reset Qalcom settings without deleting accounts.
 - In **System Log**, press F to cycle through all, failure, and login entries.
 - Open **System Log** from Start to inspect recent Qalcom events and errors.
 - Crashed applications remain visible with a recovery screen; select them in Control Center and press R to restart.
@@ -67,9 +68,9 @@ Reboot the computer. Qalcom starts through `/startup.lua`, shows the first-run a
 - **Account**: View the current session and sign out to the login screen.
 - **Text Viewer**: View and edit local text, Lua, and log files.
 
-## Version 0.1.9
+## Version 0.1.10
 
-This release hardens desktop task cleanup, bounds manual process restarts, adds boot/crash diagnostics, reduces repeated log-file rewrites, and routes terminal reboot/shutdown commands through confirmation dialogs. The 0.1.8 configuration migration and restore-defaults features remain available. Watchdog status remains diagnostic only.
+This release adds Qalcom's native UI foundation. It preserves the existing application API while adding semantic rendering helpers, themed shadows, reusable cards and title bars, a compositing helper, and a kernel-owned tick-driven animation manager. Notifications can slide into view, desktop windows gain lightweight shadows, and Settings adds a Reduced motion option. There are no external UI dependencies and Qalcom retains ownership of event routing and process lifecycle.
 
 Run `lua tests/pure_test.lua` when a local Lua interpreter is available. This covers only CC:T-independent helpers; complete the in-game checklist in [TESTING.md](TESTING.md) as well.
 

@@ -14,6 +14,7 @@ Use this checklist before calling a milestone complete.
 - [ ] Exported functions and references were searched after changes.
 - [ ] CC:T API calls are defensive where peripherals, memory, files, or optional APIs may be absent.
 - [ ] Compact terminal behavior is checked at 30 x 14 and at a normal terminal size.
+- [ ] Native UI shadows and animations are checked for bounds, responsiveness, and memory impact.
 - [ ] Recovery and CraftOS escape paths remain available.
 
 ## Persistence and migration

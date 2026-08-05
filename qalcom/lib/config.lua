@@ -1,7 +1,7 @@
 local Config = {}
 local Pure = dofile("/qalcom/lib/pure.lua")
 
-Config.schemaVersion = 1
+Config.schemaVersion = 2
 Config.themes = {
     blue = { name = "Ocean", desktop = colors.blue, accent = colors.blue, accentLight = colors.lightBlue },
     dark = { name = "Midnight", desktop = colors.black, accent = colors.purple, accentLight = colors.magenta },
@@ -12,6 +12,7 @@ Config.defaults = {
     theme = "blue",
     safeMode = false,
     logLimit = 200,
+    reducedMotion = false,
 }
 
 local function defineSettings()
@@ -34,6 +35,11 @@ local function defineSettings()
         description = "Maximum retained Qalcom log lines",
         default = Config.defaults.logLimit,
         type = "number",
+    })
+    settings.define("qalcom.reduced_motion", {
+        description = "Reduce Qalcom UI animation",
+        default = Config.defaults.reducedMotion,
+        type = "boolean",
     })
 end
 
@@ -72,22 +78,25 @@ local function migrate()
     local theme = readSetting("qalcom.theme", "qalcom.desktop_theme", Config.defaults.theme)
     local safeMode = readSetting("qalcom.safe_mode", "qalcom.safeMode", Config.defaults.safeMode)
     local logLimit = readSetting("qalcom.log_limit", "qalcom.logLimit", Config.defaults.logLimit)
+    local reducedMotion = readSetting("qalcom.reduced_motion", "qalcom.reducedMotion", Config.defaults.reducedMotion)
     local normalizedTheme = Config.themes[theme] and theme or Config.defaults.theme
     local normalizedSafeMode = safeMode == true
     local normalizedLogLimit = Pure.clampInteger(logLimit, 50, 1000, Config.defaults.logLimit)
+    local normalizedReducedMotion = reducedMotion == true
     local changed = storedSchema ~= Config.schemaVersion
         or theme ~= normalizedTheme
         or safeMode ~= normalizedSafeMode
         or tonumber(logLimit) ~= normalizedLogLimit
+        or reducedMotion ~= normalizedReducedMotion
         or settings.get("qalcom.theme") == nil
-        or settings.get("qalcom.safe_mode") == nil
-        or settings.get("qalcom.log_limit") == nil
-
+        or settings.get("qalcom.safe_mode") == nil        or settings.get("qalcom.log_limit") == nil
+        or settings.get("qalcom.reduced_motion") == nil
     if changed then
         settings.set("qalcom.schema", Config.schemaVersion)
         settings.set("qalcom.theme", normalizedTheme)
         settings.set("qalcom.safe_mode", normalizedSafeMode)
         settings.set("qalcom.log_limit", normalizedLogLimit)
+        settings.set("qalcom.reduced_motion", normalizedReducedMotion)
         settings.save()
         logChange("migrated settings to schema " .. tostring(Config.schemaVersion))
     end
@@ -106,6 +115,7 @@ function Config.load()
         colors = Config.themes[themeName],
         safeMode = settings.get("qalcom.safe_mode", Config.defaults.safeMode) == true,
         logLimit = logLimit,
+        reducedMotion = settings.get("qalcom.reduced_motion", Config.defaults.reducedMotion) == true,
         migrated = migrated,
     }
 end
@@ -135,11 +145,17 @@ function Config.setLogLimit(limit)
     return saveAndNotify("log_limit=" .. tostring(limit))
 end
 
+function Config.setReducedMotion(enabled)
+    settings.set("qalcom.reduced_motion", enabled == true)
+    return saveAndNotify("reduced_motion=" .. tostring(enabled == true))
+end
+
 function Config.resetDefaults()
     settings.set("qalcom.schema", Config.schemaVersion)
     settings.set("qalcom.theme", Config.defaults.theme)
     settings.set("qalcom.safe_mode", Config.defaults.safeMode)
     settings.set("qalcom.log_limit", Config.defaults.logLimit)
+    settings.set("qalcom.reduced_motion", Config.defaults.reducedMotion)
     settings.save()
     logChange("restored defaults")
     os.queueEvent("qalcom_config_changed")
@@ -156,6 +172,7 @@ function Config.apply(UI, config)
     else
         UI.colors.desktopDark = colors.darkBlue
     end
+    if UI.setReducedMotion then UI.setReducedMotion(config.reducedMotion == true) end
 end
 
 return Config

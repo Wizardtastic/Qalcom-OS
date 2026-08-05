@@ -18,6 +18,7 @@ Covered helper behavior:
 - Log line retention
 - Integer setting clamping
 - Window geometry fitting
+- Animation interpolation and cancellation
 
 ## Manual CC:T checklist
 
@@ -34,6 +35,9 @@ Run these checks on a fresh copy and again over an existing 0.1.x installation.
 
 ### Desktop and applications
 
+- [ ] The native UI foundation renders without an external dependency.
+- [ ] Window shadows remain inside the terminal and do not corrupt adjacent windows.
+- [ ] Notifications animate in without blocking input; Reduced motion disables the transition.
 - [ ] Start opens and closes with mouse and keyboard.
 - [ ] Terminal `reboot` and `shutdown` open a confirmation dialog instead of powering off immediately.
 - [ ] Cancelling the power dialog leaves the desktop running.
@@ -60,8 +64,18 @@ Run these checks on a fresh copy and again over an existing 0.1.x installation.
 - [ ] Enabling Safe Mode closes disallowed running apps.
 - [ ] Safe Mode can be disabled from Settings or Recovery.
 - [ ] Log retention remains within the configured bounds.
-- [ ] Compact Settings still exposes Safe Mode, log retention, and restore defaults.
+- [ ] Compact Settings still exposes Safe Mode, log retention, Reduced motion, and restore defaults.
+- [ ] Changing Reduced motion persists after reboot and does not affect account data.
 - [ ] Settings and Recovery remain usable at the supported minimum size.
+
+### Native UI foundation
+
+- [ ] Shadows, cards, title bars, dialogs, and notifications remain readable at 30 x 14 and at a normal terminal size.
+- [ ] Changing themes updates the semantic UI colors without restarting Qalcom.
+- [ ] Reduced motion applies immediately and cancels active animations.
+- [ ] Animation updates do not starve application events or cause repeated timer backlog.
+- [ ] Opening several windows does not produce visible shadow overlap or redraw corruption.
+- [ ] Resize and Safe Mode recovery still work while an animation is active.
 
 ### Logs and recovery
 

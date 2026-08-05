@@ -62,6 +62,7 @@ local state = {
     launcherSelection = 1,
     notifications = {},
     clockTimer = nil,
+    uiTimer = nil,
     dirty = true,
     drag = nil,
     modifiers = { alt = false, ctrl = false, shift = false },
@@ -116,12 +117,15 @@ local function recordCrash(task, reason)
 end
 
 local function notify(message, color)
-    state.notifications[#state.notifications + 1] = {
+    local item = {
         message = tostring(message),
         color = color or UI.colors.accent,
         expires = os.clock() + 4,
+        offset = math.min(width, 8),
     }
+    state.notifications[#state.notifications + 1] = item
     while #state.notifications > 3 do table.remove(state.notifications, 1) end
+    UI.animate(item, { offset = 0 }, 0.18, "outQuad")
     state.dirty = true
 end
 
@@ -448,20 +452,17 @@ local function drawDesktop()
     native.setTextColor(colors.white)
     native.clear()
 
-    UI.fill(native, 1, 1, width, height - 2, UI.colors.desktop)
+    UI.desktopBackground(native, width, height)
     UI.text(native, 2, 2, "QALCOM", colors.white, UI.colors.desktop, 10)
     UI.text(native, 2, 3, "A calm command center", colors.lightBlue, UI.colors.desktop, math.min(28, width - 3))
     UI.text(native, width - 18, 2, "User: " .. tostring(state.user or "-"), colors.lightBlue, UI.colors.desktop, 17)
 
     for _, task in ipairs(state.tasks) do
         local focused = task == state.focused
-        local titleColor = focused and UI.colors.accent or UI.colors.border
         if not task.minimized then
+            UI.shadow(native, task.x, task.y, task.width, task.height, 1)
             UI.fill(native, task.x, task.y, task.width, task.height, UI.colors.border)
-            UI.fill(native, task.x + 1, task.y, task.width - 2, 1, titleColor)
-            UI.text(native, task.x + 2, task.y, task.meta.icon .. "  " .. task.meta.title, colors.white, titleColor, task.width - 10)
-            UI.text(native, task.x + task.width - 7, task.y, "-", colors.white, UI.colors.muted, 1)
-            UI.text(native, task.x + task.width - 4, task.y, "x", colors.white, colors.red, 1)
+            UI.titleBar(native, task.x, task.y, task.width, task.meta.title, task.meta.icon, focused)
             if task.failed then
                 task.window.setBackgroundColor(colors.black)
                 task.window.setTextColor(colors.white)
@@ -486,7 +487,7 @@ local function drawDesktop()
     end
     for index, item in ipairs(state.notifications) do
         local boxWidth = math.min(width - 4, math.max(18, #item.message + 4))
-        local x = width - boxWidth - 1
+        local x = math.max(1, math.min(width - boxWidth + 1, width - boxWidth + 1 + math.floor(item.offset or 0)))
         local y = 2 + (index - 1) * 2
         UI.fill(native, x, y, boxWidth, 1, item.color)
         UI.text(native, x + 1, y, item.message, colors.white, item.color, boxWidth - 2)
@@ -733,6 +734,7 @@ log("login success: " .. state.user)
 if config.safeMode then notify("Safe Mode enabled", UI.colors.warning) end
 notify("Welcome, " .. state.user, UI.colors.accent)
 state.clockTimer = os.startTimer(1)
+state.uiTimer = os.startTimer(0.1)
 drawDesktop()
 
 while true do
@@ -745,6 +747,9 @@ while true do
         state.clockTimer = os.startTimer(1)
         dispatch({ "qalcom_tick" })
         state.dirty = true
+    elseif event[1] == "timer" and event[2] == state.uiTimer then
+        state.uiTimer = os.startTimer(0.1)
+        if UI.tick() then state.dirty = true end
     elseif event[1] == "terminate" then
         state.modifiers.alt = false
         state.modifiers.ctrl = false
@@ -774,6 +779,7 @@ while true do
         if config.safeMode then notify("Safe Mode enabled", UI.colors.warning) end
         notify("Welcome, " .. state.user, UI.colors.accent)
         state.clockTimer = os.startTimer(1)
+        state.uiTimer = os.startTimer(0.1)
         state.dirty = true
     elseif event[1] == "term_resize" then
         width, height = native.getSize()

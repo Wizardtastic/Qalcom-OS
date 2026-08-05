@@ -22,6 +22,16 @@ local function loadPure()
 end
 
 local Pure = loadPure()
+local function loadAnimation()
+    local candidates = { "qalcom/lib/ui/animation.lua", "../qalcom/lib/ui/animation.lua", "/qalcom/lib/ui/animation.lua" }
+    for _, path in ipairs(candidates) do
+        local ok, module = pcall(dofile, path)
+        if ok and type(module) == "table" then return module end
+    end
+    fail("Unable to load qalcom/lib/ui/animation.lua")
+end
+
+local Animation = loadAnimation()
 local passed = 0
 
 local function test(label, callback)
@@ -63,6 +73,29 @@ test("fits windows inside a terminal", function()
     equal(width, 50, "window width")
     equal(height, 18, "window height")
     truthy(x >= 1 and y >= 1, "window origin")
+end)
+
+test("animates and completes numeric properties", function()
+    local now = 0
+    local manager = Animation.new(function() return now end)
+    local target = { x = 0 }
+    local completed = false
+    manager:to(target, { x = 10 }, 1, "linear", nil, function() completed = true end)
+    now = 0.5
+    manager:update()
+    equal(target.x, 5, "halfway animation")
+    now = 1
+    manager:update()
+    equal(target.x, 10, "completed animation")
+    truthy(completed, "completion callback")
+end)
+
+test("cancels animations for a target", function()
+    local manager = Animation.new(function() return 0 end)
+    local target = { x = 0 }
+    manager:to(target, { x = 10 }, 1)
+    manager:cancel(target)
+    equal(manager:hasActive(), false, "animation cancellation")
 end)
 
 print("All " .. tostring(passed) .. " pure helper tests passed.")

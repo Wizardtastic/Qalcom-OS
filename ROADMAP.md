@@ -104,6 +104,21 @@ This roadmap is intentionally incremental. Each milestone should deliver one coh
 
 **Exit criteria met:** Task cleanup, bounded recovery, power confirmation, diagnostics, and log maintenance are implemented; full repeated-cycle validation remains part of the manual CC:T checklist.
 
+## Implemented — validation pending: 0.1.10 — Native UI foundation
+
+**Goal:** Improve the desktop presentation without adding external dependencies or changing Qalcom's kernel ownership boundaries.
+
+- Added a backward-compatible native UI layer with semantic colors, reusable cards, headers, title bars, status badges, and safe clipping.
+- Added lightweight character-cell shadows and desktop/taskbar composition helpers.
+- Added a Qalcom-owned animation manager with bounded easing functions, cancellable transitions, and a reduced-motion setting.
+- Added schema migration for the reduced-motion preference while preserving accounts and existing settings.
+- Applied the new visual primitives to the desktop shell, windows, dialogs, and notification slide-in behavior.
+- Kept applications on the existing drawing API so migration can happen incrementally.
+
+**Implementation status:** The native foundation loads without external dependencies, existing UI calls remain compatible, and animation is driven by the kernel's timer loop rather than a second event loop. The manual CC:T checklist remains required before this milestone is considered fully validated, especially for compact terminals, resize behavior, and performance.
+
+**Not in scope:** Full widget migration, dirty-region optimization, third-party UI libraries, capability enforcement, or changing the process/event architecture.
+
 ## 0.2.0 — Capability vocabulary and trusted app manifests
 
 **Goal:** Define permissions before third-party apps or remote operations exist.

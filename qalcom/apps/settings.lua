@@ -8,13 +8,22 @@ return function(ctx)
     local labelInput = ""
     local themes = { "blue", "dark", "green" }
     local categories = { "Personalization", "Account", "Display", "Startup", "Security", "Storage", "Peripherals", "Network", "Recovery" }
-    local rowOrder = { 1, 2, 3, 4, 5, 6, 7, 8, 10 }
+    local rowOrder = { 1, 2, 3, 4, 5, 6, 7, 8, 9, 11 }
+    local compactRows = { 2, 7, 8, 9, 11 }
+    local compactOffset = 1
     local config = Config.load()
     Config.apply(UI, config)
 
     local function availableRows(height)
         -- Keep the compact view focused on editable settings and recovery.
-        if height <= 10 then return { 2, 7, 8, 10 } end
+        if height <= 10 then
+            local visibleCount = math.max(1, math.min(4, height - 4))
+            local maxOffset = math.max(1, #compactRows - visibleCount + 1)
+            compactOffset = math.max(1, math.min(compactOffset, maxOffset))
+            local rows = {}
+            for index = 1, visibleCount do rows[index] = compactRows[compactOffset + index - 1] end
+            return rows
+        end
         local count = math.min(#rowOrder, math.max(1, height - 6))
         local rows = {}
         for index = 1, count do rows[index] = rowOrder[index] end
@@ -54,6 +63,7 @@ return function(ctx)
             { "Security", "Local-only services" },
             { "Safe Mode", config.safeMode and "Enabled" or "Disabled" },
             { "Log retention", tostring(config.logLimit) .. " lines" },
+            { "Reduced motion", config.reducedMotion and "Enabled" or "Disabled" },
             { "Categories", table.concat(categories, ", ") },
             { "Restore defaults", "Ocean / Safe Mode off / 200 lines" },
         }
@@ -109,7 +119,11 @@ return function(ctx)
             Config.setLogLimit(config.logLimit >= 1000 and 50 or config.logLimit + 50)
             config = Config.load()
             ctx:notify("Log retention: " .. tostring(config.logLimit), UI.colors.accent)
-        elseif actualIndex == 10 then
+        elseif actualIndex == 9 then
+            Config.setReducedMotion(not config.reducedMotion)
+            config = Config.load()
+            ctx:notify(config.reducedMotion and "Reduced motion enabled" or "Animations enabled", UI.colors.accent)
+        elseif actualIndex == 11 then
             Config.resetDefaults()
             config = Config.load()
             Config.apply(UI, config)
@@ -144,10 +158,18 @@ return function(ctx)
             end
         elseif event == "key" then
             if value == keys.up then
-                selected = math.max(1, selected - 1)
+                if selected > 1 then
+                    selected = selected - 1
+                elseif compactOffset > 1 then
+                    compactOffset = compactOffset - 1
+                end
                 render()
             elseif value == keys.down then
-                selected = math.min(#visibleRows, selected + 1)
+                if selected < #visibleRows then
+                    selected = selected + 1
+                elseif select(2, ctx.win.getSize()) <= 10 and compactOffset < #compactRows - #visibleRows + 1 then
+                    compactOffset = compactOffset + 1
+                end
                 render()
             elseif value == keys.enter then
                 applySelected(visibleRows[selected])
