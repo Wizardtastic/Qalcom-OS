@@ -8,13 +8,14 @@ return function(ctx)
     local labelInput = ""
     local themes = { "blue", "dark", "green" }
     local categories = { "Personalization", "Account", "Display", "Startup", "Security", "Storage", "Peripherals", "Network", "Recovery" }
-    local rowOrder = { 1, 2, 3, 4, 5, 6, 7, 8, 9 }
+    local rowOrder = { 1, 2, 3, 4, 5, 6, 7, 8, 9, 10 }
     local config = Config.load()
     Config.apply(UI, config)
 
     local function availableRows(height)
-        if height <= 10 then return { 1, 2, 7, 8 } end
-        local count = math.min(#rowOrder, math.max(1, height - 5))
+        -- Keep the compact view focused on editable settings and recovery.
+        if height <= 10 then return { 2, 7, 8, 10 } end
+        local count = math.min(#rowOrder, math.max(1, height - 6))
         local rows = {}
         for index = 1, count do rows[index] = rowOrder[index] end
         return rows
@@ -54,6 +55,7 @@ return function(ctx)
             { "Safe Mode", config.safeMode and "Enabled" or "Disabled" },
             { "Log retention", tostring(config.logLimit) .. " lines" },
             { "Categories", table.concat(categories, ", ") },
+            { "Restore defaults", "Ocean / Safe Mode off / 200 lines" },
         }
         for displayIndex, actualIndex in ipairs(visibleRows) do
             local item = rows[actualIndex]
@@ -107,6 +109,11 @@ return function(ctx)
             Config.setLogLimit(config.logLimit >= 1000 and 50 or config.logLimit + 50)
             config = Config.load()
             ctx:notify("Log retention: " .. tostring(config.logLimit), UI.colors.accent)
+        elseif actualIndex == 10 then
+            Config.resetDefaults()
+            config = Config.load()
+            Config.apply(UI, config)
+            ctx:notify("Qalcom defaults restored; accounts preserved", UI.colors.success)
         end
     end
 

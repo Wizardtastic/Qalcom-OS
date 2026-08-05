@@ -20,6 +20,9 @@ Use this checklist before calling a milestone complete.
 
 - [ ] Existing account data remains readable.
 - [ ] Existing settings remain readable.
+- [ ] Schema migration runs before settings are applied.
+- [ ] Legacy setting names are tested and current defaults do not hide them.
+- [ ] Restore defaults does not delete account data.
 - [ ] Any persistent-data migration has a documented procedure.
 - [ ] Logs are bounded and do not grow without limit.
 

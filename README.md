@@ -1,4 +1,4 @@
-# Qalcom OS 0.1.7
+# Qalcom OS 0.1.8
 
 Qalcom OS is a clean, Windows-inspired desktop environment for ComputerCraft: Tweaked. This milestone runs entirely inside CC:T and does not require a Minecraft mod or CraftOS modification.
 
@@ -27,7 +27,7 @@ Copy the repository contents to the root of a CC:T computer so the layout looks 
 /qalcom/lib/pure.lua
 ```
 
-Reboot the computer. Qalcom starts through `/startup.lua`, shows the first-run account setup, and will enter a small recovery prompt if the kernel fails to load. When upgrading from 0.1.6, copy the new `/qalcom/lib/pure.lua` file as well as the updated files; the authentication and configuration modules depend on it.
+Reboot the computer. Qalcom starts through `/startup.lua`, shows the first-run account setup, and will enter a small recovery prompt if the kernel fails to load. When upgrading from 0.1.7, copy the updated `/qalcom/lib/config.lua`, `/qalcom/apps/settings.lua`, and `/qalcom/apps/recovery.lua` files. Configuration schema migration runs automatically; account data in `/qalcom/data/accounts` is preserved.
 
 ## Controls
 
@@ -46,8 +46,8 @@ Reboot the computer. Qalcom starts through `/startup.lua`, shows the first-run a
 - File Explorer supports mouse selection, keyboard navigation, opening directories, and refresh.
 - System Monitor is available from Start and reports peripheral/modem status; it does not launch automatically.
 - Open **Control Center** from Start to inspect processes, memory, storage, and services.
-- Open **Recovery** from Start to clear notifications, reset the theme, toggle Safe Mode, or open the system log.
-- In **Settings**, select Safe Mode or Log retention and press Enter to change them.
+- Open **Recovery** from Start to clear notifications, reset the theme, toggle Safe Mode, restore Qalcom defaults, or open the system log.
+- In **Settings**, select Safe Mode or Log retention and press Enter to change them. Restore defaults to reset Qalcom settings without deleting accounts.
 - In **System Log**, press F to cycle through all, failure, and login entries.
 - Open **System Log** from Start to inspect recent Qalcom events and errors.
 - Crashed applications remain visible with a recovery screen; select them in Control Center and press R to restart.
@@ -65,9 +65,9 @@ Reboot the computer. Qalcom starts through `/startup.lua`, shows the first-run a
 - **Account**: View the current session and sign out to the login screen.
 - **Text Viewer**: View and edit local text, Lua, and log files.
 
-## Version 0.1.6
+## Version 0.1.8
 
-This release adds a lightweight pure-Lua validation layer, an offline helper test runner, manual CC:T testing documentation, a release checklist, and clearer recovery/migration guidance. The 0.1.6 watchdog, Safe Mode, settings, and log features remain available. Watchdog status is diagnostic only: it appears after a handler yields back to the kernel, and Qalcom does not automatically terminate healthy or stalled applications.
+This release adds versioned configuration migration, safe validation and clamping of persisted settings, configuration-change logging, and restore-defaults actions that preserve account data. The 0.1.7 testing foundation and the earlier watchdog, Safe Mode, settings, and log features remain available. Watchdog status is diagnostic only: it appears after a handler yields back to the kernel, and Qalcom does not automatically terminate healthy or stalled applications.
 
 Run `lua tests/pure_test.lua` when a local Lua interpreter is available. This covers only CC:T-independent helpers; complete the in-game checklist in [TESTING.md](TESTING.md) as well.
 

@@ -3,12 +3,12 @@ local Config = dofile("/qalcom/lib/config.lua")
 
 return function(ctx)
     local selected = 1
-    local items = { "Clear notifications", "Reset desktop theme", "Safe Mode: toggle", "Open system log", "Return" }
+    local items = { "Clear notifications", "Reset desktop theme", "Safe Mode: toggle", "Restore Qalcom defaults", "Open system log", "Return" }
     local status = "Local recovery tools"
 
     local function visibleItems(height)
-        -- Reserve the final compact row for controls; keep the log shortcut visible.
-        if height < 10 then return { 1, 2, 3, 4 } end
+        -- Keep the compact recovery view useful: clear, Safe Mode, defaults, and logs.
+        if height < 10 then return { 1, 3, 4, 5 } end
         local count = math.min(#items, math.max(1, height - 6))
         local result = {}
         for index = 1, count do result[index] = index end
@@ -35,7 +35,7 @@ return function(ctx)
             UI.text(ctx.win, 3, y, items[actualIndex], active and colors.white or UI.colors.text, background, width - 5)
         end
         if compact then
-            -- All core recovery actions remain visible; Escape closes without a footer.
+            -- Core recovery actions remain visible; Escape closes without a footer.
         else
             UI.text(ctx.win, 2, height - 1, "Up/Down select   Enter apply", UI.colors.muted, UI.colors.surface, width - 3)
             UI.text(ctx.win, 2, height, "Esc close", UI.colors.muted, UI.colors.surface, width - 3)
@@ -58,9 +58,13 @@ return function(ctx)
             status = config.safeMode and "Safe Mode enabled now" or "Safe Mode disabled now"
             ctx:notify(status, UI.colors.warning)
         elseif actualIndex == 4 then
+            Config.resetDefaults()
+            status = "Defaults restored; accounts preserved"
+            ctx:notify(status, UI.colors.success)
+        elseif actualIndex == 5 then
             local task = ctx:launch("logs")
             status = task and "Opened system log" or "Unable to open system log"
-        elseif actualIndex == 5 then
+        elseif actualIndex == 6 then
             ctx:close()
         end
         render()

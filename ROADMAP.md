@@ -78,18 +78,20 @@ This roadmap is intentionally incremental. Each milestone should deliver one coh
 
 **Exit criteria met:** Core pure logic now has repeatable helper checks and a fresh installation can be validated from the documentation. Application lifecycle behavior still requires the manual CC:T checklist; the offline tests are not a replacement for in-game validation.
 
-## 0.1.8 — Configuration and migration stability
+## Completed: 0.1.8 — Configuration and migration stability
 
 **Goal:** Make persistent settings safe to evolve.
 
-- Add a configuration schema/version marker.
-- Add defaults and migration handling for renamed or missing settings.
-- Add an explicit “restore Qalcom defaults” action without deleting user accounts.
-- Validate and clamp persisted values before applying them.
-- Record configuration changes in the system log.
-- Improve compact Settings navigation and clearly separate informational categories from editable settings.
+- Added a configuration schema/version marker.
+- Added defaults and migration handling for missing and legacy setting names.
+- Added Settings and Recovery actions to restore Qalcom defaults without deleting user accounts.
+- Validated and clamped persisted values before applying them.
+- Recorded migrations and configuration changes in the system log.
+- Improved compact Settings navigation and separated editable controls from informational categories.
 
-**Exit criteria:** Older settings files load safely, invalid values fall back to defaults, and resetting configuration does not destroy account data.
+**Exit criteria met:** Older settings load safely, invalid values fall back to defaults, and resetting configuration preserves account data.
+
+## 0.1.9 — Desktop lifecycle hardening
 
 ## 0.1.9 — Desktop lifecycle hardening
 

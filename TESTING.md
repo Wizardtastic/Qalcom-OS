@@ -44,12 +44,19 @@ Run these checks on a fresh copy and again over an existing 0.1.x installation.
 
 ### Settings and Safe Mode
 
+- [ ] Configuration migration creates/updates the Qalcom schema setting without deleting accounts.
+- [ ] A legacy theme, Safe Mode, or log-limit setting is migrated instead of being replaced by the current default.
+- [ ] Invalid theme, Safe Mode, or log-limit values fall back to safe defaults.
+- [ ] Restore defaults from Settings resets Qalcom settings without deleting `/qalcom/data/accounts`.
+- [ ] Restore defaults from Recovery behaves the same way.
+- [ ] Configuration migrations and changes appear in `/qalcom/logs/system.log`.
 - [ ] Theme changes persist after reboot.
 - [ ] Theme reset returns to Ocean/blue.
 - [ ] Safe Mode limits Start to Recovery, System Log, Terminal, and Settings.
 - [ ] Enabling Safe Mode closes disallowed running apps.
 - [ ] Safe Mode can be disabled from Settings or Recovery.
 - [ ] Log retention remains within the configured bounds.
+- [ ] Compact Settings still exposes Safe Mode, log retention, and restore defaults.
 - [ ] Settings and Recovery remain usable at the supported minimum size.
 
 ### Logs and recovery
