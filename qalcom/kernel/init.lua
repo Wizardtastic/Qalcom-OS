@@ -498,36 +498,25 @@ local function drawDesktop()
         local menuHeight = math.min(height - 2, #LAUNCHER_APPS + 3)
         local menuX = 2
         local menuY = math.max(2, height - menuHeight - 2)
-        UI.fill(native, menuX, menuY, menuWidth, menuHeight, UI.colors.surface)
-        UI.fill(native, menuX, menuY, menuWidth, 2, UI.colors.accent)
-        UI.text(native, menuX + 2, menuY, "Qalcom", colors.white, UI.colors.accent, menuWidth - 3)
-        UI.text(native, menuX + 2, menuY + 1, "Pinned apps", colors.lightBlue, UI.colors.accent, menuWidth - 3)
+        UI.shadow(native, menuX, menuY, menuWidth, menuHeight, 1)
+        UI.card(native, menuX, menuY, menuWidth, menuHeight, nil, nil, false)
+        UI.fill(native, menuX + 1, menuY + 1, menuWidth - 2, 3, UI.colors.accent)
+        UI.text(native, menuX + 3, menuY + 1, "Qalcom", colors.white, UI.colors.accent, menuWidth - 5)
+        UI.text(native, menuX + 3, menuY + 2, "Pinned apps", colors.lightBlue, UI.colors.accent, menuWidth - 5)
         local names = LAUNCHER_APPS
-        UI.text(native, menuX + 2, menuY + 2, "Use arrows, Enter, or click", UI.colors.muted, UI.colors.surface, menuWidth - 3)
+        UI.text(native, menuX + 3, menuY + 3, "Choose an app", colors.white, UI.colors.accent, menuWidth - 5)
         for index, name in ipairs(names) do
-            local itemY = menuY + 2 + index
+            local itemY = menuY + 3 + index
             local active = index == state.launcherSelection
             local background = active and UI.colors.accentLight or UI.colors.surface
             local foreground = active and colors.white or UI.colors.text
-            UI.fill(native, menuX + 1, itemY, menuWidth - 2, 1, background)
-            UI.text(native, menuX + 3, itemY, APP_META[name].icon .. "  " .. APP_META[name].title, foreground, background, menuWidth - 6)
+            UI.fill(native, menuX + 2, itemY, menuWidth - 4, 1, background)
+            UI.text(native, menuX + 4, itemY, APP_META[name].icon .. "  " .. APP_META[name].title, foreground, background, menuWidth - 8)
         end
     end
 
     local barY = height - 1
-    local trayWidth = 15
-    UI.fill(native, 1, barY, width, 2, colors.lightGray)
-    UI.button(native, 2, barY, 10, "[S] Start", state.launcher)
-    local x = 14
-    for _, task in ipairs(state.tasks) do
-        local label = task.meta.icon .. (task.minimized and " + " or " ") .. task.meta.title
-        local buttonWidth = math.min(16, math.max(8, #label + 2))
-        UI.button(native, x, barY, buttonWidth, label, task == state.focused and not task.minimized)
-        x = x + buttonWidth + 1
-        if x > width - trayWidth - 1 then break end
-    end
-    UI.text(native, width - trayWidth, barY, os.date("%H:%M"), UI.colors.text, colors.lightGray, 6)
-    UI.text(native, width - 8, barY, "ID " .. tostring(os.getComputerID()), UI.colors.muted, colors.lightGray, 7)
+    UI.taskbar(native, width, barY, state.tasks, state.focused, state.launcher, 15)
 end
 
 local function hitTask(x, y)
@@ -547,12 +536,12 @@ local function activeModal()
 end
 
 local function handleLauncherClick(x, y)
-    local menuWidth = math.min(34, width - 4)
-    local menuHeight = math.min(height - 2, #LAUNCHER_APPS + 3)
-    local menuX = 2
-    local menuY = math.max(2, height - menuHeight - 2)
+    local menuWidth = math.min(36, width - 4)
+    local menuHeight = math.min(height - 2, #LAUNCHER_APPS + 4)
+    local menuX = math.max(2, math.floor((width - menuWidth) / 2) + 1)
+    local menuY = math.max(2, height - menuHeight - 3)
     if x < menuX or x >= menuX + menuWidth or y < menuY or y >= menuY + menuHeight then return false end
-    local index = y - (menuY + 2)
+    local index = y - (menuY + 3)
     local names = LAUNCHER_APPS
     if index >= 1 and index <= #names then
         state.launcher = false
@@ -568,23 +557,22 @@ local function handleMouse(button, x, y)
     end
     if y >= height - 1 then
         if activeModal() then return end
-        if x >= 2 and x < 12 then
-            state.launcher = not state.launcher
-            state.launcherSelection = 1
-            state.dirty = true
-            return
-        end
-        local cursor = 14
-        for _, task in ipairs(state.tasks) do
-            local label = task.meta.icon .. (task.minimized and " + " or " ") .. task.meta.title
-            local buttonWidth = math.min(16, math.max(8, #label + 2))
-            if x >= cursor and x < cursor + buttonWidth then
-                task.minimized = not task.minimized
-                task.window.setVisible(not task.minimized)
-                focusTask(task)
+        local items = UI.taskbarLayout(width, state.tasks)
+        for _, item in ipairs(items) do
+            if x >= item.x and x < item.x + item.width then
+                if item.kind == "start" then
+                    state.launcher = not state.launcher
+                    state.launcherSelection = 1
+                elseif item.task then
+                    if item.task.minimized then
+                        item.task.minimized = false
+                        item.task.window.setVisible(true)
+                    end
+                    focusTask(item.task)
+                end
+                state.dirty = true
                 return
             end
-            cursor = cursor + buttonWidth + 1
         end
         return
     end

@@ -1,4 +1,5 @@
 local UI = dofile("/qalcom/lib/ui.lua")
+local Screen = dofile("/qalcom/lib/ui/screen.lua")
 
 return function(ctx)
     local cwd = "/"
@@ -35,16 +36,9 @@ return function(ctx)
 
     local function render()
         local width, height = ctx.win.getSize()
-        ctx.win.setBackgroundColor(UI.colors.surface)
-        ctx.win.setTextColor(UI.colors.text)
-        ctx.win.clear()
-        UI.fill(ctx.win, 1, 1, width, 3, UI.colors.surfaceAlt)
-        UI.text(ctx.win, 2, 1, "File Explorer", UI.colors.accent, UI.colors.surfaceAlt, width - 3)
-        UI.text(ctx.win, 2, 2, cwd, UI.colors.muted, UI.colors.surfaceAlt, width - 3)
-        UI.text(ctx.win, 2, 3, status, UI.colors.muted, UI.colors.surfaceAlt, width - 3)
-        UI.divider(ctx.win, 1, 4, width, UI.colors.border)
+        local _, _, contentStart = Screen.begin(ctx.win, "File Explorer", cwd .. "  |  " .. status, { ui = UI })
 
-        local visible = math.max(1, height - 6)
+        local visible = math.max(1, height - contentStart - 2)
         local start = math.max(1, selected - visible + 1)
         for row = 1, visible do
             local index = start + row - 1
@@ -53,9 +47,10 @@ return function(ctx)
                 local active = index == selected
                 local bg = active and UI.colors.accentLight or UI.colors.surface
                 local fg = active and colors.white or UI.colors.text
-                UI.fill(ctx.win, 2, row + 4, width - 2, 1, bg)
-                local icon = item.dir and "> " or "- "
-                UI.text(ctx.win, 3, row + 4, icon .. item.name, fg, bg, width - 5)
+                local itemY = contentStart + row - 1
+                UI.fill(ctx.win, 2, itemY, width - 2, 1, bg)
+                local icon = item.dir and "▸ " or "· "
+                UI.text(ctx.win, 3, itemY, icon .. item.name, fg, bg, width - 5)
             end
         end
         UI.text(ctx.win, 2, height - 1, "Enter open   N new folder   D delete   C copy   V paste", UI.colors.muted, UI.colors.surface, width - 3)
@@ -173,7 +168,7 @@ return function(ctx)
             elseif value == keys.r then status = "Rename is planned for the next patch"; render()
             end
         elseif event == "mouse_click" then
-            local row = y - 4
+            local row = y - 3
             local visible = math.max(1, select(2, ctx.win.getSize()) - 6)
             local start = math.max(1, selected - visible + 1)
             if row >= 1 and row <= visible and start + row - 1 <= #entries then

@@ -1,4 +1,5 @@
 local UI = dofile("/qalcom/lib/ui.lua")
+local Screen = dofile("/qalcom/lib/ui/screen.lua")
 
 return function(ctx)
     local path = ctx.path or "/"
@@ -40,14 +41,8 @@ return function(ctx)
 
     local function render()
         local width, height = ctx.win.getSize()
-        ctx.win.setBackgroundColor(UI.colors.surface)
-        ctx.win.setTextColor(UI.colors.text)
-        ctx.win.clear()
-        UI.fill(ctx.win, 1, 1, width, 2, UI.colors.surfaceAlt)
-        UI.text(ctx.win, 2, 1, UI.safeName(path), UI.colors.accent, UI.colors.surfaceAlt, width - 3)
-        UI.text(ctx.win, 2, 2, status .. (dirty and " *" or ""), UI.colors.muted, UI.colors.surfaceAlt, width - 3)
-        UI.divider(ctx.win, 1, 3, width, UI.colors.border)
-        local visible = math.max(1, height - 4)
+        local _, _, contentStart = Screen.begin(ctx.win, UI.safeName(path), status .. (dirty and " *" or ""), { ui = UI })
+        local visible = math.max(1, height - contentStart - 1)
         scroll = math.max(1, math.min(scroll, math.max(1, #lines - visible + 1)))
         for row = 1, visible do
             local index = scroll + row - 1
@@ -58,7 +53,7 @@ return function(ctx)
                     text = text:sub(1, 80)
                     if column <= #text + 1 then text = text:sub(1, column - 1) .. "_" .. text:sub(column) end
                 end
-                UI.text(ctx.win, 2, row + 3, prefix .. text, index == cursor and UI.colors.accent or UI.colors.text, UI.colors.surface, width - 3)
+                UI.text(ctx.win, 2, contentStart + row - 1, prefix .. text, index == cursor and UI.colors.accent or UI.colors.text, UI.colors.surface, width - 3)
             end
         end
         UI.text(ctx.win, 2, height, "Arrows select   Ctrl+S save   Esc close", UI.colors.muted, UI.colors.surface, width - 3)

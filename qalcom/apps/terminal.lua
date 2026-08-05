@@ -1,4 +1,5 @@
 local UI = dofile("/qalcom/lib/ui.lua")
+local Screen = dofile("/qalcom/lib/ui/screen.lua")
 local VERSION = dofile("/qalcom/version.lua")
 
 return function(ctx)
@@ -28,14 +29,12 @@ return function(ctx)
 
     local function render()
         local width, height = ctx.win.getSize()
-        ctx.win.setBackgroundColor(UI.colors.surface)
-        ctx.win.setTextColor(UI.colors.text)
-        ctx.win.clear()
-        local usable = math.max(1, height - 2)
+        local _, _, contentStart = Screen.begin(ctx.win, "Terminal", cwd, { ui = UI })
+        local usable = math.max(1, height - contentStart - 2)
         local first = math.max(1, #lines - usable + 1)
         for row = 1, usable do
             local line = lines[first + row - 1]
-            if line then UI.text(ctx.win, 2, row, line, UI.colors.text, UI.colors.surface, width - 2) end
+            if line then UI.text(ctx.win, 2, contentStart + row - 1, line, UI.colors.text, UI.colors.surface, width - 2) end
         end
         UI.fill(ctx.win, 1, height - 1, width, 2, UI.colors.surfaceAlt)
         UI.text(ctx.win, 2, height - 1, cwd, UI.colors.accent, UI.colors.surfaceAlt, width - 4)

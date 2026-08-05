@@ -92,36 +92,16 @@ function Auth.verify(username, password)
     return false, "Incorrect username or password."
 end
 
-local function drawField(target, x, y, width, label, value, active, secret)
-    local background = active and colors.lightBlue or colors.white
-    local foreground = active and colors.white or colors.black
-    target.setBackgroundColor(background)
-    target.setTextColor(foreground)
-    target.setCursorPos(x, y)
-    target.write(string.rep(" ", width))
-    target.setCursorPos(x + 1, y - 1)
-    target.setTextColor(colors.gray)
-    target.write(label)
-    target.setCursorPos(x + 1, y)
-    local display = secret and string.rep("*", #value) or value
-    target.write(display:sub(1, math.max(1, width - 2)))
-    if active then
-        target.setCursorPos(math.min(x + width - 1, x + 1 + #display), y)
-        target.setTextColor(colors.white)
-        target.write("_")
-    end
-end
-
 local function screenLayout(target, mode)
     local width, height = target.getSize()
     local compact = height < 22
     local panelWidth = math.min(38, width - 6)
-    local panelHeight = compact and (mode == "setup" and 9 or 7) or (mode == "setup" and 13 or 11)
+    local panelHeight = compact and (mode == "setup" and 11 or 9) or (mode == "setup" and 13 or 11)
     local panelX = math.floor((width - panelWidth) / 2) + 1
     local panelY = compact and 3 or math.max(6, math.floor((height - panelHeight) / 2))
-    local firstField = compact and 3 or 4
+    local firstField = 4
     local fieldGap = compact and 2 or 3
-    local buttonOffset = compact and (mode == "setup" and 8 or 6) or (mode == "setup" and 12 or 9)
+    local buttonOffset = compact and (mode == "setup" and 10 or 8) or (mode == "setup" and 12 or 9)
     return {
         width = width,
         height = height,
@@ -148,21 +128,24 @@ local function drawScreen(target, UI, version, mode, fields, selected, message, 
         UI.center(target, 4, mode == "setup" and "Create your administrator account" or "Welcome back", colors.lightBlue, UI.colors.desktop, width)
     end
 
-    UI.panel(target, layout.panelX, layout.panelY, layout.panelWidth, layout.panelHeight, UI.colors.surface, UI.colors.border)
-    UI.text(target, layout.panelX + 2, layout.panelY + 1, mode == "setup" and "First-time setup" or "Sign in to continue", UI.colors.accent, UI.colors.surface, layout.panelWidth - 4)
+    UI.shadow(target, layout.panelX, layout.panelY, layout.panelWidth, layout.panelHeight, 1)
+    UI.card(target, layout.panelX, layout.panelY, layout.panelWidth, layout.panelHeight, nil, nil, false)
+    UI.fill(target, layout.panelX + 1, layout.panelY + 1, layout.panelWidth - 2, 2, UI.colors.accent)
+    UI.text(target, layout.panelX + 2, layout.panelY + 1, "QALCOM", colors.white, UI.colors.accent, layout.panelWidth - 4)
+    UI.text(target, layout.panelX + 2, layout.panelY + 2, mode == "setup" and "First-time setup" or "Sign in to continue", colors.lightBlue, UI.colors.accent, layout.panelWidth - 4)
 
     local fieldX = layout.panelX + 3
     local fieldWidth = layout.panelWidth - 6
     local usernameY = layout.panelY + layout.firstField
     local passwordY = usernameY + layout.fieldGap
-    drawField(target, fieldX, usernameY, fieldWidth, "Username", fields.username, selected == 1, false)
-    drawField(target, fieldX, passwordY, fieldWidth, "Password", fields.password, selected == 2, true)
+    UI.input(target, fieldX, usernameY, fieldWidth, "Username", fields.username, selected == 1, false)
+    UI.input(target, fieldX, passwordY, fieldWidth, "Password", fields.password, selected == 2, true)
     if mode == "setup" then
-        drawField(target, fieldX, passwordY + layout.fieldGap, fieldWidth, "Confirm password", fields.confirm, selected == 3, true)
+        UI.input(target, fieldX, passwordY + layout.fieldGap, fieldWidth, "Confirm password", fields.confirm, selected == 3, true)
     end
 
     local buttonY = layout.panelY + layout.buttonOffset
-    UI.button(target, fieldX, buttonY, fieldWidth, mode == "setup" and "Create account" or "Sign in", true)
+    UI.button(target, fieldX, buttonY, fieldWidth, mode == "setup" and "Create account" or "Sign in", selected == (mode == "setup" and 3 or 2))
     if message and message ~= "" then
         local messageY = math.min(height - 2, layout.panelY + layout.panelHeight + 1)
         UI.center(target, messageY, message, messageColor or colors.yellow, UI.colors.desktop, width)

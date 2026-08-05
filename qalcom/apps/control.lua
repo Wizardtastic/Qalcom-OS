@@ -1,4 +1,5 @@
 local UI = dofile("/qalcom/lib/ui.lua")
+local Screen = dofile("/qalcom/lib/ui/screen.lua")
 local VERSION = dofile("/qalcom/version.lua")
 
 local function taskDetail(task)
@@ -26,15 +27,9 @@ return function(ctx)
     local function render()
         local width, height = ctx.win.getSize()
         local compact = height < 18
-        ctx.win.setBackgroundColor(UI.colors.surface)
-        ctx.win.setTextColor(UI.colors.text)
-        ctx.win.clear()
-        UI.fill(ctx.win, 1, 1, width, 3, UI.colors.surfaceAlt)
-        UI.text(ctx.win, 2, 1, "Control Center", UI.colors.accent, UI.colors.surfaceAlt, width - 3)
-        UI.text(ctx.win, 2, 2, status, UI.colors.muted, UI.colors.surfaceAlt, width - 3)
-        UI.divider(ctx.win, 1, 3, width, UI.colors.border)
+        local _, _, contentStart = Screen.begin(ctx.win, "Control Center", status, { ui = UI })
 
-        local footerStart = math.max(1, height - 1)
+        local footerStart = math.max(contentStart, height - 1)
         local row
         local maxVisibleTasks = math.max(0, footerStart - 5)
         if compact then maxVisibleTasks = math.max(0, footerStart - 5) end

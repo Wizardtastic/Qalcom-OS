@@ -1,4 +1,5 @@
 local UI = dofile("/qalcom/lib/ui.lua")
+local Screen = dofile("/qalcom/lib/ui/screen.lua")
 
 return function(ctx)
     local lines = {}
@@ -23,17 +24,11 @@ return function(ctx)
 
     local function render()
         local width, height = ctx.win.getSize()
-        ctx.win.setBackgroundColor(UI.colors.surface)
-        ctx.win.setTextColor(UI.colors.text)
-        ctx.win.clear()
-        UI.fill(ctx.win, 1, 1, width, 3, UI.colors.surfaceAlt)
-        UI.text(ctx.win, 2, 1, "System Log", UI.colors.accent, UI.colors.surfaceAlt, width - 3)
-        UI.text(ctx.win, 2, 2, status, UI.colors.muted, UI.colors.surfaceAlt, width - 3)
-        UI.divider(ctx.win, 1, 3, width, UI.colors.border)
-        local visible = math.max(1, height - 5)
+        local _, _, contentStart = Screen.begin(ctx.win, "System Log", status, { ui = UI })
+        local visible = math.max(1, height - contentStart - 2)
         for row = 1, visible do
             local line = lines[scroll + row - 1]
-            if line then UI.text(ctx.win, 2, row + 3, line, UI.colors.text, UI.colors.surface, width - 3) end
+            if line then UI.text(ctx.win, 2, contentStart + row - 1, line, UI.colors.text, UI.colors.surface, width - 3) end
         end
         UI.fill(ctx.win, 1, height - 1, width, 2, UI.colors.surfaceAlt)
         UI.text(ctx.win, 2, height - 1, "Up/Down scroll   R refresh   F filter", UI.colors.muted, UI.colors.surfaceAlt, width - 3)

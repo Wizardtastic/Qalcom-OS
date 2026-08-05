@@ -36,8 +36,11 @@ Run these checks on a fresh copy and again over an existing 0.1.x installation.
 ### Desktop and applications
 
 - [ ] The native UI foundation renders without an external dependency.
+- [ ] Login, Settings, Recovery, Control Center, Diagnostics, Monitor, System Log, Explorer, Terminal, Account, and Editor share the refreshed visual language.
 - [ ] Window shadows remain inside the terminal and do not corrupt adjacent windows.
 - [ ] Notifications animate in without blocking input; Reduced motion disables the transition.
+- [ ] The centered taskbar and floating Start menu open and close with mouse and keyboard.
+- [ ] Taskbar buttons remain correctly hit-testable after centering.
 - [ ] Start opens and closes with mouse and keyboard.
 - [ ] Terminal `reboot` and `shutdown` open a confirmation dialog instead of powering off immediately.
 - [ ] Cancelling the power dialog leaves the desktop running.

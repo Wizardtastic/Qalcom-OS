@@ -1,4 +1,5 @@
 local UI = dofile("/qalcom/lib/ui.lua")
+local Screen = dofile("/qalcom/lib/ui/screen.lua")
 local Config = dofile("/qalcom/lib/config.lua")
 
 return function(ctx)
@@ -20,15 +21,9 @@ return function(ctx)
         local visible = visibleItems(height)
         selected = math.min(selected, #visible)
         local compact = height < 10
-        ctx.win.setBackgroundColor(UI.colors.surface)
-        ctx.win.setTextColor(UI.colors.text)
-        ctx.win.clear()
-        UI.fill(ctx.win, 1, 1, width, 3, UI.colors.surfaceAlt)
-        UI.text(ctx.win, 2, 1, "Recovery", UI.colors.accent, UI.colors.surfaceAlt, width - 3)
-        UI.text(ctx.win, 2, 2, status, UI.colors.muted, UI.colors.surfaceAlt, width - 3)
-        UI.divider(ctx.win, 1, 3, width, UI.colors.border)
+        local _, _, contentStart = Screen.begin(ctx.win, "Recovery", status, { ui = UI })
         for displayIndex, actualIndex in ipairs(visible) do
-            local y = 4 + displayIndex
+            local y = contentStart + displayIndex - 1
             local active = displayIndex == selected
             local background = active and UI.colors.accentLight or UI.colors.surface
             UI.fill(ctx.win, 2, y, width - 3, 1, background)

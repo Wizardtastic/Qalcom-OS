@@ -112,12 +112,12 @@ This roadmap is intentionally incremental. Each milestone should deliver one coh
 - Added lightweight character-cell shadows and desktop/taskbar composition helpers.
 - Added a Qalcom-owned animation manager with bounded easing functions, cancellable transitions, and a reduced-motion setting.
 - Added schema migration for the reduced-motion preference while preserving accounts and existing settings.
-- Applied the new visual primitives to the desktop shell, windows, dialogs, and notification slide-in behavior.
-- Kept applications on the existing drawing API so migration can happen incrementally.
+- Applied the new visual primitives to the desktop shell, centered taskbar, floating Start menu, windows, dialogs, and notification slide-in behavior.
+- Added shared screen scaffolding and migrated login, Settings, Recovery, Control Center, Diagnostics, Monitor, System Log, Explorer, Terminal, Account, and Editor to the common visual language.
 
-**Implementation status:** The native foundation loads without external dependencies, existing UI calls remain compatible, and animation is driven by the kernel's timer loop rather than a second event loop. The manual CC:T checklist remains required before this milestone is considered fully validated, especially for compact terminals, resize behavior, and performance.
+**Implementation status:** The native foundation loads without external dependencies, existing input behavior remains compatible, and animation is driven by the kernel's timer loop rather than a second event loop. The manual CC:T checklist remains required before this milestone is considered fully validated, especially for compact terminals, resize behavior, and performance.
 
-**Not in scope:** Full widget migration, dirty-region optimization, third-party UI libraries, capability enforcement, or changing the process/event architecture.
+**Not in scope:** Dirty-region optimization, third-party UI libraries, capability enforcement, or changing the process/event architecture. Further visual polish and specialized widgets can continue in later 0.1.x patches.
 
 ## 0.2.0 — Capability vocabulary and trusted app manifests
 

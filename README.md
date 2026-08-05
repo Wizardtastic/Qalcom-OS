@@ -11,6 +11,7 @@ Copy the repository contents to the root of a CC:T computer so the layout looks 
 /qalcom/kernel/init.lua
 /qalcom/lib/ui.lua
 /qalcom/lib/ui/animation.lua
+/qalcom/lib/ui/screen.lua
 /qalcom/lib/config.lua
 /qalcom/lib/auth.lua
 /qalcom/version.lua
@@ -70,7 +71,7 @@ Reboot the computer. Qalcom starts through `/startup.lua`, shows the first-run a
 
 ## Version 0.1.10
 
-This release adds Qalcom's native UI foundation. It preserves the existing application API while adding semantic rendering helpers, themed shadows, reusable cards and title bars, a compositing helper, and a kernel-owned tick-driven animation manager. Notifications can slide into view, desktop windows gain lightweight shadows, and Settings adds a Reduced motion option. There are no external UI dependencies and Qalcom retains ownership of event routing and process lifecycle.
+This release adds Qalcom's native UI foundation and begins the full visual overhaul. The desktop now has a centered Windows-like taskbar, a floating Start menu, cleaner Fluent-style buttons and title bars, reusable window screen scaffolding, cards, input fields, themed shadows, and animated notifications. Login, Settings, Recovery, Control Center, Diagnostics, Monitor, System Log, Explorer, Terminal, Account, and the editor now share the same native visual language. There are no external UI dependencies and Qalcom retains ownership of event routing and process lifecycle.
 
 Run `lua tests/pure_test.lua` when a local Lua interpreter is available. This covers only CC:T-independent helpers; complete the in-game checklist in [TESTING.md](TESTING.md) as well.
 

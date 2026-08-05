@@ -1,4 +1,5 @@
 local UI = dofile("/qalcom/lib/ui.lua")
+local Screen = dofile("/qalcom/lib/ui/screen.lua")
 local Config = dofile("/qalcom/lib/config.lua")
 local VERSION = dofile("/qalcom/version.lua")
 
@@ -46,13 +47,7 @@ return function(ctx)
         local visibleRows = availableRows(height)
         selected = math.min(selected, #visibleRows)
         local compact = height < 10
-        ctx.win.setBackgroundColor(UI.colors.surface)
-        ctx.win.setTextColor(UI.colors.text)
-        ctx.win.clear()
-        UI.fill(ctx.win, 1, 1, width, 2, UI.colors.surfaceAlt)
-        UI.text(ctx.win, 2, 1, "Qalcom settings", UI.colors.accent, UI.colors.surfaceAlt, width - 3)
-        UI.text(ctx.win, 2, 2, compact and "Compact settings" or "Personalize this computer", UI.colors.muted, UI.colors.surfaceAlt, width - 3)
-        UI.divider(ctx.win, 1, 3, width, UI.colors.border)
+        local _, _, contentStart = Screen.begin(ctx.win, "Qalcom Settings", compact and "Compact settings" or "Personalize this computer", { ui = UI })
 
         local rows = {
             { "Computer label", os.getComputerLabel() or "(none)" },
@@ -69,7 +64,7 @@ return function(ctx)
         }
         for displayIndex, actualIndex in ipairs(visibleRows) do
             local item = rows[actualIndex]
-            local y = 4 + displayIndex
+            local y = contentStart + displayIndex - 1
             local active = selected == displayIndex
             local background = active and UI.colors.accentLight or UI.colors.surface
             local foreground = active and colors.white or UI.colors.text

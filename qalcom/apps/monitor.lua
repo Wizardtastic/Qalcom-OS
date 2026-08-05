@@ -1,19 +1,13 @@
 local UI = dofile("/qalcom/lib/ui.lua")
+local Screen = dofile("/qalcom/lib/ui/screen.lua")
 local VERSION = dofile("/qalcom/version.lua")
 
 return function(ctx)
     local function render()
         local width, height = ctx.win.getSize()
-        ctx.win.setBackgroundColor(UI.colors.surface)
-        ctx.win.setTextColor(UI.colors.text)
-        ctx.win.clear()
+        local _, _, contentStart = Screen.begin(ctx.win, "System overview", os.date("%H:%M:%S"), { ui = UI })
 
-        UI.fill(ctx.win, 1, 1, width, 2, UI.colors.surfaceAlt)
-        UI.text(ctx.win, 2, 1, "System overview", UI.colors.accent, UI.colors.surfaceAlt, width - 3)
-        UI.text(ctx.win, 2, 2, os.date("%H:%M:%S"), UI.colors.muted, UI.colors.surfaceAlt, width - 3)
-        UI.divider(ctx.win, 1, 3, width, UI.colors.border)
-
-        local row = 5
+        local row = contentStart + 1
         local footerRow = math.max(1, height)
         local function stat(label, value, color)
             if row < footerRow then
