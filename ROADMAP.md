@@ -119,28 +119,23 @@ This roadmap is intentionally incremental. Each milestone should deliver one coh
 
 **Not in scope:** Dirty-region optimization, third-party UI libraries, capability enforcement, or changing the process/event architecture. Further visual polish and specialized widgets can continue in later 0.1.x patches.
 
-## 0.2.0 — Capability vocabulary and trusted app manifests
+## Implemented — validation pending: 0.2.0 — Capability vocabulary and trusted app manifests
 
 **Goal:** Define permissions before third-party apps or remote operations exist.
 
-- Create a capability vocabulary:
-  - `fs.read`
-  - `fs.write`
-  - `peripheral.read`
-  - `peripheral.control`
-  - `redstone.read`
-  - `redstone.control`
-  - `network.send`
-  - `network.receive`
-  - `system.reboot`
-  - `system.shutdown`
-- Add application manifests that declare requested capabilities.
-- Classify built-in applications as trusted and identify undeclared access.
-- Add a capability inspection view in Control Center or Settings.
-- Add a security audit log for login, recovery, configuration, and capability decisions.
-- Document that capability checks are an application policy layer, not an unbreakable CC:T sandbox.
+- Added a versioned capability catalog and trusted built-in application manifests.
+- Added a read-only Capabilities inspector reachable from Start.
+- Added capability metadata and inspection helpers to application contexts.
+- Added bounded capability audit logging for launches, logins, denials, and inspections.
+- Kept the policy explicitly advisory because trusted CC:T Lua is not sandboxed.
 
-**Exit criteria:** Every built-in app has a documented capability profile and the OS can display requested versus approved capabilities without breaking existing apps.
+- Deferred to 0.2.1+: capability approval policy, role-based decisions, and enforcement for future managed services.
+- Deferred to 0.2.2+: broader capability-aware service boundaries for managed filesystem, peripheral, redstone, and system actions.
+- Deferred to 0.2.3+: peripheral inventory and safe device inspection.
+
+**Implementation status:** Every built-in app has a documented capability profile and the OS can display declared capabilities without changing existing app behavior. The audit stream is bounded and the capability layer does not claim to sandbox trusted Lua. Approval decisions are intentionally deferred to 0.2.1.
+
+**Exit criteria:** Every built-in app has a documented capability profile and the OS can display declared capabilities without breaking existing apps. Manual CC:T validation remains required before this milestone is considered fully validated.
 
 ## 0.2.1 — Roles and approval policy
 

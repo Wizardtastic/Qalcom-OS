@@ -72,8 +72,9 @@ return function(ctx)
             local background = active and UI.colors.accentLight or UI.colors.surface
             local foreground = active and colors.white or UI.colors.text
             local marker = task.failed and "! " or (task.minimized and "_ " or "> ")
-            local label = marker .. tostring(task.pid) .. " " .. task.title                local detail, detailColor = taskDetail(task)
-                if task.failed and task.crashReason then detail = tostring(task.crashReason):sub(1, 18) end
+            local label = marker .. tostring(task.pid) .. " " .. task.title
+            local detail, detailColor = taskDetail(task)
+            if task.failed and task.crashReason then detail = tostring(task.crashReason):sub(1, 18) end
 
             UI.fill(ctx.win, 2, row, width - 3, 1, background)
             UI.text(ctx.win, 3, row, label, foreground, background, math.floor(width * 0.62))

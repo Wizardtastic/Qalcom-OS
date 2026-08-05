@@ -176,18 +176,39 @@ function UI.input(target, x, y, width, label, value, active, secret)
     end
 end
 
-function UI.taskbarLayout(width, tasks)
+function UI.taskbarTrayWidth(width, requested)
     width = math.max(1, math.floor(tonumber(width) or 1))
-    local items = { { kind = "start", x = 1, width = 10, label = "Start" } }
-    local total = 10
+    requested = math.max(1, math.floor(tonumber(requested) or 15))
+    return math.min(requested, math.max(8, math.floor(width * 0.30)))
+end
+
+function UI.taskbarLayout(width, tasks, trayWidth)
+    width = math.max(1, math.floor(tonumber(width) or 1))
+    trayWidth = UI.taskbarTrayWidth(width, trayWidth)
+    local firstX = 2
+    local lastX = math.max(firstX, width - trayWidth - 1)
+    local available = math.max(8, lastX - firstX + 1)
+    local startWidth = available >= 20 and 8 or 5
+    local items = { { kind = "start", x = firstX, width = startWidth, label = "Start" } }
+    local total = startWidth
+    local hidden = 0
     for _, task in ipairs(tasks or {}) do
-        local label = task.meta.icon .. (task.minimized and " + " or " ") .. task.meta.title
-        local buttonWidth = math.min(16, math.max(8, #label + 2))
-        items[#items + 1] = { kind = "task", task = task, x = 1, width = buttonWidth, label = label }
-        total = total + 1 + buttonWidth
+        local label = tostring(task.meta.icon or "") .. (task.minimized and " + " or " ") .. tostring(task.meta.title or "")
+        local normalWidth = math.min(16, math.max(8, #label + 2))
+        local buttonWidth = normalWidth
+        if total + 1 + buttonWidth > available then buttonWidth = 4 end
+        if total + 1 + buttonWidth <= available then
+            items[#items + 1] = { kind = "task", task = task, x = firstX, width = buttonWidth, label = buttonWidth == 4 and tostring(task.meta.icon or "?") or label }
+            total = total + 1 + buttonWidth
+        else
+            hidden = hidden + 1
+        end
     end
-    local usableWidth = math.max(10, width - 15)
-    local start = math.max(2, math.floor((usableWidth - total) / 2) + 1)
+    if hidden > 0 and total + 1 + 3 <= available then
+        items[#items + 1] = { kind = "overflow", x = firstX, width = 3, label = "..", hidden = hidden }
+        total = total + 1 + 3
+    end
+    local start = firstX + math.max(0, math.floor((available - total) / 2))
     local cursor = start
     for _, item in ipairs(items) do
         item.x = cursor
@@ -199,14 +220,16 @@ end
 function UI.taskbar(target, width, y, tasks, focused, launcher, trayWidth)
     width = math.max(1, math.floor(tonumber(width) or 1))
     y = math.floor(tonumber(y) or 1)
-    trayWidth = math.max(1, math.floor(tonumber(trayWidth) or 15))
+    trayWidth = UI.taskbarTrayWidth(width, trayWidth)
     UI.fill(target, 1, y, width, 2, UI.colors.surfaceAlt)
-    local items = UI.taskbarLayout(width, tasks)
+    local items = UI.taskbarLayout(width, tasks, trayWidth)
     for _, item in ipairs(items) do
         if item.kind == "start" then
             UI.taskButton(target, item.x, y, item.width, launcher and "Q" or "Start", launcher)
-        else
+        elseif item.kind == "task" then
             UI.taskButton(target, item.x, y, item.width, item.label, item.task == focused and not item.task.minimized)
+        else
+            UI.taskButton(target, item.x, y, item.width, item.label, false)
         end
     end
     UI.text(target, width - trayWidth, y, os.date("%H:%M"), UI.colors.text, UI.colors.surfaceAlt, 6)

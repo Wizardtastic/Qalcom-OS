@@ -44,7 +44,7 @@ Run these checks on a fresh copy and again over an existing 0.1.x installation.
 - [ ] Start opens and closes with mouse and keyboard.
 - [ ] Terminal `reboot` and `shutdown` open a confirmation dialog instead of powering off immediately.
 - [ ] Cancelling the power dialog leaves the desktop running.
-- [ ] Terminal, Explorer, Settings, Account, Recovery, System Log, Control Center, and System Monitor launch.
+- [ ] Terminal, Explorer, Settings, Account, Recovery, System Log, Control Center, System Monitor, and Capabilities launch.
 - [ ] System Monitor does not launch automatically after login.
 - [ ] Windows can be focused, dragged, minimized, restored, and closed.
 - [ ] Alt+Tab and Alt+F4 behave as documented.
@@ -88,6 +88,15 @@ Run these checks on a fresh copy and again over an existing 0.1.x installation.
 - [ ] Recovery can clear notifications, reset the theme, toggle Safe Mode, and open System Log.
 - [ ] Log retention prevents unbounded growth.
 - [ ] `/qalcom/logs/system.log` records boot, login, failure, and recovery events.
+- [ ] `/qalcom/logs/audit.log` records capability launches, denials, and inspections and remains bounded.
+
+### Capabilities and trusted manifests
+
+- [ ] Every built-in Start application appears in Capabilities with a title and declared profile.
+- [ ] Capabilities shows declared entries without implying enforcement or authorization.
+- [ ] Launch, login, denied power request, and capability inspection events appear in the audit log.
+- [ ] The UI clearly states that the 0.2.0 policy is not a secure CC:T sandbox.
+- [ ] Missing or malformed audit storage does not prevent Qalcom from booting.
 
 ### Session and resize behavior
 

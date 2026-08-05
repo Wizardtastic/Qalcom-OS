@@ -1,4 +1,4 @@
-# Qalcom OS 0.1.10
+# Qalcom OS 0.2.0
 
 Qalcom OS is a clean, Windows-inspired desktop environment for ComputerCraft: Tweaked. This milestone runs entirely inside CC:T and does not require a Minecraft mod or CraftOS modification.
 
@@ -28,9 +28,11 @@ Copy the repository contents to the root of a CC:T computer so the layout looks 
 /qalcom/apps/diagnostics.lua
 /qalcom/lib/system.lua
 /qalcom/lib/pure.lua
+/qalcom/lib/capabilities.lua
+/qalcom/apps/capabilities.lua
 ```
 
-Reboot the computer. Qalcom starts through `/startup.lua`, shows the first-run account setup, and will enter a small recovery prompt if the kernel fails to load. When upgrading from 0.1.9, copy the updated `/qalcom/kernel/init.lua`, `/qalcom/lib/ui.lua`, `/qalcom/lib/ui/animation.lua`, `/qalcom/lib/config.lua`, `/qalcom/apps/settings.lua`, and `/qalcom/version.lua` files. Configuration schema migration runs automatically, including the Reduced motion preference; account data in `/qalcom/data/accounts` is preserved.
+Reboot the computer. Qalcom starts through `/startup.lua`, shows the first-run account setup, and will enter a small recovery prompt if the kernel fails to load. When upgrading from 0.1.10, copy the updated `/qalcom/kernel/init.lua`, `/qalcom/lib/ui.lua`, `/qalcom/lib/ui/animation.lua`, `/qalcom/lib/config.lua`, `/qalcom/apps/settings.lua`, `/qalcom/lib/capabilities.lua`, `/qalcom/apps/capabilities.lua`, and `/qalcom/version.lua` files. Configuration schema migration runs automatically, including the Reduced motion preference; account data in `/qalcom/data/accounts` is preserved.
 
 ## Controls
 
@@ -48,7 +50,8 @@ Reboot the computer. Qalcom starts through `/startup.lua`, shows the first-run a
 - Terminal supports keyboard input, command history, and basic filesystem commands.
 - File Explorer supports mouse selection, keyboard navigation, opening directories, and refresh.
 - System Monitor is available from Start and reports peripheral/modem status; it does not launch automatically.
-- Open **Control Center** from Start to inspect processes, memory, storage, and services.
+- Open **Control Center** from Start to inspect processes, memory, storage, services, and declared capability profiles.
+- Open **Capabilities** from Start to inspect built-in application manifests and the capability policy audit stream.
 - Open **Recovery** from Start to clear notifications, reset the theme, toggle Safe Mode, restore Qalcom defaults, view diagnostics, or open the system log.
 - In **Settings**, select Safe Mode, Log retention, or Reduced motion and press Enter to change them. Restore defaults to reset Qalcom settings without deleting accounts.
 - In **System Log**, press F to cycle through all, failure, and login entries.
@@ -69,9 +72,9 @@ Reboot the computer. Qalcom starts through `/startup.lua`, shows the first-run a
 - **Account**: View the current session and sign out to the login screen.
 - **Text Viewer**: View and edit local text, Lua, and log files.
 
-## Version 0.1.10
+## Version 0.2.0
 
-This release adds Qalcom's native UI foundation and begins the full visual overhaul. The desktop now has a centered Windows-like taskbar, a floating Start menu, cleaner Fluent-style buttons and title bars, reusable window screen scaffolding, cards, input fields, themed shadows, and animated notifications. Login, Settings, Recovery, Control Center, Diagnostics, Monitor, System Log, Explorer, Terminal, Account, and the editor now share the same native visual language. There are no external UI dependencies and Qalcom retains ownership of event routing and process lifecycle.
+This release introduces the first capability policy layer. Built-in applications now have trusted manifests, declared capability profiles, capability-aware context metadata, a read-only Capabilities inspector, and a bounded `/qalcom/logs/audit.log` stream for launches, logins, denials, and inspections. The policy is intentionally advisory in 0.2.0: trusted Lua still has normal CC:T globals and this is not a secure sandbox. Approval decisions and managed enforcement are deferred to 0.2.1 and later. The native Windows-like UI foundation from 0.1.10 remains active.
 
 Run `lua tests/pure_test.lua` when a local Lua interpreter is available. This covers only CC:T-independent helpers; complete the in-game checklist in [TESTING.md](TESTING.md) as well.
 

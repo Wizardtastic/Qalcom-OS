@@ -3,6 +3,8 @@ local Config = dofile("/qalcom/lib/config.lua")
 local VERSION = dofile("/qalcom/version.lua")
 local Auth = dofile("/qalcom/lib/auth.lua")
 local System = dofile("/qalcom/lib/system.lua")
+local Capabilities = dofile("/qalcom/lib/capabilities.lua")
+local unpack = table.unpack or unpack
 local config = Config.load()
 Config.apply(UI, config)
 
@@ -18,6 +20,7 @@ local APP_PATHS = {
     logs = "/qalcom/apps/logs.lua",
     recovery = "/qalcom/apps/recovery.lua",
     diagnostics = "/qalcom/apps/diagnostics.lua",
+    capabilities = "/qalcom/apps/capabilities.lua",
 }
 
 local APP_META = {
@@ -32,9 +35,10 @@ local APP_META = {
     logs = { title = "System Log", icon = "L", x = 4, y = 3, width = 48, height = 19 },
     recovery = { title = "Recovery", icon = "R", x = 7, y = 4, width = 42, height = 16 },
     diagnostics = { title = "Diagnostics", icon = "D", x = 6, y = 3, width = 48, height = 19 },
+    capabilities = { title = "Capabilities", icon = "C", x = 8, y = 3, width = 50, height = 20 },
 }
 
-local NORMAL_LAUNCHER_APPS = { "terminal", "explorer", "monitor", "control", "settings", "recovery", "logs", "account" }
+local NORMAL_LAUNCHER_APPS = { "terminal", "explorer", "monitor", "control", "capabilities", "settings", "recovery", "logs", "account" }
 local SAFE_LAUNCHER_APPS = { "recovery", "logs", "terminal", "settings" }
 local LAUNCHER_APPS = config.safeMode and SAFE_LAUNCHER_APPS or NORMAL_LAUNCHER_APPS
 
@@ -188,6 +192,8 @@ local function makeContext(task)
         user = state.user,
         modifiers = state.modifiers,
         win = task.window,
+        capabilities = Capabilities.namesFor(task.name),
+        manifest = Capabilities.manifest(task.name),
         session = state.session,
         generation = state.session,
     }
@@ -200,7 +206,7 @@ local function makeContext(task)
                 return "qalcom_session_invalid"
             end
             if not filter or event[1] == filter then
-                return table.unpack(event)
+                return unpack(event)
             end
         end
         task.closeRequested = true
@@ -240,7 +246,21 @@ local function makeContext(task)
         log("[" .. task.name .. "] " .. tostring(message))
     end
 
+    function context:hasCapability(name)
+        return Capabilities.has(task.name, name)
+    end
+
+    function context:audit(action, detail)
+        Capabilities.audit(task.name .. "." .. tostring(action), detail)
+    end
+
     function context:requestPower(action)
+        local capability = action == "reboot" and "system.reboot" or action == "shutdown" and "system.shutdown"
+        if not capability or not Capabilities.has(task.name, capability) then
+            Capabilities.audit("denied", task.name .. " requested " .. tostring(action))
+            notify("Capability denied: " .. tostring(capability or action), UI.colors.danger)
+            return false
+        end
         if action ~= "reboot" and action ~= "shutdown" then return false end
         local task = spawn("dialog", {
             modal = true,
@@ -294,6 +314,7 @@ local function makeContext(task)
                 watchdogSince = candidate.watchdogSince,
                 lastRunDuration = candidate.lastRunDuration,
                 restartLocked = candidate.restartLocked,
+                capabilities = Capabilities.namesFor(candidate.name),
             }
         end
         return info
@@ -331,8 +352,10 @@ local function startTask(name, options)
     end
     if not meta or not path or not fs.exists(path) then
         notify("Application unavailable: " .. tostring(name), UI.colors.danger)
+        Capabilities.audit("launch-denied", name .. " unavailable")
         return nil
     end
+    Capabilities.audit("launch", name)
 
     local w = math.min(meta.width, math.max(20, width - 2))
     local h = math.min(meta.height, math.max(8, height - 4))
@@ -416,7 +439,7 @@ local function send(task, event)
     if task.session ~= state.session then return end
     task.eventCount = task.eventCount + 1
     local started = os.clock()
-    local ok, err = coroutine.resume(task.co, table.unpack(event))
+    local ok, err = coroutine.resume(task.co, unpack(event))
     local finished = os.clock()
     task.lastEventAt = finished
     task.lastRunDuration = finished - started
@@ -445,6 +468,8 @@ local function send(task, event)
         task.state = "running"
     end
 end
+
+local launcherGeometry
 
 local function drawDesktop()
     width, height = native.getSize()
@@ -494,10 +519,8 @@ local function drawDesktop()
     end
 
     if state.launcher then
-        local menuWidth = math.min(34, width - 4)
-        local menuHeight = math.min(height - 2, #LAUNCHER_APPS + 3)
-        local menuX = 2
-        local menuY = math.max(2, height - menuHeight - 2)
+        local menuX, menuY, menuWidth, menuHeight, visibleCount = launcherGeometry()
+        local start = math.max(1, math.min(state.launcherSelection - visibleCount + 1, #LAUNCHER_APPS - visibleCount + 1))
         UI.shadow(native, menuX, menuY, menuWidth, menuHeight, 1)
         UI.card(native, menuX, menuY, menuWidth, menuHeight, nil, nil, false)
         UI.fill(native, menuX + 1, menuY + 1, menuWidth - 2, 3, UI.colors.accent)
@@ -505,8 +528,10 @@ local function drawDesktop()
         UI.text(native, menuX + 3, menuY + 2, "Pinned apps", colors.lightBlue, UI.colors.accent, menuWidth - 5)
         local names = LAUNCHER_APPS
         UI.text(native, menuX + 3, menuY + 3, "Choose an app", colors.white, UI.colors.accent, menuWidth - 5)
-        for index, name in ipairs(names) do
-            local itemY = menuY + 3 + index
+        for offset = 1, visibleCount do
+            local index = start + offset - 1
+            local name = names[index]
+            local itemY = menuY + 3 + offset
             local active = index == state.launcherSelection
             local background = active and UI.colors.accentLight or UI.colors.surface
             local foreground = active and colors.white or UI.colors.text
@@ -535,17 +560,25 @@ local function activeModal()
     return nil
 end
 
-local function handleLauncherClick(x, y)
+launcherGeometry = function()
     local menuWidth = math.min(36, width - 4)
-    local menuHeight = math.min(height - 2, #LAUNCHER_APPS + 4)
+    local visibleCount = math.max(1, math.min(#LAUNCHER_APPS, height - 8))
+    local menuHeight = visibleCount + 4
     local menuX = math.max(2, math.floor((width - menuWidth) / 2) + 1)
     local menuY = math.max(2, height - menuHeight - 3)
+    return menuX, menuY, menuWidth, menuHeight, visibleCount
+end
+
+local function handleLauncherClick(x, y)
+    local menuX, menuY, menuWidth, menuHeight, visibleCount = launcherGeometry()
     if x < menuX or x >= menuX + menuWidth or y < menuY or y >= menuY + menuHeight then return false end
     local index = y - (menuY + 3)
-    local names = LAUNCHER_APPS
-    if index >= 1 and index <= #names then
+    local start = math.max(1, math.min(state.launcherSelection - visibleCount + 1, #LAUNCHER_APPS - visibleCount + 1))
+    local actual = start + index - 1
+    if index >= 1 and index <= visibleCount and actual <= #LAUNCHER_APPS then
+        state.launcherSelection = actual
         state.launcher = false
-        spawn(names[index])
+        spawn(LAUNCHER_APPS[actual])
     end
     return true
 end
@@ -557,7 +590,7 @@ local function handleMouse(button, x, y)
     end
     if y >= height - 1 then
         if activeModal() then return end
-        local items = UI.taskbarLayout(width, state.tasks)
+        local items = UI.taskbarLayout(width, state.tasks, 15)
         for _, item in ipairs(items) do
             if x >= item.x and x < item.x + item.width then
                 if item.kind == "start" then
@@ -719,6 +752,7 @@ state.session = state.session + 1
 state.user = authenticated.username
 recordBootStage("desktop authenticated")
 log("login success: " .. state.user)
+Capabilities.audit("login", state.user)
 if config.safeMode then notify("Safe Mode enabled", UI.colors.warning) end
 notify("Welcome, " .. state.user, UI.colors.accent)
 state.clockTimer = os.startTimer(1)
@@ -755,7 +789,8 @@ while true do
         state.modifiers.alt = false
         state.modifiers.ctrl = false
         state.modifiers.shift = false
-        local authenticated = Auth.login(native, UI, VERSION)
+        Capabilities.audit("boot", VERSION)
+    local authenticated = Auth.login(native, UI, VERSION)
         if not authenticated then return end
         state.session = state.session + 1
         state.user = authenticated.username
@@ -764,6 +799,7 @@ while true do
         Config.apply(UI, config)
         LAUNCHER_APPS = config.safeMode and SAFE_LAUNCHER_APPS or NORMAL_LAUNCHER_APPS
         log("login success: " .. state.user)
+        Capabilities.audit("login", state.user)
         if config.safeMode then notify("Safe Mode enabled", UI.colors.warning) end
         notify("Welcome, " .. state.user, UI.colors.accent)
         state.clockTimer = os.startTimer(1)

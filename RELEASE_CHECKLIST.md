@@ -13,6 +13,8 @@ Use this checklist before calling a milestone complete.
 - [ ] New files are included in `README.md` installation instructions.
 - [ ] Exported functions and references were searched after changes.
 - [ ] CC:T API calls are defensive where peripherals, memory, files, or optional APIs may be absent.
+- [ ] Every built-in application has a versioned capability manifest.
+- [ ] Capability policy limitations are documented; no sandbox claim is made.
 - [ ] Compact terminal behavior is checked at 30 x 14 and at a normal terminal size.
 - [ ] Native UI shadows and animations are checked for bounds, responsiveness, and memory impact.
 - [ ] Recovery and CraftOS escape paths remain available.
@@ -26,6 +28,7 @@ Use this checklist before calling a milestone complete.
 - [ ] Restore defaults does not delete account data.
 - [ ] Any persistent-data migration has a documented procedure.
 - [ ] Logs are bounded and do not grow without limit.
+- [ ] Capability audit logs are bounded and tolerate unavailable storage.
 
 ## Validation
 
@@ -34,6 +37,7 @@ Use this checklist before calling a milestone complete.
 - [ ] Manual CC:T checklist in `TESTING.md` is complete.
 - [ ] Boot, login, logout, recovery, resize, app-failure, task cleanup, and power-confirmation paths were tested.
 - [ ] Manual restart limits and recovery diagnostics were checked.
+- [ ] Capability inspector and audit events were checked.
 - [ ] Known limitations are recorded in the README and release notes.
 
 ## Version and documentation
