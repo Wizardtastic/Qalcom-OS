@@ -6,6 +6,7 @@ Capabilities.policySchemaVersion = Roles.schemaVersion
 Capabilities.names = {
     "fs.read",
     "fs.write",
+    "account.manage",
     "peripheral.read",
     "peripheral.control",
     "redstone.read",
@@ -19,6 +20,7 @@ Capabilities.names = {
 Capabilities.descriptions = {
     ["fs.read"] = "Read files and directories",
     ["fs.write"] = "Create, modify, copy, or delete files",
+    ["account.manage"] = "Assign roles to local accounts",
     ["peripheral.read"] = "Inspect attached peripherals",
     ["peripheral.control"] = "Invoke allowlisted peripheral controls",
     ["redstone.read"] = "Read redstone state",
@@ -54,7 +56,7 @@ local manifests = {
     },
     account = {
         title = "Account", trusted = true,
-        requested = {},
+        requested = { "account.manage" },
         unmanaged = { "os.queueEvent", "os.pullEvent" },
     },
     editor = {
@@ -187,6 +189,15 @@ function Capabilities.auditDecision(decision, actor, detail, outcome)
         .. " " .. tostring(decision and decision.capability or "unknown")
     if detail then suffix = suffix .. " " .. tostring(detail) end
     return Capabilities.audit(action, suffix)
+end
+
+function Capabilities.auditRoleChange(actor, actorRole, target, previousRole, requestedRole, outcome, detail)
+    local suffix = tostring(actor or "unknown") .. " " .. tostring(actorRole or "unknown")
+        .. " target=" .. tostring(target or "unknown")
+        .. " from=" .. tostring(previousRole or "unknown")
+        .. " to=" .. tostring(requestedRole or "unknown")
+    if detail then suffix = suffix .. " " .. tostring(detail) end
+    return Capabilities.audit(outcome or "role-change", suffix)
 end
 
 function Capabilities.audit(action, detail)

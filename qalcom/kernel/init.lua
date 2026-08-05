@@ -263,6 +263,31 @@ local function makeContext(task)
         return Capabilities.policy(state.role, task.name, name)
     end
 
+    function context:accounts()
+        if state.role ~= Roles.legacyAdministrator then return {} end
+        local accounts = Auth.accounts()
+        local result = {}
+        for _, account in ipairs(accounts) do
+            result[#result + 1] = { username = account.username, role = Roles.normalize(account.role) }
+        end
+        return result
+    end
+
+    function context:updateAccountRole(username, role)
+        local decision = Capabilities.policy(state.role, task.name, "account.manage")
+        if not decision.allowed then
+            Capabilities.auditRoleChange(state.user, state.role, username, nil, role, "denial", "policy")
+            return false, decision.reason
+        end
+        local ok, result, previousRole = Auth.updateRole(username, role, state.role, state.user)
+        if not ok then
+            Capabilities.auditRoleChange(state.user, state.role, username, nil, role, "denial", tostring(result))
+            return false, result
+        end
+        Capabilities.auditRoleChange(state.user, state.role, username, previousRole, role, "approval")
+        return true, result
+    end
+
     function context:audit(action, detail)
         Capabilities.audit(task.name .. "." .. tostring(action), detail)
     end

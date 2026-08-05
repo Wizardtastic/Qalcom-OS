@@ -91,6 +91,29 @@ function Auth.accounts()
     return ensureRoleMigration()
 end
 
+function Auth.updateRole(username, role, actorRole, actorUsername)
+    if actorRole ~= Roles.legacyAdministrator then return false, "Administrator permission required." end
+    if not Roles.exists(role) then return false, "Unknown role." end
+    local accounts = ensureRoleMigration()
+    local target
+    local previousRole
+    local administrators = 0
+    for _, account in ipairs(accounts) do
+        if account.role == Roles.legacyAdministrator then administrators = administrators + 1 end
+        if account.username:lower() == tostring(username or ""):lower() then target = account end
+    end
+    if not target then return false, "Account not found." end
+    if actorUsername and target.username:lower() == tostring(actorUsername):lower() and role ~= Roles.legacyAdministrator then
+        return false, "You cannot demote the active Administrator session." end
+    if target.role == Roles.legacyAdministrator and role ~= Roles.legacyAdministrator and administrators <= 1 then
+        return false, "At least one Administrator is required." end
+    previousRole = target.role
+    target.role = role
+    target.roleSchemaVersion = ROLE_SCHEMA_VERSION
+    if not writeAccounts(accounts) then return false, "Unable to save account data." end
+    return true, target, previousRole
+end
+
 function Auth.hasAccounts()
     return #readAccounts() > 0
 end

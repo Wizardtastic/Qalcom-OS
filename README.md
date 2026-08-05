@@ -70,14 +70,14 @@ Reboot the computer. Qalcom starts through `/startup.lua`, shows the first-run a
 - **Diagnostics**: Scrollable boot-stage and recent-crash details.
 - **System Log**: Scrollable recent system events with failure/login filtering and retention limits.
 - **Settings**: Edit the computer label, change themes, toggle Safe Mode, view settings categories, and adjust log retention.
-- **Account**: View the current session, local war-server role, and sign out to the login screen.
+- **Account**: View the current session and local war-server role; Administrators can manage account roles, and all users can sign out.
 - **Text Viewer**: View and edit local text, Lua, and log files.
 
 ## Version 0.2.1
 
 Qalcom retains the first capability policy layer from 0.2.0: built-in applications have trusted manifests, declared capability profiles, capability-aware context metadata, a read-only Capabilities inspector, and a bounded `/qalcom/logs/audit.log` stream. Trusted Lua still has normal CC:T globals, so this is not a secure sandbox. The native Windows-like UI foundation from 0.1.10 remains active.
 
-This 0.2.1 milestone adds local war-server roles and the first approval boundary. Accounts carry migrated roles, built-in capability declarations are intersected with role policy, the Account/Settings/Capabilities/Control Center views show the active role, and reboot/shutdown requests are denied or audit-recorded when policy does not allow them. Confirming an allowed power action records an approval. Only that existing managed power path is enforced here; filesystem, peripheral, redstone, and network enforcement remains future work. Trusted built-in Lua still has normal CC:T globals.
+This 0.2.1 milestone adds local war-server roles and the first approval boundary. Accounts carry migrated roles, built-in capability declarations are intersected with role policy, the Account/Settings/Capabilities/Control Center views show the active role, and Administrators can manage roles through explicit confirmation with protection for the last Administrator. Reboot/shutdown requests are denied or audit-recorded when policy does not allow them. Only these existing managed paths are enforced here; filesystem, peripheral, redstone, and network enforcement remains future work. Trusted built-in Lua still has normal CC:T globals.
 
 Run `lua tests/pure_test.lua` when a local Lua interpreter is available. This covers only CC:T-independent helpers; complete the in-game checklist in [TESTING.md](TESTING.md) as well.
 

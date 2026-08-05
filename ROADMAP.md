@@ -168,8 +168,7 @@ The profile intentionally separates direct integrations from libraries, performa
 - Added bounded capability audit logging for launches, logins, denials, and inspections.
 - Kept the policy explicitly advisory because trusted CC:T Lua is not sandboxed.
 
-- Deferred to 0.2.2+: broader capability-aware service boundaries and managed enforcement for future services.
-- Deferred to 0.2.2+: broader capability-aware service boundaries for managed filesystem, peripheral, redstone, and system actions.
+- Deferred to 0.2.2+: broader capability-aware service boundaries and managed enforcement for filesystem, peripheral, redstone, and system actions.
 - Deferred to 0.2.3+: peripheral inventory and safe device inspection.
 
 **Implementation status:** Every built-in app has a documented capability profile and the OS can display declared capabilities without changing existing app behavior. The audit stream is bounded and the capability layer does not claim to sandbox trusted Lua. Role approvals now begin in 0.2.1 for managed power requests; broader enforcement remains deferred.
@@ -183,13 +182,13 @@ The profile intentionally separates direct integrations from libraries, performa
 - Added local roles: Administrator, Commander, Operations officer, Artillery officer, Engineer, Logistics officer, Observer, Automation service, and Restricted guest.
 - Added role persistence and migration for existing administrator accounts; an account with no legacy role maps to Administrator only for the first account, later role-less accounts map to Observer, and malformed explicit roles fall back to Observer.
 - Added a policy table intersecting role permissions with declared built-in capabilities.
-- Added explicit approval dialogs for the existing reboot/shutdown sensitive actions.
-- Added audit entries for role-based approvals and denials.
+- Added explicit approval dialogs for the existing reboot/shutdown sensitive actions and Administrator-only role changes.
+- Added audited role administration with protection against removing the last Administrator.
 - Kept account management local and documented its non-cryptographic limitations.
 
-**Implementation status:** Active accounts carry a versioned role, the Account/Settings/Capabilities/Control Center views expose it, and managed power requests are role-checked before confirmation. Only the existing managed power path is enforced in this milestone; filesystem, peripheral, redstone, and network enforcement is deferred to 0.2.2. The policy remains advisory for trusted Lua and does not sandbox CC:T globals.
+**Implementation status:** Active accounts carry a versioned role, the Account/Settings/Capabilities/Control Center views expose it, Administrator accounts can manage roles through an explicit confirmation flow, and managed power requests are role-checked before confirmation. The last Administrator cannot be removed. Only these existing managed paths are enforced in this milestone; filesystem, peripheral, redstone, and network enforcement is deferred to 0.2.2. The policy remains advisory for trusted Lua and does not sandbox CC:T globals.
 
-**Deferred:** Full account-management UI for assigning roles, broader managed filesystem/peripheral/redstone enforcement, and multi-user administration remain in 0.2.2+. Role changes are intentionally not exposed as an unaudited library mutation.
+**Deferred:** Broader managed filesystem/peripheral/redstone enforcement and multi-user administration remain in 0.2.2+. Role changes are exposed only through the Administrator-gated, audited Account workflow.
 
 **Exit criteria:** A user’s role can be inspected, sensitive built-in actions can be approved or denied, and all decisions are logged. Manual CC:T validation remains required before this milestone is considered fully validated.
 

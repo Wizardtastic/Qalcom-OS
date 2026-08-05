@@ -39,7 +39,7 @@ Use this checklist before calling a milestone complete.
 - [ ] Manual CC:T checklist in `TESTING.md` is complete.
 - [ ] Boot, login, logout, recovery, resize, app-failure, task cleanup, and power-confirmation paths were tested.
 - [ ] Manual restart limits and recovery diagnostics were checked.
-- [ ] Capability inspector, role decisions, and approval/denial audit events were checked.
+- [ ] Capability inspector, role decisions, account-role approvals/denials, and power approval events were checked.
 - [ ] Known limitations are recorded in the README and release notes.
 
 ## Version and documentation

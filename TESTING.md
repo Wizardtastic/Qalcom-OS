@@ -17,6 +17,7 @@ Covered helper behavior:
 - Absolute and normalized paths
 - Username validation
 - Account record shape validation
+- Role normalization and role capability policy
 - Log line retention
 - Integer setting clamping
 - Window geometry fitting
@@ -100,7 +101,9 @@ Run these checks on a fresh copy and again over an existing 0.1.x installation.
 - [ ] Account, Settings, Control Center, and Capabilities show the active role.
 - [ ] Observer cannot request reboot/shutdown; the denial is visible and audit-recorded.
 - [ ] Administrator can request reboot/shutdown and must explicitly confirm in the dialog.
-- [ ] Confirmed approval, cancellation, and denied requests appear in the audit log with actor, role, capability, and action.
+- [ ] Administrator can open Account → Manage account roles, change a user role, and see the audited confirmation including old and new roles.
+- [ ] Attempting to demote the last Administrator is rejected and leaves the Administrator intact.
+- [ ] Confirmed approval, cancellation, and denied requests appear in the audit log with actor, role, capability, target, and action.
 - [ ] Capabilities shows role decisions without implying enforcement beyond managed Qalcom actions.
 - [ ] The UI clearly states that the policy is not a secure CC:T sandbox.
 - [ ] Missing or malformed audit storage does not prevent Qalcom from booting.
