@@ -1,186 +1,79 @@
-# Qalcom OS
+# Qalcom OS 0.1.6
 
-A full graphical computer operating system written in Lua for
-[ComputerCraft: Tweaked](https://tweaked.cc/), powered by
-[CC:Graphics](https://modrinth.com/mod/cc-graphics) for **true RGB pixel
-rendering** painted directly on the **advanced computer's own screen**.
+Qalcom OS is a clean, Windows-inspired desktop environment for ComputerCraft: Tweaked. This milestone runs entirely inside CC:T and does not require a Minecraft mod or CraftOS modification.
 
-This OS was inspired by **[LevelOS](https://github.com/LinearNoodle/LevelOS)**
-and **[Ursa OS](https://github.com/Wertybility/UrsaOS)**, and is built
-to feel like a modern Windows / macOS hybrid: a real login screen,
-desktop, taskbar, file explorer, task manager, settings panel,
-calculator, notepad, clock, paint, and start menu.
+## Install
 
-## What CC:Graphics lets Qalcom do
+Copy the repository contents to the root of a CC:T computer so the layout looks like this:
 
-* **No external monitor stack required.** Place the files onto an
-  advanced computer (or right-click *Boot*) and the OS paints its login,
-  desktop, and apps straight onto the computer's own monitor.
-* **256 colors at full ~306×171 px** (51×19 cells × 6 × 9 px per cell on
-  mode 2 of CC:Graphics).
-* **Real mouse hover** — `mouse_move`, `mouse_click`, `mouse_drag`,
-  `mouse_up` all fire with pixel coordinates from the graphics surface.
-* **Frame batching** via `term.setFrozen(true)` for clean frame-by-frame
-  draw with no tearing.
-
-![concept](docs/preview-placeholder.png)
-
-## Features
-
-* **Login screen** with photorealistic-feeling gradient, lock icon, user
-  chip, password input, error feedback, and account creation on first
-  boot.
-* **Windowing system** with title bars, close / minimize / maximize
-  controls, drag-to-move, drop shadows, and modal support.
-* **Taskbar** along the bottom with a Start button, pinned apps, live
-  running-apps strip, notification tray, and a live clock (HH:MM:SS +
-  date).
-* **Start menu** with search, categorised apps, user account, and
-  power actions (Lock / Log out / Restart / Shut down).
-* **Desktop** wallpaper (gradient / solid / pattern), desktop icons
-  for File Explorer / Task Manager / Settings / About, and a
-  right-click menu.
-* **Apps**:
-  * **File Explorer** — sidebar (Quick Access + This PC), address bar,
-    back / up buttons, grid of files, double-click to open.
-  * **Task Manager** — list of running windows, end-task, switch-to,
-    a (fake) CPU bar, and live resolution / graphics-mode report.
-  * **Notepad** — minimal plain-text editor with Save, dirty marker,
-    and status bar.
-  * **Clock** — large digital time, ISO date, and a sweeping analog
-    dial.
-  * **Calculator** — 4×5 keypad, arithmetic, ±, %, decimal.
-  * **Paint** — left palette, brush / spray / erase tools, brush size,
-    pixel canvas.
-  * **Settings** — Display, Personalization (wallpaper style +
-    swatches), Accounts, Sound (test tones), About.
-  * **About** — hero logo, version, credits.
-* **Notifications** — auto-dismissing toasts in the bottom-right with
-  success / warning / error variants and audible feedback if a speaker
-  is attached.
-* **Security** — salted FNV-style hashed passwords in
-  `/users/<name>.lua`; lockout after too many failed logins.
-* **Sound** — speaker-peripheral-driven chimes, clicks, warnings,
-  start-up jingle.
-
-## Hardware requirements
-
-* Minecraft 1.21.1 or later (1.20.1 with older Forge may also work; check
-  CC:Graphics release notes).
-* ComputerCraft: Tweaked 1.117 or later (earlier versions are missing
-  some `term.drawPixels` / batching edge cases that CC:Graphics relies
-  on).
-* [CC:Graphics](https://modrinth.com/mod/cc-graphics) installed.
-* An **advanced computer**. Pocket and normal computers also work but
-  are too small for the desktop. The OS auto-adapts.
-
-To run a pocket / normal computer, set `display.graphicsMode = 1` in
-`os/config.lua` (16-color mode is faster but visually flatter).
-
-## Installation
-
-See [INSTALL.md](./INSTALL.md) for full step-by-step instructions.
-
-Quick steps:
-
-1. Install CC:Tweaked + CC:Graphics (Fabric / NeoForge on Minecraft
-   1.21.1+).
-2. Place the contents of this folder on an advanced computer
-   (`startup`, `os/`).
-3. Right-click the computer → *Boot*. Qalcom OS should boot to the
-   login screen automatically.
-
-The first time the OS boots it creates a default user named **`admin`**
-with the password **`admin`** (change it after logging in!).
-
-## File map
-
-```
-/startup                   autorun bootstrap (require wrapper + splash crash handler)
-/os/run.lua                kernel entry point
-/os/boot.lua               first splash + step status
-/os/login.lua              login UI
-/os/session.lua            main session loop after login
-/os/theme.lua              color palette + design tokens
-/os/config.lua             graphics mode, paths, theme config
-/os/gfx.lua                drawing API for CC:Graphics (term.setPixel/drawPixels)
-/os/font.lua               5x7 bitmap font (ASCII 32..126)
-/os/input.lua              unified event pump
-/os/text.lua               text measurement / wrapping
-/os/fsutil.lua             filesystem helpers
-/os/auth.lua               user accounts + hashed passwords
-/os/sound.lua              PC speaker beeps / chime
-/os/notifications.lua      toast stack
-/os/programs.lua           app registry
-/os/wm.lua                 window manager
-/os/taskbar.lua            bottom taskbar
-/os/startmenu.lua          popup start menu
-/os/desktop.lua            wallpaper + desktop icons
-/os/apps/explorer.lua      file explorer
-/os/apps/taskmgr.lua       task manager
-/os/apps/notepad.lua       text editor
-/os/apps/clockapp.lua      clock
-/os/apps/calculator.lua    calculator
-/os/apps/paint.lua         paint
-/os/apps/settings.lua      settings panel
-/os/apps/about.lua         about Qalcom OS
-/users/admin.lua           user account (created on first boot)
-/home/admin/               user home directory (created on first login)
-/os/data/                  misc OS state (boot.log, boot_error.log, etc.)
-INSTALL.md                 install guide
-README.md                  this file
-LICENSE                    MIT License
+```text
+/startup.lua
+/qalcom/kernel/init.lua
+/qalcom/lib/ui.lua
+/qalcom/lib/config.lua
+/qalcom/lib/auth.lua
+/qalcom/version.lua
+/qalcom/apps/terminal.lua
+/qalcom/apps/explorer.lua
+/qalcom/apps/monitor.lua
+/qalcom/apps/settings.lua
+/qalcom/apps/account.lua
+/qalcom/apps/editor.lua
+/qalcom/apps/dialog.lua
+/qalcom/apps/control.lua
+/qalcom/apps/logs.lua
+/qalcom/apps/recovery.lua
+/qalcom/lib/system.lua
 ```
 
-## Tech reference
+Reboot the computer. Qalcom starts through `/startup.lua`, shows the first-run account setup, and will enter a small recovery prompt if the kernel fails to load.
 
-### Resolution
+## Controls
 
-The OS targets CC:Graphics **mode 2** by default. On a vanilla advanced
-computer this renders as approximately **306 × 171 pixels** = the
-default term `getSize()` (51 × 19 cells) × 6 × 9 px-per-cell.
+- Qalcom requires a terminal at least 30 columns wide and 14 rows tall.
+- Sign in at boot; the first boot creates a local administrator account.
+- Click **Start** to open the application launcher, or use Up/Down and Enter while it is open.
+- Click `-` in a window title bar to minimize it; click its taskbar button to restore it.
+- Click a taskbar item to focus an application.
+- Click a window title bar to focus it.
+- Click `x` in a title bar to close an application.
+- Use `Alt+Tab` to switch windows and `Alt+F4` to close the focused window.
+- Use terminal Tab completion and left/right cursor navigation.
+- In File Explorer: Enter opens folders/text files, N creates a folder, D deletes with confirmation, C/V copies and pastes.
+- Use Ctrl+S in the text viewer to save changes.
+- Terminal supports keyboard input, command history, and basic filesystem commands.
+- File Explorer supports mouse selection, keyboard navigation, opening directories, and refresh.
+- System Monitor is available from Start and reports peripheral/modem status; it does not launch automatically.
+- Open **Control Center** from Start to inspect processes, memory, storage, and services.
+- Open **Recovery** from Start to clear notifications, reset the theme, toggle Safe Mode, or open the system log.
+- In **Settings**, select Safe Mode or Log retention and press Enter to change them.
+- In **System Log**, press F to cycle through all, failure, and login entries.
+- Open **System Log** from Start to inspect recent Qalcom events and errors.
+- Crashed applications remain visible with a recovery screen; select them in Control Center and press R to restart.
+- The kernel forwards timer, alarm, redstone, peripheral, disk, modem, and rednet events to trusted applications.
 
-Configure it in `os/config.lua`:
+## Included applications
 
-```lua
-M.display = {
-    graphicsMode = 2,   -- 1 = 16-color, 2 = 256-color. Default = 2.
-}
-```
+- **Terminal**: `help`, `ls`, `cd`, `cat`, `pwd`, `id`, `label`, `time`, `whoami`, `version`, `mkdir`, `rm`, `cp`, `mv`, `touch`, `view`, `logout`, `about`, `reboot`, `shutdown`.
+- **File Explorer**: Browse the local CC:T filesystem.
+- **System Monitor**: Computer identity, memory, terminal size, peripherals, and modem count. Launch it from Start when needed; it is not a boot service.
+- **Control Center**: Process states, crash visibility, restart actions, memory, free space, and service information.
+- **Recovery**: Local recovery actions and access to diagnostics.
+- **System Log**: Scrollable recent system events with failure/login filtering and retention limits.
+- **Settings**: Edit the computer label, change themes, toggle Safe Mode, view settings categories, and adjust log retention.
+- **Account**: View the current session and sign out to the login screen.
+- **Text Viewer**: View and edit local text, Lua, and log files.
 
-Set to `1` if you want to drop to 16-color mode for slightly faster
-pixels and a flatter look (good for kiosk / pocket computers).
+## Version 0.1.6
 
-Color depth adaptation happens at runtime: every `{r,g,b}` is mapped to
-the nearest palette entry via squared-Euclidean distance, with the
-result cached per color so subsequent draws are constant-time.
+This release adds watchdog visibility for slow application event handlers, Safe Mode, categorized Settings information, configurable log retention, and filtered system logs. Watchdog status is diagnostic only: it appears after a handler yields back to the kernel, and Qalcom does not automatically terminate healthy or stalled applications.
 
-### Mouse / keyboard
+The complete future roadmap is preserved in [ROADMAP.md](ROADMAP.md).
 
-The graphics surface emits standard CC: `mouse_click`, `mouse_drag`,
-`mouse_up`, and `mouse_move` events with pixel coordinates. `os/input.lua`
-normalises them into a single event table the window manager consumes.
+## Design boundary
 
-### Frame model
+Qalcom replaces the default CraftOS user experience after the CC:T host and BIOS have loaded. It intentionally uses only standard CC:T Lua APIs, including `term`, `window`, `fs`, `peripheral`, and the event system. It is not a replacement for the Java-side CC:T firmware.
 
-The window manager redraws only when state changes (drag, focus,
-click, notification…) — no busy 30 Hz loop. When it does draw, the
-kernel wraps the frame in `term.setFrozen(true)` … `term.setFrozen(false)`
-so all pixels hit the screen in a single instant rather than flickering
-in.
+Safe Mode limits the launcher to recovery, logs, terminal, and settings tools for troubleshooting, and closes disallowed desktop apps when the setting takes effect. The current networking and remote automation layers are intentionally not enabled yet. The kernel forwards standard modem/rednet events to trusted applications, but this milestone does not expose a network control service. Future versions should add authenticated, allowlisted commands rather than arbitrary remote Lua execution.
 
-## Known limitations
-
-* No real CPU / memory accounting — the Task Manager shows a
-  placeholder bar; consider extending it for real usage.
-* File Explorer does not recurse into subdirectories in its grid view
-  (the path is clickable to navigate).
-* Notifications don't currently fade in/out — they just appear and
-  vanish.
-* Text rendering uses a 5×7 bitmap font to avoid OCR-style font lookups
-  in CC:T's font cache. At scale 2 (default) you get ~21-character-wide
-  buttons and readable title bars; the desktop text is small but works.
-
-## License
-
-MIT — see [LICENSE](./LICENSE).
+Built-in applications are trusted and currently execute with the normal CC:T global APIs. Login credentials are stored locally in `/qalcom/data/accounts`; the included digest is a lightweight local deterrent, not cryptographic protection. Anyone with CraftOS recovery or server/file access can bypass it. Qalcom's process model provides lifecycle and UI isolation, not a security sandbox; third-party applications should not be installed until a capability-based service boundary is added.
