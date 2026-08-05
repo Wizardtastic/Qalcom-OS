@@ -11,8 +11,11 @@ return function(ctx)
         local footerRow = math.max(1, height)
         local function stat(label, value, color)
             if row < footerRow then
-                UI.text(ctx.win, 3, row, label, UI.colors.muted, UI.colors.surface, math.floor(width * 0.52))
-                UI.text(ctx.win, math.floor(width * 0.55), row, value, color or UI.colors.text, UI.colors.surface, width - math.floor(width * 0.55) - 1)
+                UI.listRow(ctx.win, 2, row, width - 3, label, value, false, {
+                    split = math.floor(width * 0.52),
+                    valueColor = color or UI.colors.text,
+                    background = UI.colors.surface,
+                })
                 row = row + 1
             end
         end
@@ -31,25 +34,33 @@ return function(ctx)
         if height >= 13 then
             row = row + 1
             if row < footerRow then
-                UI.text(ctx.win, 3, row, "Attached peripherals", UI.colors.accent, UI.colors.surface, width - 4)
+                UI.sectionHeader(ctx.win, 2, row, width - 3, "Attached peripherals", { background = colors.yellow, foreground = colors.black })
                 row = row + 1
+                if row < footerRow then
+                    UI.meter(ctx.win, 2, row, width - 3, math.min(1, #ctx:peripheralNames() / 8), UI.colors.accent, colors.gray)
+                    row = row + 1
+                end
                 local names = ctx:peripheralNames() or {}
                 table.sort(names)
                 if #names == 0 then
-                    UI.text(ctx.win, 3, row, "No peripherals detected", UI.colors.muted, UI.colors.surface, width - 4)
+                    if row < footerRow then UI.text(ctx.win, 3, row, "No peripherals detected", UI.colors.muted, UI.colors.surface, width - 4) end
                 else
                     for _, name in ipairs(names) do
                         if row >= footerRow then break end
                         local peripheralType = ctx:peripheralType(name)
                         local types = tostring(peripheralType or "unknown")
-                        UI.text(ctx.win, 3, row, name, UI.colors.text, UI.colors.surface, math.floor(width * 0.42))
-                        UI.text(ctx.win, math.floor(width * 0.44), row, types, UI.colors.muted, UI.colors.surface, width - math.floor(width * 0.44) - 1)
+                        UI.listRow(ctx.win, 2, row, width - 3, name, types, false, {
+                            split = math.floor(width * 0.42),
+                            valueColor = UI.colors.muted,
+                            background = UI.colors.surface,
+                        })
                         row = row + 1
                     end
                 end
             end
         end
-        UI.text(ctx.win, 2, footerRow, "Live updates enabled", UI.colors.muted, UI.colors.surface, width - 3)
+        UI.badge(ctx.win, 2, footerRow, "LIVE", UI.colors.success, 8)
+        UI.text(ctx.win, 12, footerRow, "Peripheral data refreshes automatically", UI.colors.muted, UI.colors.surface, width - 13)
     end
 
     render()

@@ -11,6 +11,7 @@ Copy the repository contents to the root of a CC:T computer so the layout looks 
 /qalcom/kernel/init.lua
 /qalcom/lib/ui.lua
 /qalcom/lib/ui/animation.lua
+/qalcom/lib/ui/hit.lua
 /qalcom/lib/ui/screen.lua
 /qalcom/lib/config.lua
 /qalcom/lib/auth.lua
@@ -38,10 +39,12 @@ Copy the repository contents to the root of a CC:T computer so the layout looks 
 /qalcom/apps/jobs.lua
 /qalcom/apps/jobs_service.lua
 /qalcom/apps/infrastructure.lua
+/qalcom/lib/calculator.lua
+/qalcom/apps/calculator.lua
 /qalcom/apps/capabilities.lua
 ```
 
-Reboot the computer. Qalcom starts through `/startup.lua`, shows the first-run account setup, and will enter a small recovery prompt if the kernel fails to load. When upgrading from 0.1.10, copy the updated `/qalcom/kernel/init.lua`, `/qalcom/lib/ui.lua`, `/qalcom/lib/ui/animation.lua`, `/qalcom/lib/config.lua`, `/qalcom/apps/settings.lua`, `/qalcom/lib/capabilities.lua`, `/qalcom/lib/roles.lua`, `/qalcom/lib/managed.lua`, `/qalcom/lib/peripherals.lua`,`/qalcom/lib/infrastructure.lua`, `/qalcom/lib/jobs.lua`, `/qalcom/apps/capabilities.lua`, `/qalcom/apps/peripherals.lua`, `/qalcom/apps/infrastructure.lua`, `/qalcom/apps/jobs.lua`, `/qalcom/apps/jobs_service.lua`, and `/qalcom/version.lua` files. Configuration schema migration runs automatically, including the Reduced motion preference; account data in `/qalcom/data/accounts` is preserved.
+Reboot the computer. Qalcom starts through `/startup.lua`, shows the first-run account setup, and will enter a small recovery prompt if the kernel fails to load. When upgrading from 0.1.10, copy the updated `/qalcom/kernel/init.lua`, `/qalcom/lib/ui.lua`, `/qalcom/lib/ui/animation.lua`, `/qalcom/lib/ui/hit.lua`, `/qalcom/lib/config.lua`, `/qalcom/apps/settings.lua`, `/qalcom/lib/capabilities.lua`, `/qalcom/lib/roles.lua`, `/qalcom/lib/managed.lua`, `/qalcom/lib/peripherals.lua`,`/qalcom/lib/infrastructure.lua`, `/qalcom/lib/jobs.lua`, `/qalcom/lib/calculator.lua`, `/qalcom/apps/calculator.lua`, `/qalcom/apps/capabilities.lua`, `/qalcom/apps/peripherals.lua`, `/qalcom/apps/infrastructure.lua`, `/qalcom/apps/jobs.lua`, `/qalcom/apps/jobs_service.lua`, and `/qalcom/version.lua` files. Configuration schema migration runs automatically, including the Reduced motion preference; account data in `/qalcom/data/accounts` is preserved.
 
 ## Controls
 
@@ -50,6 +53,7 @@ Reboot the computer. Qalcom starts through `/startup.lua`, shows the first-run a
 - Click the green **Q** button at the bottom-left to open the Windows-style Start menu above the taskbar; type in its search bar to find programs, or choose from recently used apps below it. Use Up/Down and Enter while it is open.
 - Taskbar applications use compact icons immediately after the green Q button; they are left-aligned, and the active app is marked with a subtle light-blue underline. Hover with the mouse to see the application name.
 - Window headers are yellow with white bodies; click the left-side `x` to close, `-` to minimize, and `+` to expand/restore. Click the remaining header area to drag.
+- Built-in apps share the native graphics system: yellow section headers, gray keycaps/buttons, compact list rows, status badges, meters, cards, and consistent footer guidance. The shared primitives live in `/qalcom/lib/ui.lua` and `/qalcom/lib/ui/screen.lua`.
 - Click an active taskbar icon to minimize its window; click it again to restore it, or click another app icon to focus that window. Hovering still shows the app name.
 - Click a window title bar to focus it.
 - Click `x` in a title bar to close an application.
@@ -64,6 +68,7 @@ Reboot the computer. Qalcom starts through `/startup.lua`, shows the first-run a
 - Open **Peripheral Manager** from Start to inspect attached devices, adapter health, safe status, and normalized radar contacts. Press A to edit an alias, B to block, T to mark trusted, S to save staged metadata, and R to refresh; it is read-only.
 - Open **Infrastructure Controls** from Start to inspect named redstone inputs/outputs. Press Enter for a confirmed toggle, P for a bounded confirmed pulse, E for confirmed emergency safe-state, S to save profiles, and I to refresh state.
 - Open **Automation Jobs** from Start to manage validated local jobs. Jobs use structured data only: N creates one, Enter runs it, Space pauses/resumes it, D enables/disables it, S saves, R refreshes, and E pauses all jobs as an emergency stop.
+- Open **Calculator** from Start for a compact four-column calculator inspired by the supplied retro reference. Use the mouse or keyboard digits/operators; Enter evaluates, Backspace erases, and Escape closes it.
 - Open **Capabilities** from Start to inspect built-in application manifests, role decisions, and the capability policy audit stream.
 - Open **Recovery** from Start to clear notifications, reset the theme, toggle Safe Mode, restore Qalcom defaults, view diagnostics, or open the system log.
 - In **Settings**, select Safe Mode, Log retention, or Reduced motion and press Enter to change them. Restore defaults to reset Qalcom settings without deleting accounts.
@@ -85,6 +90,7 @@ Reboot the computer. Qalcom starts through `/startup.lua`, shows the first-run a
 - **Settings**: Edit the computer label, change themes, toggle Safe Mode, view settings categories, and adjust log retention.
 - **Account**: View the current session and local war-server role; Administrators can manage account roles, and all users can sign out.
 - **Text Viewer**: View and edit local text, Lua, and log files.
+- **Calculator**: Perform basic arithmetic with a screenshot-inspired display and keypad.
 
 ## Version 0.2.5
 

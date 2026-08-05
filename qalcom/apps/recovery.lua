@@ -26,14 +26,19 @@ return function(ctx)
             local y = contentStart + displayIndex - 1
             local active = displayIndex == selected
             local background = active and UI.colors.accentLight or UI.colors.surface
-            UI.fill(ctx.win, 2, y, width - 3, 1, background)
-            UI.text(ctx.win, 3, y, items[actualIndex], active and colors.white or UI.colors.text, background, width - 5)
+            UI.listRow(ctx.win, 2, y, width - 3, items[actualIndex], nil, active, {
+                activeBackground = UI.colors.accentLight,
+                activeForeground = colors.white,
+                background = UI.colors.surface,
+            })
         end
         if compact then
             -- Core recovery actions remain visible; Escape closes without a footer.
         else
-            UI.text(ctx.win, 2, height - 1, "Up/Down select   Enter apply", UI.colors.muted, UI.colors.surface, width - 3)
-            UI.text(ctx.win, 2, height, "Esc close", UI.colors.muted, UI.colors.surface, width - 3)
+            UI.footer(ctx.win, {
+                "Up/Down select   Enter apply",
+                "Esc close",
+            }, { row = height - 1, background = UI.colors.surfaceAlt })
         end
     end
 

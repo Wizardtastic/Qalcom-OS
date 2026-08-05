@@ -36,9 +36,11 @@ return function(ctx)
             local line = lines[first + row - 1]
             if line then UI.text(ctx.win, 2, contentStart + row - 1, line, UI.colors.text, UI.colors.surface, width - 2) end
         end
-        UI.fill(ctx.win, 1, height - 1, width, 2, UI.colors.surfaceAlt)
+        UI.footer(ctx.win, {
+            cwd,
+            "> " .. input,
+        }, { row = height - 1, background = UI.colors.surfaceAlt, foreground = UI.colors.text })
         UI.text(ctx.win, 2, height - 1, cwd, UI.colors.accent, UI.colors.surfaceAlt, width - 4)
-        UI.text(ctx.win, 2, height, "> " .. input, UI.colors.text, UI.colors.surfaceAlt, width - 4)
         ctx.win.setCursorPos(math.min(width, 4 + cursor), height)
         ctx.win.setCursorBlink(true)
     end

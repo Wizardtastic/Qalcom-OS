@@ -13,6 +13,7 @@ UI.colors = {
     surface = colors.white,
     surfaceAlt = colors.lightGray,
     surfaceStrong = colors.white,
+    surfaceMuted = colors.gray,
     border = colors.gray,
     borderStrong = colors.lightBlue,
     text = colors.black,
@@ -27,6 +28,7 @@ UI.colors = {
 }
 
 local Animation = dofile("/qalcom/lib/ui/animation.lua")
+local Hit = dofile("/qalcom/lib/ui/hit.lua")
 UI.animator = Animation.new()
 UI.reducedMotion = false
 UI.dirty = true
@@ -85,7 +87,7 @@ function UI.center(target, y, value, foreground, background, width)
     if not screenWidth then screenWidth = select(1, target.getSize()) end
     value = clampText(value, screenWidth)
     local x = math.max(1, math.floor((screenWidth - #value) / 2) + 1)
-    UI.text(target, x, y, value, foreground, background)
+    UI.text(target, x, y, value, foreground, background, #value)
 end
 
 function UI.clearSurface(target, background)
@@ -144,20 +146,43 @@ function UI.card(target, x, y, width, height, title, accent, withShadow)
     if withShadow ~= false then UI.shadow(target, x, y, width, height, 1) end
     UI.panel(target, x, y, width, height, UI.colors.surfaceStrong, UI.colors.border)
     if title and height >= 3 then
-        UI.fill(target, x + 1, y + 1, width - 2, 1, accent or UI.colors.surfaceAlt)
-        UI.text(target, x + 2, y + 1, title, UI.colors.accent, accent or UI.colors.surfaceAlt, width - 4)
+        local headerBackground = accent or colors.yellow
+        local headerForeground = headerBackground == colors.yellow and colors.black or UI.colors.accent
+        UI.fill(target, x + 1, y + 1, width - 2, 1, headerBackground)
+        UI.text(target, x + 2, y + 1, title, headerForeground, headerBackground, width - 4)
     end
 end
 
-function UI.button(target, x, y, width, label, active)
+function UI.button(target, x, y, width, label, active, options)
     x = math.floor(tonumber(x) or 1)
     y = math.floor(tonumber(y) or 1)
     width = math.max(1, math.floor(tonumber(width) or 1))
-    local background = active and UI.colors.accent or UI.colors.surfaceAlt
-    local foreground = active and colors.white or UI.colors.text
-    UI.fill(target, x, y, width, 1, background)
-    -- Flat Fluent-style controls: state is communicated by contrast, not brackets.
-    UI.text(target, x + 1, y, label, foreground, background, math.max(1, width - 2))
+    options = options or {}
+    local height = math.max(1, math.floor(tonumber(options.height) or 1))
+    -- Use a distinct gray keycap by default. Previously inactive buttons used
+    -- surfaceAlt, which is also the surrounding panel color, making the button
+    -- disappear completely on character-cell displays.
+    local background = active and (options.activeBackground or UI.colors.accent)
+        or (options.background or colors.gray)
+    local foreground = active and (options.activeForeground or colors.white)
+        or (options.foreground or UI.colors.text)
+    UI.fill(target, x, y, width, height, background)
+    local textY = y + math.floor((height - 1) / 2)
+    -- Keep the label centered inside the button's own rectangle. UI.center is
+    -- screen-centered by design, so using it here would place every button
+    -- label relative to column one instead of the keycap.
+    local labelText = clampText(label, width)
+    local labelX = x + math.max(0, math.floor((width - #labelText) / 2))
+    UI.text(target, labelX, textY, labelText, foreground, background, #labelText)
+    return { x = x, y = y, width = width, height = height, label = label }
+end
+
+function UI.inBounds(mouseX, mouseY, x, y, width, height)
+    return Hit.inBounds(mouseX, mouseY, x, y, width, height)
+end
+
+function UI.hitButton(buttons, mouseX, mouseY)
+    return Hit.button(buttons, mouseX, mouseY)
 end
 
 function UI.input(target, x, y, width, label, value, active, secret)
@@ -268,10 +293,63 @@ function UI.taskbar(target, width, y, tasks, focused, launcher, trayWidth, hover
     end
 end
 
+function UI.sectionHeader(target, x, y, width, label, options)
+    options = options or {}
+    local background = options.background or colors.yellow
+    local foreground = options.foreground or colors.black
+    UI.fill(target, x, y, width, 1, background)
+    UI.text(target, x + 1, y, label, foreground, background, math.max(1, width - 2))
+end
+
+function UI.listRow(target, x, y, width, label, value, active, options)
+    options = options or {}
+    local background = active and (options.activeBackground or UI.colors.accentLight)
+        or (options.background or UI.colors.surface)
+    local foreground = active and (options.activeForeground or colors.white)
+        or (options.foreground or UI.colors.text)
+    UI.fill(target, x, y, width, 1, background)
+    local split = options.split or math.floor(width * 0.58)
+    UI.text(target, x + 1, y, label, foreground, background, math.max(1, split - 1))
+    if value ~= nil then
+        UI.text(target, x + split, y, value, options.valueColor or foreground, background, math.max(1, width - split - 1))
+    end
+    return { x = x, y = y, width = width, height = 1 }
+end
+
+function UI.badge(target, x, y, label, color, width)
+    width = math.max(3, math.floor(tonumber(width) or (#tostring(label or "") + 2)))
+    color = color or UI.colors.accent
+    UI.fill(target, x, y, width, 1, color)
+    UI.text(target, x + 1, y, label, colors.white, color, width - 2)
+    return { x = x, y = y, width = width, height = 1 }
+end
+
+function UI.meter(target, x, y, width, value, color, background)
+    width = math.max(3, math.floor(tonumber(width) or 3))
+    value = math.max(0, math.min(1, tonumber(value) or 0))
+    local filled = math.floor((width - 2) * value + 0.5)
+    background = background or UI.colors.surfaceMuted
+    UI.fill(target, x, y, width, 1, background)
+    if filled > 0 then UI.fill(target, x + 1, y, filled, 1, color or UI.colors.accent) end
+    return { x = x, y = y, width = width, height = 1, value = value }
+end
+
+function UI.footer(target, lines, options)
+    options = options or {}
+    local width, height = target.getSize()
+    local values = type(lines) == "table" and lines or { lines }
+    local row = options.row or math.max(1, height - #values + 1)
+    local background = options.background or UI.colors.surface
+    UI.fill(target, 1, row, width, height - row + 1, background)
+    for index, line in ipairs(values) do
+        if row + index - 1 <= height then
+            UI.text(target, 2, row + index - 1, line, options.foreground or UI.colors.muted, background, width - 3)
+        end
+    end
+end
+
 function UI.status(target, x, y, label, color, width)
-    width = math.max(3, math.floor(width or (#tostring(label) + 2)))
-    UI.fill(target, x, y, width, 1, color or UI.colors.accent)
-    UI.text(target, x + 1, y, label, colors.white, color or UI.colors.accent, width - 2)
+    return UI.badge(target, x, y, label, color or UI.colors.accent, width)
 end
 
 function UI.divider(target, x, y, width, background)
@@ -280,8 +358,8 @@ end
 
 function UI.header(target, title, subtitle)
     local width = select(1, target.getSize())
-    UI.fill(target, 1, 1, width, 3, UI.colors.surfaceAlt)
-    UI.text(target, 2, 1, title, UI.colors.accent, UI.colors.surfaceAlt, width - 3)
+    UI.fill(target, 1, 1, width, 1, colors.yellow)
+    UI.text(target, 2, 1, title, colors.black, colors.yellow, width - 3)
     if subtitle then UI.text(target, 2, 2, subtitle, UI.colors.muted, UI.colors.surfaceAlt, width - 3) end
     UI.divider(target, 1, 3, width, UI.colors.borderStrong)
 end
@@ -383,9 +461,11 @@ function UI.dialog(target, title, message, accent)
     local x = math.floor((width - boxWidth) / 2) + 1
     local y = math.max(2, math.floor((height - boxHeight) / 2))
     UI.shadow(target, x, y, boxWidth, boxHeight, 1)
-    UI.panel(target, x, y, boxWidth, boxHeight, UI.colors.surface, UI.colors.borderStrong)
-    UI.fill(target, x + 1, y + 1, boxWidth - 2, 1, accent or UI.colors.accent)
-    UI.text(target, x + 2, y + 1, title, colors.white, accent or UI.colors.accent, boxWidth - 4)
+    UI.panel(target, x, y, boxWidth, boxHeight, UI.colors.surface, UI.colors.border)
+    local headerBackground = accent or colors.yellow
+    local headerForeground = headerBackground == colors.yellow and colors.black or colors.white
+    UI.fill(target, x + 1, y + 1, boxWidth - 2, 1, headerBackground)
+    UI.text(target, x + 2, y + 1, title, headerForeground, headerBackground, boxWidth - 4)
     local messageWidth = math.max(1, boxWidth - 4)
     local messageText = tostring(message or "")
     local row = y + 3

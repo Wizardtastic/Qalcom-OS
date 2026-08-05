@@ -82,6 +82,26 @@ local function loadJobs()
 end
 
 local Jobs = loadJobs()
+local function loadCalculator()
+    local candidates = { "qalcom/lib/calculator.lua", "../qalcom/lib/calculator.lua", "/qalcom/lib/calculator.lua" }
+    for _, path in ipairs(candidates) do
+        local ok, module = pcall(dofile, path)
+        if ok and type(module) == "table" then return module end
+    end
+    fail("Unable to load qalcom/lib/calculator.lua")
+end
+
+local Calculator = loadCalculator()
+local function loadHit()
+    local candidates = { "qalcom/lib/ui/hit.lua", "../qalcom/lib/ui/hit.lua", "/qalcom/lib/ui/hit.lua" }
+    for _, path in ipairs(candidates) do
+        local ok, module = pcall(dofile, path)
+        if ok and type(module) == "table" then return module end
+    end
+    fail("Unable to load qalcom/lib/ui/hit.lua")
+end
+
+local Hit = loadHit()
 local passed = 0
 
 local function test(label, callback)
@@ -186,6 +206,37 @@ test("validates structured jobs and bounds execution helpers", function()
     equal(#history, Jobs.maxHistory, "history bound")
     local serialized = Jobs.serialize(data)
     truthy(serialized:find("job|door|Door Watch", 1, true) ~= nil, "job serialized")
+end)
+
+test("hit-tests shared button geometry", function()
+    local buttons = {
+        { x = 2, y = 3, width = 4, height = 1, label = "A" },
+        { x = 8, y = 3, width = 4, height = 1, label = "B" },
+    }
+    truthy(Hit.inBounds(2, 3, 2, 3, 4, 1), "button origin")
+    equal(Hit.inBounds(6, 3, 2, 3, 4, 1), false, "button right edge")
+    local button = Hit.button(buttons, 9, 3)
+    equal(button.label, "B", "shared button lookup")
+end)
+
+test("performs bounded calculator arithmetic", function()
+    local state = Calculator.new()
+    Calculator.inputDigit(state, "1")
+    Calculator.inputDigit(state, "2")
+    Calculator.operator(state, "+")
+    Calculator.inputDigit(state, "3")
+    Calculator.equals(state)
+    equal(Calculator.display(state), "15", "addition")
+    Calculator.operator(state, "/")
+    Calculator.inputDigit(state, "0")
+    Calculator.equals(state)
+    equal(Calculator.display(state), "Error", "division by zero")
+    Calculator.clear(state)
+    Calculator.inputDigit(state, "9")
+    Calculator.percent(state)
+    equal(Calculator.display(state), "0.09", "percent")
+    for index = 1, 20 do Calculator.inputDigit(state, "8") end
+    truthy(#Calculator.display(state) <= 13, "display digit bound")
 end)
 
 test("retains newest log lines", function()

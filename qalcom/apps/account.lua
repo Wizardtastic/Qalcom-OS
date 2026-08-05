@@ -72,9 +72,13 @@ return function(ctx)
                 local account = accounts[index]
                 local active = index == selectedAccount
                 local background = active and UI.colors.accentLight or UI.colors.surface
-                UI.fill(ctx.win, 2, row, width - 3, 1, background)
-                UI.text(ctx.win, 3, row, account.username, active and colors.white or UI.colors.text, background, math.floor(width * 0.52))
-                UI.text(ctx.win, math.floor(width * 0.55), row, account.role, active and colors.white or UI.colors.muted, background, width - math.floor(width * 0.55) - 1)
+                UI.listRow(ctx.win, 2, row, width - 3, account.username, account.role, active, {
+                    split = math.floor(width * 0.55),
+                    activeBackground = UI.colors.accentLight,
+                    activeForeground = colors.white,
+                    valueColor = active and colors.white or UI.colors.muted,
+                    background = UI.colors.surface,
+                })
                 row = row + 1
             end
             if #accounts == 0 then UI.text(ctx.win, 3, row, "No accounts available", UI.colors.muted, UI.colors.surface, width - 5) end

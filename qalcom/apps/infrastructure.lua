@@ -74,8 +74,8 @@ return function(ctx)
         local footer = math.max(contentStart, height - 2)
         local split = math.max(18, math.floor(width * 0.44))
         local active = profile()
-        UI.text(ctx.win, 2, contentStart, "Named points", UI.colors.accent, UI.colors.surface, split - 3)
-        UI.text(ctx.win, split, contentStart, "State and controls", UI.colors.accent, UI.colors.surface, width - split - 1)
+        UI.sectionHeader(ctx.win, 2, contentStart, split - 3, "Named points", { background = colors.yellow, foreground = colors.black })
+        UI.sectionHeader(ctx.win, split, contentStart, width - split - 1, "State and controls", { background = colors.yellow, foreground = colors.black })
         local row = contentStart + 1
         local visible = math.max(0, footer - row)
         local start = math.max(1, math.min(selected - visible + 1, #data.profiles - visible + 1))
@@ -85,9 +85,13 @@ return function(ctx)
             local activeRow = index == selected
             local background = activeRow and UI.colors.accentLight or UI.colors.surface
             local foreground = activeRow and colors.white or UI.colors.text
-            UI.fill(ctx.win, 2, row + index - start, split - 3, 1, background)
             local marker = item.blocked and "X " or (item.kind == "output" and "> " or "< ")
-            UI.text(ctx.win, 3, row + index - start, marker .. Infrastructure.profileName(item), foreground, background, split - 5)
+            UI.listRow(ctx.win, 2, row + index - start, split - 3, marker .. Infrastructure.profileName(item), nil, activeRow, {
+                activeBackground = UI.colors.accentLight,
+                activeForeground = colors.white,
+                foreground = foreground,
+                background = UI.colors.surface,
+            })
             UI.text(ctx.win, split - 12, row + index - start, state.online and (state.value and "ON" or "OFF") or "OFFLINE", state.online and (state.value and UI.colors.success or UI.colors.muted) or UI.colors.warning, background, 10)
         end
         if active and row < footer then

@@ -53,7 +53,7 @@ Run these checks on a fresh copy and again over an existing 0.1.x installation.
 - [ ] Start opens and closes with mouse and keyboard, remains anchored to the bottom-left, and stays above the taskbar/start button at 30×14 and normal sizes.
 - [ ] Terminal `reboot` and `shutdown` open a confirmation dialog instead of powering off immediately.
 - [ ] Cancelling the power dialog leaves the desktop running.
-- [ ] Terminal, Explorer, Settings, Account, Recovery, System Log, Control Center, System Monitor, and Capabilities launch.
+- [ ] Terminal, Explorer, Calculator, Settings, Account, Recovery, System Log, Control Center, System Monitor, and Capabilities launch.
 - [ ] System Monitor does not launch automatically after login.
 - [ ] Windows can be focused, dragged, minimized, restored, and closed.
 - [ ] Alt+Tab and Alt+F4 behave as documented.
@@ -72,7 +72,7 @@ Run these checks on a fresh copy and again over an existing 0.1.x installation.
 - [ ] Configuration migrations and changes appear in `/qalcom/logs/system.log`.
 - [ ] Theme changes persist after reboot.
 - [ ] Theme reset returns to Ocean/blue.
-- [ ] Safe Mode limits Start to Recovery, System Log, Terminal, and Settings.
+- [ ] Safe Mode limits Start to Recovery, System Log, Terminal, Calculator, and Settings.
 - [ ] Enabling Safe Mode closes disallowed running apps.
 - [ ] Safe Mode can be disabled from Settings or Recovery.
 - [ ] Log retention remains within the configured bounds.
@@ -92,7 +92,8 @@ Run these checks on a fresh copy and again over an existing 0.1.x installation.
 
 ### Native UI foundation
 
-- [ ] Shadows, cards, title bars, dialogs, and notifications remain readable at 30 x 14 and at a normal terminal size.
+- [ ] Shadows, cards, title bars, dialogs, notifications, shared visible buttons, badges, meters, list rows, and section headers remain readable at 30 x 14 and at a normal terminal size.
+- [ ] Shared app headers and footers do not overlap content after resize; monitor meters and status badges remain clipped inside their windows.
 - [ ] Changing themes updates the semantic UI colors without restarting Qalcom.
 - [ ] Reduced motion applies immediately and cancels active animations.
 - [ ] Animation updates do not starve application events or cause repeated timer backlog.
@@ -167,6 +168,15 @@ Run these checks on a fresh copy and again over an existing 0.1.x installation.
 - [ ] Blocklisted profiles cannot be controlled; safe-state and control failures remain visible.
 - [ ] Safe Mode permits read-only state inspection but denies output writes and profile persistence.
 - [ ] No Infrastructure Controls action issues vehicle, artillery, propulsion, peripheral, network, or arbitrary Lua commands.
+
+### Calculator
+
+- [ ] Calculator appears in Start and launches with the screenshot-inspired light-gray body, white display, and four-column keypad of distinct, visible gray keycaps.
+- [ ] Shared UI buttons render with a contrasting keycap background and shared hit-testing resolves their local bounds correctly.
+- [ ] Mouse clicks activate every keypad button without leaking into the desktop.
+- [ ] Keyboard digits, decimal point, operators, Enter, Backspace, and Escape work as documented.
+- [ ] Addition, subtraction, multiplication, division, sign, percent, clear, and division-by-zero handling behave safely.
+- [ ] Calculator remains usable after a terminal resize and at the supported minimum size.
 
 ### 0.2.5 Automation Jobs
 

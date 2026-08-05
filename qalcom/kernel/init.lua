@@ -28,6 +28,7 @@ local APP_PATHS = {
     peripherals = "/qalcom/apps/peripherals.lua",
     infrastructure = "/qalcom/apps/infrastructure.lua",
     jobs = "/qalcom/apps/jobs.lua",
+    calculator = "/qalcom/apps/calculator.lua",
     jobs_service = "/qalcom/apps/jobs_service.lua",
 }
 
@@ -47,11 +48,12 @@ local APP_META = {
     peripherals = { title = "Peripheral Manager", icon = "P", x = 4, y = 3, width = 54, height = 21 },
     infrastructure = { title = "Infrastructure", icon = "I", x = 3, y = 3, width = 56, height = 21 },
     jobs = { title = "Automation Jobs", icon = "J", x = 3, y = 3, width = 56, height = 21 },
+    calculator = { title = "Calculator", icon = "=", x = 12, y = 4, width = 38, height = 21 },
     jobs_service = { title = "Automation Service", icon = "J", x = 3, y = 3, width = 20, height = 8, service = true, hidden = true },
 }
 
-local NORMAL_LAUNCHER_APPS = { "terminal", "explorer", "monitor", "peripherals", "infrastructure", "jobs", "control", "capabilities", "settings", "recovery", "logs", "account" }
-local SAFE_LAUNCHER_APPS = { "recovery", "logs", "terminal", "settings", "peripherals", "infrastructure", "jobs" }
+local NORMAL_LAUNCHER_APPS = { "terminal", "explorer", "calculator", "monitor", "peripherals", "infrastructure", "jobs", "control", "capabilities", "settings", "recovery", "logs", "account" }
+local SAFE_LAUNCHER_APPS = { "recovery", "logs", "terminal", "calculator", "settings", "peripherals", "infrastructure", "jobs" }
 local LAUNCHER_APPS = config.safeMode and SAFE_LAUNCHER_APPS or NORMAL_LAUNCHER_APPS
 
 local native = term.native()
@@ -600,7 +602,7 @@ end
 local function startTask(name, options)
     local meta = APP_META[name]
     local path = APP_PATHS[name]
-    if config.safeMode and name ~= "recovery" and name ~= "logs" and name ~= "terminal" and name ~= "settings" and name ~= "peripherals" and name ~= "infrastructure" and name ~= "jobs" and name ~= "jobs_service" then
+    if config.safeMode and name ~= "recovery" and name ~= "logs" and name ~= "terminal" and name ~= "calculator" and name ~= "settings" and name ~= "peripherals" and name ~= "infrastructure" and name ~= "jobs" and name ~= "jobs_service" then
         notify("Safe Mode blocked " .. tostring(name), UI.colors.warning)
         return nil
     end

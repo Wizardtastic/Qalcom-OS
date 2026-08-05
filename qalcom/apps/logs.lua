@@ -17,7 +17,7 @@ return function(ctx)
         end
         if #lines == 0 then lines = { "No system log entries." } end
         local _, height = ctx.win.getSize()
-        scroll = math.max(1, math.min(scroll, math.max(1, #lines - math.max(1, height - 5) + 1)))
+        scroll = math.max(1, math.min(scroll, math.max(1, #lines - math.max(1, height - 6) + 1)))
     end
 
     local function render()
@@ -26,11 +26,18 @@ return function(ctx)
         local visible = math.max(1, height - contentStart - 2)
         for row = 1, visible do
             local line = lines[scroll + row - 1]
-            if line then UI.text(ctx.win, 2, contentStart + row - 1, line, UI.colors.text, UI.colors.surface, width - 3) end
+            if line then
+                local color = line:lower():find("fail", 1, true) and UI.colors.danger or UI.colors.text
+                UI.listRow(ctx.win, 2, contentStart + row - 1, width - 3, line, nil, false, {
+                    foreground = color,
+                    background = UI.colors.surface,
+                })
+            end
         end
-        UI.fill(ctx.win, 1, height - 1, width, 2, UI.colors.surfaceAlt)
-        UI.text(ctx.win, 2, height - 1, "Up/Down scroll   R refresh   F filter", UI.colors.muted, UI.colors.surfaceAlt, width - 3)
-        UI.text(ctx.win, 2, height, "Esc close", UI.colors.muted, UI.colors.surfaceAlt, width - 3)
+        UI.footer(ctx.win, {
+            "Up/Down scroll   R refresh   F filter",
+            "Esc close",
+        }, { row = height - 1, background = UI.colors.surfaceAlt })
     end
 
     load()
@@ -39,7 +46,7 @@ return function(ctx)
         local event, value = ctx:pullEvent()
         if event == "key" then
             local _, height = ctx.win.getSize()
-            local visible = math.max(1, height - 5)
+            local visible = math.max(1, height - 6)
             if value == keys.up then scroll = math.max(1, scroll - 1); render()
             elseif value == keys.down then scroll = math.min(math.max(1, #lines - visible + 1), scroll + 1); render()
             elseif value == keys.r then load(); status = "Log refreshed"; render()
@@ -51,7 +58,7 @@ return function(ctx)
             elseif value == keys.escape then ctx:close() end
         elseif event == "mouse_scroll" then
             local _, height = ctx.win.getSize()
-            local visible = math.max(1, height - 5)
+            local visible = math.max(1, height - 6)
             scroll = value < 0 and math.max(1, scroll - 1) or math.min(math.max(1, #lines - visible + 1), scroll + 1)
             render()
         elseif event == "term_resize" or event == "qalcom_tick" then render() end

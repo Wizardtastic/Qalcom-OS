@@ -44,9 +44,13 @@ return function(ctx)
                 local bg = active and UI.colors.accentLight or UI.colors.surface
                 local fg = active and colors.white or UI.colors.text
                 local itemY = contentStart + row - 1
-                UI.fill(ctx.win, 2, itemY, width - 2, 1, bg)
                 local icon = item.dir and "▸ " or "· "
-                UI.text(ctx.win, 3, itemY, icon .. item.name, fg, bg, width - 5)
+                UI.listRow(ctx.win, 2, itemY, width - 3, icon .. item.name, nil, active, {
+                    activeBackground = UI.colors.accentLight,
+                    activeForeground = colors.white,
+                    foreground = fg,
+                    background = UI.colors.surface,
+                })
             end
         end
         UI.text(ctx.win, 2, height - 1, "Enter open   N new folder   D delete   C copy   V paste", UI.colors.muted, UI.colors.surface, width - 3)

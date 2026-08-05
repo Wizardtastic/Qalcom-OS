@@ -45,8 +45,11 @@ return function(ctx)
             row = 5
             local function stat(label, value, color)
                 if row < footerStart then
-                    UI.text(ctx.win, 2, row, label, UI.colors.muted, UI.colors.surface, math.floor(width * 0.48))
-                    UI.text(ctx.win, math.floor(width * 0.5), row, value, color or UI.colors.text, UI.colors.surface, width - math.floor(width * 0.5) - 1)
+                    UI.listRow(ctx.win, 2, row, width - 3, label, value, false, {
+                        split = math.floor(width * 0.5),
+                        valueColor = color or UI.colors.text,
+                        background = UI.colors.surface,
+                    })
                     row = row + 1
                 end
             end
@@ -62,7 +65,7 @@ return function(ctx)
             stat("Modems", tostring(info.modems))
             if row < footerStart then row = row + 1 end
             if row < footerStart then
-                UI.text(ctx.win, 2, row, "Processes", UI.colors.accent, UI.colors.surface, width - 3)
+                UI.sectionHeader(ctx.win, 2, row, width - 3, "Processes", { background = colors.yellow, foreground = colors.black })
                 row = row + 1
             end
         end
@@ -77,15 +80,20 @@ return function(ctx)
             local detail, detailColor = taskDetail(task)
             if task.failed and task.crashReason then detail = tostring(task.crashReason):sub(1, 18) end
 
-            UI.fill(ctx.win, 2, row, width - 3, 1, background)
-            UI.text(ctx.win, 3, row, label, foreground, background, math.floor(width * 0.62))
-            UI.text(ctx.win, math.floor(width * 0.65), row, detail, detailColor, background, width - math.floor(width * 0.65) - 1)
+            UI.listRow(ctx.win, 2, row, width - 3, label, detail, active, {
+                split = math.floor(width * 0.65),
+                activeBackground = UI.colors.accentLight,
+                activeForeground = colors.white,
+                valueColor = detailColor,
+                background = UI.colors.surface,
+            })
             row = row + 1
         end
 
-        UI.fill(ctx.win, 1, height - 1, width, 2, UI.colors.surfaceAlt)
-        UI.text(ctx.win, 2, height - 1, "Up/Down select   R restart crashed", UI.colors.muted, UI.colors.surfaceAlt, width - 3)
-        UI.text(ctx.win, 2, height, "Esc close   Updates every second", UI.colors.muted, UI.colors.surfaceAlt, width - 3)
+        UI.footer(ctx.win, {
+            "Up/Down select   R restart crashed",
+            "Esc close   Updates every second",
+        }, { row = height - 1, background = UI.colors.surfaceAlt })
     end
 
     refresh()

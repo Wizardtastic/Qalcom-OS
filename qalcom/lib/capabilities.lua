@@ -125,6 +125,11 @@ local manifests = {
         requested = { "fs.read", "fs.write", "jobs.manage", "redstone.read", "redstone.control", "infrastructure.control", "infrastructure.emergency" },
         unmanaged = { "os.pullEvent" },
     },
+    calculator = {
+        title = "Calculator", trusted = true,
+        requested = {},
+        unmanaged = { "os.pullEvent" },
+    },
     jobs_service = {
         title = "Automation Service", trusted = true,
         requested = { "fs.read", "fs.write", "jobs.manage", "redstone.read", "redstone.control", "infrastructure.control", "infrastructure.emergency" },

@@ -73,11 +73,16 @@ return function(ctx)
             local active = selected == displayIndex
             local background = active and UI.colors.accentLight or UI.colors.surface
             local foreground = active and colors.white or UI.colors.text
-            UI.fill(ctx.win, 2, y, width - 3, 1, background)
-            UI.text(ctx.win, 3, y, item[1], active and colors.white or UI.colors.muted, background, math.floor(width * 0.52))
             local value = item[2]
             if editingLabel and actualIndex == 1 then value = labelInput .. "_" end
-            UI.text(ctx.win, math.floor(width * 0.55), y, value, foreground, background, width - math.floor(width * 0.55) - 1)
+            UI.listRow(ctx.win, 2, y, width - 3, item[1], value, active, {
+                split = math.floor(width * 0.55),
+                activeBackground = UI.colors.accentLight,
+                activeForeground = colors.white,
+                valueColor = foreground,
+                foreground = active and colors.white or UI.colors.muted,
+                background = UI.colors.surface,
+            })
         end
 
         if compact then

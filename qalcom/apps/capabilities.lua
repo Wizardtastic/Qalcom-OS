@@ -16,8 +16,8 @@ return function(ctx)
         local footer = math.max(contentStart, height - 1)
         local split = math.max(12, math.floor(width * 0.43))
         local row = contentStart
-        UI.text(ctx.win, 2, row, "Applications", UI.colors.accent, UI.colors.surface, split - 3)
-        UI.text(ctx.win, split, row, "Requested capabilities", UI.colors.accent, UI.colors.surface, width - split - 1)
+        UI.sectionHeader(ctx.win, 2, row, split - 3, "Applications", { background = colors.yellow, foreground = colors.black })
+        UI.sectionHeader(ctx.win, split, row, width - split - 1, "Requested capabilities", { background = colors.yellow, foreground = colors.black })
         row = row + 1
         local visible = math.max(0, footer - row)
         local start = math.max(1, math.min(selected - math.max(1, visible) + 1, #apps - math.max(1, visible) + 1))
@@ -26,8 +26,12 @@ return function(ctx)
             local active = index == selected
             local background = active and UI.colors.accentLight or UI.colors.surface
             local foreground = active and colors.white or UI.colors.text
-            UI.fill(ctx.win, 2, y, split - 3, 1, background)
-            UI.text(ctx.win, 3, y, Capabilities.manifest(apps[index]).title, foreground, background, split - 5)
+            UI.listRow(ctx.win, 2, y, split - 3, Capabilities.manifest(apps[index]).title, nil, active, {
+                activeBackground = UI.colors.accentLight,
+                activeForeground = colors.white,
+                foreground = foreground,
+                background = UI.colors.surface,
+            })
         end
         if manifest and row < footer then
             local requested = manifest.requested
@@ -36,7 +40,7 @@ return function(ctx)
             for index, capability in ipairs(requested) do
                 if row >= footer then break end
                 local decision = Capabilities.policy(ctx.role, apps[selected], capability, ctx:isSafeMode())
-                UI.status(ctx.win, split, row, decision.allowed and "APPROVED" or "DENIED", decision.allowed and UI.colors.success or UI.colors.warning, 10)
+                UI.badge(ctx.win, split, row, decision.allowed and "APPROVED" or "DENIED", decision.allowed and UI.colors.success or UI.colors.warning, 10)
                 UI.text(ctx.win, split + 12, row, capability, UI.colors.text, UI.colors.surface, width - split - 13)
                 row = row + 1
             end
@@ -44,9 +48,10 @@ return function(ctx)
                 UI.text(ctx.win, split, row, "No managed capabilities requested", UI.colors.muted, UI.colors.surface, width - split - 1)
             end
         end
-        UI.fill(ctx.win, 1, height - 1, width, 2, UI.colors.surfaceAlt)
-        UI.text(ctx.win, 2, height - 1, "Up/Down select   R refresh audit   Esc close", UI.colors.muted, UI.colors.surfaceAlt, width - 3)
-        UI.text(ctx.win, 2, height, "Role policy only; trusted Lua still has CC:T globals", UI.colors.muted, UI.colors.surfaceAlt, width - 3)
+        UI.footer(ctx.win, {
+            "Up/Down select   R refresh audit   Esc close",
+            "Role policy only; trusted Lua still has CC:T globals",
+        }, { row = height - 1, background = UI.colors.surfaceAlt })
     end
 
     local function auditView()

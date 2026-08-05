@@ -53,7 +53,10 @@ return function(ctx)
                 UI.text(ctx.win, 2, contentStart + row - 1, prefix .. text, index == cursor and UI.colors.accent or UI.colors.text, UI.colors.surface, width - 3)
             end
         end
-        UI.text(ctx.win, 2, height, "Arrows select   Ctrl+S save   Esc close", UI.colors.muted, UI.colors.surface, width - 3)
+        UI.footer(ctx.win, "Arrows select   Ctrl+S save   Esc close", {
+            row = height,
+            background = UI.colors.surfaceAlt,
+        })
     end
 
     loadFile()

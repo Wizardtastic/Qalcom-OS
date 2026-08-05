@@ -11,8 +11,9 @@ return function(ctx)
         ctx.win.setTextColor(UI.colors.text)
         ctx.win.clear()
         UI.dialog(ctx.win, title, message, UI.colors.warning)
-        UI.button(ctx.win, 3, height - 3, math.floor((width - 7) / 2), "Yes", selected == 1)
-        UI.button(ctx.win, 5 + math.floor((width - 7) / 2), height - 3, math.floor((width - 7) / 2), "No", selected == 2)
+        local buttonWidth = math.floor((width - 7) / 2)
+        UI.button(ctx.win, 3, height - 3, buttonWidth, "Yes", selected == 1, { background = colors.gray })
+        UI.button(ctx.win, 5 + buttonWidth, height - 3, buttonWidth, "No", selected == 2, { background = colors.gray })
         UI.text(ctx.win, 3, height, "Left/Right choose   Enter confirm", UI.colors.muted, UI.colors.surface, width - 5)
     end
 

@@ -126,8 +126,8 @@ return function(ctx)
         local _, _, start = Screen.begin(ctx.win, "Automation Jobs", status, { ui = UI })
         local footer = math.max(start, height - 3)
         local split = math.max(20, math.floor(width * 0.46))
-        UI.text(ctx.win, 2, start, "Jobs", UI.colors.accent, UI.colors.surface, split - 3)
-        UI.text(ctx.win, split, start, "Definition / history", UI.colors.accent, UI.colors.surface, width - split - 1)
+        UI.sectionHeader(ctx.win, 2, start, split - 3, "Jobs", { background = colors.yellow, foreground = colors.black })
+        UI.sectionHeader(ctx.win, split, start, width - split - 1, "Definition / history", { background = colors.yellow, foreground = colors.black })
         local row = start + 1
         local visible = math.max(0, footer - row)
         local first = math.max(1, math.min(selected - visible + 1, math.max(1, #data.jobs - visible + 1)))
@@ -136,9 +136,13 @@ return function(ctx)
             local active = index == selected
             local background = active and UI.colors.accentLight or UI.colors.surface
             local foreground = active and colors.white or UI.colors.text
-            UI.fill(ctx.win, 2, row + index - first, split - 3, 1, background)
             local marker = job.paused and "|| " or (job.enabled and "> " or "- ")
-            UI.text(ctx.win, 3, row + index - first, marker .. job.label, foreground, background, split - 5)
+            UI.listRow(ctx.win, 2, row + index - first, split - 3, marker .. job.label, nil, active, {
+                activeBackground = UI.colors.accentLight,
+                activeForeground = colors.white,
+                foreground = foreground,
+                background = UI.colors.surface,
+            })
             UI.text(ctx.win, split - 13, row + index - first, job.trigger, UI.colors.muted, background, 11)
         end
         local job = current()

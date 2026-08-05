@@ -57,8 +57,8 @@ return function(ctx)
         local split = math.max(15, math.floor(width * 0.42))
         local device = selectedDevice()
 
-        UI.text(ctx.win, 2, contentStart, "Attached devices", UI.colors.accent, UI.colors.surface, split - 3)
-        UI.text(ctx.win, split, contentStart, "Inspection", UI.colors.accent, UI.colors.surface, width - split - 1)
+        UI.sectionHeader(ctx.win, 2, contentStart, split - 3, "Attached devices", { background = colors.yellow, foreground = colors.black })
+        UI.sectionHeader(ctx.win, split, contentStart, width - split - 1, "Inspection", { background = colors.yellow, foreground = colors.black })
         local row = contentStart + 1
         local visible = math.max(0, footer - row)
         local start = math.max(1, math.min(selected - visible + 1, #devices - visible + 1))
@@ -69,8 +69,12 @@ return function(ctx)
             local background = active and UI.colors.accentLight or UI.colors.surface
             local foreground = active and colors.white or UI.colors.text
             local marker = item.blocked and "B " or (item.trusted and "T " or "  ")
-            UI.fill(ctx.win, 2, y, split - 3, 1, background)
-            UI.text(ctx.win, 3, y, marker .. tostring(item.alias or item.name), foreground, background, split - 5)
+            UI.listRow(ctx.win, 2, y, split - 3, marker .. tostring(item.alias or item.name), nil, active, {
+                activeBackground = UI.colors.accentLight,
+                activeForeground = colors.white,
+                foreground = foreground,
+                background = UI.colors.surface,
+            })
         end
 
         if device and row < footer then
@@ -96,7 +100,7 @@ return function(ctx)
                     if detailRow >= footer then break end
                     local health = adapter.stale and "stale" or (adapter.available and "available" or "failed")
                     local color = adapter.stale and UI.colors.warning or (adapter.available and UI.colors.success or UI.colors.danger)
-                    UI.status(ctx.win, split, detailRow, health, color, 10)
+                    UI.badge(ctx.win, split, detailRow, health, color, 10)
                     UI.text(ctx.win, split + 12, detailRow, adapter.title .. " / v" .. tostring(adapter.contractVersion), UI.colors.text, UI.colors.surface, width - split - 13)
                     detailRow = detailRow + 1
                 end
