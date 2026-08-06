@@ -71,6 +71,21 @@ return function(ctx)
             end
         end
 
+        local jobs = info.jobs and info.jobs.summary or {}
+        if row < footerStart then
+            local automation = tostring(jobs.active or 0) .. " active  " .. tostring(jobs.retrying or 0) .. " retrying  " .. tostring(jobs.failed or 0) .. " failed"
+            UI.listRow(ctx.win, 2, row, width - 3, "Automation", automation, false, {
+                split = math.floor(width * 0.5),
+                valueColor = (jobs.failed or 0) > 0 and UI.colors.danger or UI.colors.success,
+                background = UI.colors.surface,
+            })
+            row = row + 1
+        end
+        if (jobs.failed or 0) > 0 and row < footerStart then
+            UI.text(ctx.win, 2, row, tostring(jobs.lastFailure or "Automation failure detected"), UI.colors.danger, UI.colors.surface, width - 3)
+            row = row + 1
+        end
+
         for index, task in ipairs(info.tasks) do
             if row >= footerStart or index > maxVisibleTasks then break end
             local active = index == selected
@@ -110,7 +125,9 @@ return function(ctx)
                     local restarted, reason = ctx:restartProcess(task.pid)
                     status = restarted and ("Restart requested for " .. task.title) or (reason or "Restart unavailable for " .. task.title)
                 else
-                    status = task and task.restartLocked and "Restart limit reached for " .. task.title or "Select a crashed process to restart"
+                    status = task and task.restartLocked and "Restart limit reached for " .. task.title or "Automation and process data refreshed"
+                    refresh()
+                    if ctx.reloadJobs then ctx:reloadJobs() end
                 end
                 render()
             elseif value == keys.escape then

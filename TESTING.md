@@ -1,8 +1,8 @@
 # Qalcom OS Testing Guide
 
-The current source version is 0.2.5. The 0.1.x, 0.2.0, 0.2.1, 0.2.2, and 0.2.3 checks below remain required regression checks; the Infrastructure Controls and Automation Jobs checks cover the current milestones. No local Lua runtime or CC:T instance is available in this checkout, so automated and in-game validation remain pending.
+The current source version is 0.2.6. The 0.1.x, 0.2.0, 0.2.1, 0.2.2, and 0.2.3 checks below remain required regression checks; the Infrastructure Controls and Automation Jobs checks cover the current milestones. No local Lua runtime or CC:T instance is available in this checkout, so automated and in-game validation remain pending.
 
-The 0.2.5 service is intentionally conservative: only manual, timer, and redstone-edge triggers are implemented; peripheral-attach and radar-contact triggers are deferred. The hidden service is launched after login and continues while the Automation Jobs window is closed.
+The 0.2.6 service is intentionally conservative: only manual, timer, and redstone-edge triggers are implemented; peripheral-attach and radar-contact triggers are deferred. Runtime status is persisted in `/qalcom/data/jobs.status`; the hidden service uses bounded retry backoff and remains recoverable from Recovery or CraftOS.
 
 ## Offline pure-helper checks
 
@@ -193,7 +193,20 @@ Run these checks on a fresh copy and again over an existing 0.1.x installation.
 - [ ] Safe Mode blocks job management/execution while preserving read-only job inspection.
 - [ ] Jobs never execute arbitrary Lua strings, shell commands, unrestricted peripheral calls, or network commands.
 
-### Session and resize behavior
+#### 0.2.6 Automation observability and recovery
+
+- [ ] Control Center shows active, retrying, failed, and total automation counts.
+- [ ] Automation Jobs shows runtime state, attempt count, and the latest failure/recovery detail.
+- [ ] Failed infrastructure targets become blocked without changing unrelated outputs.
+- [ ] Retry attempts use bounded backoff and do not block desktop event handling.
+- [ ] `/qalcom/data/jobs.status` remains bounded and survives a restart.
+- [ ] I exports validated definitions to `/qalcom/data/jobs.export`.
+- [ ] O imports only definitions accepted by `Jobs.parse`.
+- [ ] Recovery pauses all persisted jobs and the scheduler reloads without deleting job definitions or history.
+- [ ] Safe Mode prevents execution while preserving status inspection.
+- [ ] CraftOS recovery can pause jobs by editing `/qalcom/data/jobs.meta` to set `paused=true` records or removing the file when a full reset is intentional.
+
+## Session and resize behavior
 
 - [ ] Closing an app releases its task/window and does not leave a ghost taskbar entry.
 - [ ] Crashed and stopped tasks are removed cleanly after closure.

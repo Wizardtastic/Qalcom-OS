@@ -206,6 +206,16 @@ test("validates structured jobs and bounds execution helpers", function()
     equal(#history, Jobs.maxHistory, "history bound")
     local serialized = Jobs.serialize(data)
     truthy(serialized:find("job|door|Door Watch", 1, true) ~= nil, "job serialized")
+    equal(Jobs.retryDelay(1), 1, "first retry delay")
+    equal(Jobs.retryDelay(4), 8, "exponential retry delay")
+    equal(Jobs.retryDelay(99), Jobs.maxRetryDelay, "retry delay cap")
+    local statusText = Jobs.serializeStatus({
+        { id = "door", state = "retrying", source = "timer", attempts = 2, nextAt = 12, lastOutcome = "retrying", lastDetail = "target unavailable", updated = 10 },
+    })
+    local statuses = Jobs.parseStatus(statusText)
+    equal(#statuses, 1, "status count")
+    equal(statuses[1].state, "retrying", "status state")
+    equal(Jobs.statusSummary(statuses).retrying, 1, "retry summary")
 end)
 
 test("hit-tests shared button geometry", function()

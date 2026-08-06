@@ -258,16 +258,18 @@ The profile intentionally separates direct integrations from libraries, performa
 
 **Exit criteria:** A small automation job can be created, observed, stopped, and recovered without unrestricted script execution.
 
-## 0.2.6 — Automation observability and recovery
+## Implemented — validation pending: 0.2.6 — Automation observability and recovery
 
 **Goal:** Make local automation dependable before networking it.
 
-- Add job status to Control Center.
-- Add structured job logs and failure reasons.
-- Add retry/backoff visibility.
-- Add safe fallback behavior when a target peripheral disappears.
-- Add import/export of validated job definitions.
-- Add recovery tools for disabling all automation jobs.
+- Added job status summaries to Control Center.
+- Added bounded structured runtime status in `/qalcom/data/jobs.status`, including failure reasons and retry state.
+- Added bounded exponential retry/backoff scheduling so retries do not block the desktop event loop.
+- Added blocked fallback behavior when a target infrastructure profile disappears or becomes unavailable.
+- Added validated import/export through `/qalcom/data/jobs.export`.
+- Added Recovery tooling to pause all persisted automation jobs and reload the hidden service.
+
+**Implementation status:** Local jobs now expose live runtime state, bounded retry timing, explicit target-unavailable failures, validated definition transfer, and a recovery stop path. Manual CC:T validation remains required.
 
 **Exit criteria:** Failed jobs are diagnosable, bounded, and recoverable from the desktop or CraftOS recovery path.
 

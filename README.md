@@ -1,4 +1,4 @@
-# Qalcom OS 0.2.5
+# Qalcom OS 0.2.6
 
 Qalcom OS is a clean, Windows-inspired desktop environment for ComputerCraft: Tweaked. This milestone runs entirely inside CC:T and does not require a Minecraft mod or CraftOS modification.
 
@@ -53,7 +53,7 @@ Reboot the computer. Qalcom starts through `/startup.lua`, shows the first-run a
 - Click the green **Q** button at the bottom-left to open the Windows-style Start menu above the taskbar; type in its search bar to find programs, or choose from recently used apps below it. Use Up/Down and Enter while it is open.
 - Taskbar applications use compact icons immediately after the green Q button; they are left-aligned, and the active app is marked with a subtle light-blue underline. Hover with the mouse to see the application name.
 - Window headers are yellow with white bodies; click the left-side `x` to close, `-` to minimize, and `+` to expand/restore. Click the remaining header area to drag.
-- Built-in apps share the native graphics system: yellow section headers, gray keycaps/buttons, compact list rows, status badges, meters, cards, and consistent footer guidance. The shared primitives live in `/qalcom/lib/ui.lua` and `/qalcom/lib/ui/screen.lua`.
+- Built-in apps share the native graphics system: yellow section headers, gray keycaps/buttons, compact list rows, status badges, meters, cards, and clean content-first layouts. The shared primitives live in `/qalcom/lib/ui.lua` and `/qalcom/lib/ui/screen.lua`.
 - Click an active taskbar icon to minimize its window; click it again to restore it, or click another app icon to focus that window. Hovering still shows the app name.
 - Click a window title bar to focus it.
 - Click `x` in a title bar to close an application.
@@ -64,7 +64,9 @@ Reboot the computer. Qalcom starts through `/startup.lua`, shows the first-run a
 - Terminal supports keyboard input, command history, and basic filesystem commands.
 - File Explorer supports mouse selection, keyboard navigation, opening directories, and refresh.
 - System Monitor is available from Start and reports peripheral/modem status; it does not launch automatically.
-- Open **Control Center** from Start to inspect processes, memory, storage, services, and declared capability profiles.
+- Open **Control Center** from Start to inspect processes, memory, storage, services, automation activity, and declared capability profiles.
+- Open **Recovery → Disable all automation jobs** to pause every persisted job and reload the hidden scheduler safely.
+- In **Automation Jobs**, press I to export validated definitions to `/qalcom/data/jobs.export`, or O to import that file after validation. Runtime state shows running, retrying, blocked, failed, or successful jobs with bounded attempt counts and failure details.
 - Open **Peripheral Manager** from Start to inspect attached devices, adapter health, safe status, and normalized radar contacts. Press A to edit an alias, B to block, T to mark trusted, S to save staged metadata, and R to refresh; it is read-only.
 - Open **Infrastructure Controls** from Start to inspect named redstone inputs/outputs. Press Enter for a confirmed toggle, P for a bounded confirmed pulse, E for confirmed emergency safe-state, S to save profiles, and I to refresh state.
 - Open **Automation Jobs** from Start to manage validated local jobs. Jobs use structured data only: N creates one, Enter runs it, Space pauses/resumes it, D enables/disables it, S saves, R refreshes, and E pauses all jobs as an emergency stop.
@@ -92,7 +94,7 @@ Reboot the computer. Qalcom starts through `/startup.lua`, shows the first-run a
 - **Text Viewer**: View and edit local text, Lua, and log files.
 - **Calculator**: Perform basic arithmetic with a screenshot-inspired display and keypad.
 
-## Version 0.2.5
+## Version 0.2.6
 
 Qalcom retains the capability policy layer from 0.2.0, role approvals from 0.2.1, and managed application context from 0.2.2. Trusted Lua still has normal CC:T globals, so this is not a secure sandbox. The native Windows-like UI foundation from 0.1.10 remains active.
 
@@ -100,7 +102,9 @@ The 0.2.3 milestone added a read-only Peripheral Manager. It defensively discove
 
 The 0.2.4 milestone adds local Infrastructure Controls. Operators can define named redstone input/output profiles in `/qalcom/data/infrastructure.meta` (or press N to add a starter output), inspect live state, require confirmation for output changes, issue pulses bounded by global and profile limits, and set enabled outputs to their configured safe state through a confirmed emergency action. Every write, cancellation, failure, pulse completion, and safe-state attempt is audited. Blocklisted or unavailable profiles fail closed; only local/base zones are controllable in this milestone; Safe Mode preserves read-only state inspection but blocks output writes and profile persistence. N creates a starter output; profile labels, sides, zones, and safe-state fields can be adjusted in the documented metadata record before saving.
 
-The 0.2.5 milestone adds **Automation Jobs**. Jobs are persisted as validated records in `/qalcom/data/jobs.meta`, with bounded run history in `/qalcom/data/jobs.history`. A hidden kernel-launched service continues scheduling after the UI closes; the application provides creation, observation, editing, pause/disable, and emergency-stop controls. Jobs support manual, timer, and redstone-input triggers and can perform only structured infrastructure toggles or safe-state actions. Jobs enforce capability checks, cooldowns, bounded retries/history, pause/disable controls, and Safe Mode blocking; they never evaluate Lua strings or invoke arbitrary peripheral methods. Peripheral-attach and radar-contact triggers remain deferred.
+The 0.2.5 milestone added **Automation Jobs**. Jobs are persisted as validated records in `/qalcom/data/jobs.meta`, with bounded run history in `/qalcom/data/jobs.history`. A hidden kernel-launched service continues scheduling after the UI closes; the application provides creation, observation, editing, pause/disable, and emergency-stop controls. Jobs support manual, timer, and redstone-input triggers and can perform only structured infrastructure toggles or safe-state actions. Jobs enforce capability checks, cooldowns, bounded retries/history, pause/disable controls, and Safe Mode blocking; they never evaluate Lua strings or invoke arbitrary peripheral methods. Peripheral-attach and radar-contact triggers remain deferred.
+
+The 0.2.6 milestone adds automation observability and recovery. The service persists bounded runtime state in `/qalcom/data/jobs.status`, separates retries with bounded exponential backoff, records explicit blocked/failure reasons when infrastructure targets disappear, and exposes summaries in Control Center. Automation Jobs can export/import validated definitions through `/qalcom/data/jobs.export`, and Recovery can pause all persisted jobs and reload the service without deleting definitions.
 
 Managed peripheral reads use an allowlist of known read-only methods and reject arbitrary method invocation. Absent or failing peripherals are reported as degraded device state and do not prevent Qalcom from booting.
 

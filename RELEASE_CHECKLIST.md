@@ -19,7 +19,8 @@ Use this checklist before calling a milestone complete.
 - [ ] Managed context wrappers cover filesystem, peripheral, redstone, label, and power actions used by built-in apps.
 - [ ] Peripheral Manager discovery, adapter health, normalized contacts, aliases, blocklists, and trusted markers remain read-only and bounded.
 - [ ] Infrastructure profiles, role/capability checks, confirmations, pulse limits, safe-state behavior, offline failures, and audit entries are bounded and allowlisted.
-- [ ] Structured jobs validate triggers/actions, enforce cooldowns and capability checks, bound history, and never execute arbitrary Lua.
+- [ ] Automation import/export accepts only validated structured definitions, and Recovery can pause all jobs without deleting their definitions.
+- [ ] Structured jobs validate triggers/actions, enforce cooldowns and capability checks, bound history, persist bounded runtime status, use backoff retries, and never execute arbitrary Lua.
 - [ ] Safe Mode blocks sensitive managed actions while preserving permitted read-only inspection.
 - [ ] Compact terminal behavior is checked at 30 x 14 and at a normal terminal size.
 - [ ] Native UI shadows and animations are checked for bounds, responsiveness, and memory impact.
@@ -52,6 +53,7 @@ Use this checklist before calling a milestone complete.
 
 - [ ] `/qalcom/version.lua` has the new version.
 - [ ] `/qalcom/lib/managed.lua`, `/qalcom/lib/peripherals.lua`, `/qalcom/lib/infrastructure.lua`, `/qalcom/lib/jobs.lua`, `/qalcom/apps/peripherals.lua`, `/qalcom/apps/infrastructure.lua`, `/qalcom/apps/jobs.lua`, and `/qalcom/apps/jobs_service.lua` are included in installation and upgrade instructions.
+- [ ] 0.2.6 persistent files `/qalcom/data/jobs.status` and `/qalcom/data/jobs.export` are documented, bounded, and optional.
 - [ ] Role schema/version migration is documented in the README and roadmap.
 - [ ] User-facing version text is current.
 - [ ] `ROADMAP.md` marks the milestone complete and preserves future work.

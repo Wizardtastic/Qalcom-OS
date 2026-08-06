@@ -486,6 +486,53 @@ local function makeContext(task)
         return self:writeFile("/qalcom/data/jobs.meta", Jobs.serialize(data))
     end
 
+    function context:writeJobServiceFile(path, text)
+        if task.name ~= "jobs_service" then return false, "Automation service persistence is restricted" end
+        if path ~= "/qalcom/data/jobs.history" and path ~= "/qalcom/data/jobs.status" then return false, "Automation service path is restricted" end
+        if not fs.exists("/qalcom/data") then fs.makeDir("/qalcom/data") end
+        local file = fs.open(path, "w")
+        if not file then return false, "Unable to persist automation state" end
+        local ok, reason = pcall(file.write, tostring(text or ""))
+        pcall(file.close)
+        return ok, ok and nil or tostring(reason or "Unable to persist automation state")
+    end
+
+    function context:disableAutomationJobs()
+        local path = "/qalcom/data/jobs.meta"
+        if not fs.exists(path) then return true end
+        local input = fs.open(path, "r")
+        if not input then return false, "Unable to read job definitions" end
+        local text = input.readAll() or ""
+        input.close()
+        local data = Jobs.parse(text)
+        if data.error then return false, data.error end
+        local valid, validation = Jobs.dataValid(data)
+        if not valid then return false, validation end
+        for _, job in ipairs(data.jobs or {}) do job.paused = true end
+        local output = fs.open(path, "w")
+        if not output then return false, "Unable to save paused job definitions" end
+        local ok, reason = pcall(output.write, Jobs.serialize(data))
+        pcall(output.close)
+        if not ok then return false, tostring(reason or "Unable to save paused job definitions") end
+        Capabilities.audit("jobs-emergency-stop", tostring(self.user or "unknown") .. " recovery")
+        os.queueEvent("qalcom_job_reload")
+        return true
+    end
+
+    function context:jobStatus()
+        local text, reason = self:readFile("/qalcom/data/jobs.status")
+        local statuses = Jobs.parseStatus(text or "")
+        return {
+            statuses = statuses,
+            summary = Jobs.statusSummary(statuses),
+            error = (not text and reason) or nil,
+        }
+    end
+
+    function context:reloadJobs()
+        os.queueEvent("qalcom_job_reload")
+    end
+
     function context:jobInfrastructureProfiles()
         return self:infrastructureProfiles()
     end
@@ -536,6 +583,7 @@ local function makeContext(task)
 
         info.user = state.user
         info.role = state.role
+        info.jobs = self:jobStatus()
         info.tasks = {}
         for _, candidate in ipairs(state.tasks) do
             info.tasks[#info.tasks + 1] = {

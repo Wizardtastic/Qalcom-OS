@@ -10,6 +10,8 @@ Jobs.maxCooldown = 3600
 Jobs.maxRetries = 3
 Jobs.maxTimeout = 30
 Jobs.maxHistory = 40
+Jobs.maxStatus = 32
+Jobs.maxRetryDelay = 30
 Jobs.maxMetadataBytes = 24000
 Jobs.validSides = { top = true, bottom = true, left = true, right = true, front = true, back = true }
 Jobs.validTriggers = { manual = true, timer = true, redstone = true }
@@ -211,6 +213,61 @@ function Jobs.actionValid(job)
     return true
 end
 
+function Jobs.definitionValid(job)
+    local normalized = Jobs.normalize(job, job and job.id or "job")
+    if not validTrigger(job and job.trigger) then return false, "Unsupported trigger" end
+    if not validAction(job and job.action) then return false, "Unsupported structured action" end
+    if normalized.trigger == "timer" then
+        local _, reason = Jobs.timerInterval(normalized)
+        if not _ then return false, reason end
+    elseif normalized.trigger == "redstone" then
+        local side, reason = Jobs.redstoneTrigger(normalized)
+        if not side then return false, reason end
+    end
+    return Jobs.actionValid(normalized)
+end
+
+function Jobs.dataValid(data)
+    for _, job in ipairs((data and data.jobs) or {}) do
+        local ok, reason = Jobs.definitionValid(job)
+        if not ok then return false, tostring(job.id or "job") .. ": " .. tostring(reason) end
+    end
+    return true
+end
+
+function Jobs.parseStrict(text)
+    text = tostring(text or "")
+    if #text > Jobs.maxMetadataBytes then return { error = "Job metadata exceeds safety limit", jobs = {} } end
+    local lines = 0
+    for line in (text .. "\n"):gmatch("(.-)\n") do
+        lines = lines + 1
+        if lines > 256 then break end
+        if line ~= "" and line:sub(1, 1) ~= "#" then
+            local fields = split(line)
+            if fields[1] == "schema" then
+                local schema = tonumber(fields[2])
+                if schema ~= Jobs.schemaVersion then return { error = "Unsupported job schema", jobs = {} } end
+            elseif fields[1] == "job" then
+                local trigger, action = fields[5], fields[7]
+                if not validTrigger(trigger) then return { error = "Unsupported trigger: " .. tostring(trigger), jobs = {} } end
+                if not validAction(action) then return { error = "Unsupported action: " .. tostring(action), jobs = {} } end
+                local candidate = Jobs.normalize({
+                    id = fields[2], label = fields[3], enabled = bool(fields[4], true),
+                    trigger = trigger, triggerValue = fields[6], action = action,
+                    target = fields[8], value = fields[9] == "true" and true or (fields[9] == "false" and false or "toggle"),
+                    cooldown = fields[10], maxRetries = fields[11], timeout = fields[12], paused = bool(fields[13], false),
+                }, "job-" .. tostring(lines))
+                local valid, reason = Jobs.definitionValid(candidate)
+                if not valid then return { error = tostring(candidate.id) .. ": " .. tostring(reason), jobs = {} } end
+            end
+        end
+    end
+    local result = Jobs.parse(text)
+    local valid, reason = Jobs.dataValid(result)
+    if not valid then return { error = reason, jobs = {} } end
+    return result
+end
+
 function Jobs.addHistory(history, entry)
     history = history or {}
     history[#history + 1] = {
@@ -221,6 +278,90 @@ function Jobs.addHistory(history, entry)
     }
     while #history > Jobs.maxHistory do table.remove(history, 1) end
     return history
+end
+
+function Jobs.retryDelay(attempt)
+    attempt = math.max(1, math.floor(tonumber(attempt) or 1))
+    return math.min(Jobs.maxRetryDelay, 2 ^ math.min(attempt - 1, 5))
+end
+
+function Jobs.normalizeStatus(status, fallbackId)
+    status = status or {}
+    local state = clean(status.state or "idle", 16)
+    if state ~= "idle" and state ~= "running" and state ~= "retrying" and state ~= "success" and state ~= "failed" and state ~= "disabled" and state ~= "blocked" then
+        state = "idle"
+    end
+    return {
+        id = clean(status.id or fallbackId or "job", Jobs.maxIdLength),
+        state = state,
+        source = clean(status.source or "", 24),
+        attempts = integer(status.attempts, 0, Jobs.maxRetries + 1, 0),
+        nextAt = tonumber(status.nextAt) or 0,
+        lastOutcome = clean(status.lastOutcome or "", 24),
+        lastDetail = clean(status.lastDetail or "", 120),
+        updated = tonumber(status.updated) or 0,
+    }
+end
+
+function Jobs.parseStatus(text)
+    text = tostring(text or "")
+    local statuses, seen, lines = {}, {}, 0
+    for line in (text .. "\n"):gmatch("(.-)\n") do
+        lines = lines + 1
+        if lines > 256 then break end
+        if line ~= "" and line:sub(1, 1) ~= "#" then
+            local fields = split(line)
+            if fields[1] == "status" then
+                local status = Jobs.normalizeStatus({
+                    id = fields[2], state = fields[3], source = fields[4],
+                    attempts = fields[5], nextAt = fields[6], lastOutcome = fields[7],
+                    lastDetail = fields[8], updated = fields[9],
+                }, "job-" .. tostring(#statuses + 1))
+                if not seen[status.id] and #statuses < Jobs.maxStatus then
+                    seen[status.id] = true
+                    statuses[#statuses + 1] = status
+                end
+            end
+        end
+    end
+    return statuses
+end
+
+function Jobs.serializeStatus(statuses)
+    local lines = { "# Qalcom structured job status schema " .. tostring(Jobs.schemaVersion) }
+    local values = {}
+    local count = 0
+    for key, status in pairs(statuses or {}) do
+        count = count + 1
+        if count <= Jobs.maxStatus then values[#values + 1] = Jobs.normalizeStatus(status, type(key) == "string" and key or "job-" .. tostring(count)) end
+    end
+    table.sort(values, function(left, right) return left.id < right.id end)
+    for _, status in ipairs(values) do
+        lines[#lines + 1] = table.concat({
+            "status", escape(status.id), status.state, escape(status.source),
+            tostring(status.attempts), tostring(status.nextAt), escape(status.lastOutcome),
+            escape(status.lastDetail), tostring(status.updated),
+        }, "|")
+    end
+    return table.concat(lines, "\n") .. "\n"
+end
+
+function Jobs.statusSummary(statuses)
+    local summary = { total = 0, active = 0, retrying = 0, failed = 0, success = 0, disabled = 0, blocked = 0, lastFailure = "" }
+    for _, status in ipairs(statuses or {}) do
+        local normalized = Jobs.normalizeStatus(status)
+        summary.total = summary.total + 1
+        if normalized.state == "running" then summary.active = summary.active + 1 end
+        if normalized.state == "retrying" then summary.retrying = summary.retrying + 1; summary.active = summary.active + 1 end
+        if normalized.state == "failed" then
+            summary.failed = summary.failed + 1
+            if summary.lastFailure == "" then summary.lastFailure = normalized.lastDetail end
+        end
+        if normalized.state == "success" then summary.success = summary.success + 1 end
+        if normalized.state == "disabled" then summary.disabled = summary.disabled + 1 end
+        if normalized.state == "blocked" then summary.blocked = summary.blocked + 1 end
+    end
+    return summary
 end
 
 return Jobs

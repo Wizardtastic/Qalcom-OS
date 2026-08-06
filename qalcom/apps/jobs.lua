@@ -7,14 +7,14 @@ return function(ctx)
     local data = Jobs.empty()
     local selected = 1
     local history = {}
-    local lastRun = {}
-    local nextTimer = {}
     local status = "Structured jobs are disabled until explicitly enabled"
     local editing = false
     local input = ""
     local editingField = nil
     local profiles = Infrastructure.empty()
     local profileStates = {}
+    local statuses = {}
+    local lastRun = {}
 
     local function audit(action, detail)
         if ctx.audit then ctx:audit(action, detail) end
@@ -25,18 +25,15 @@ return function(ctx)
         if data.error then status = data.error end
         local historyText = ctx:readFile("/qalcom/data/jobs.history")
         history = Jobs.parseHistory(historyText or "")
+        local jobStatus = ctx.jobStatus and ctx:jobStatus() or { statuses = {} }
+        statuses = {}
+        for _, item in ipairs(jobStatus.statuses or {}) do statuses[item.id] = item end
         profiles = ctx:jobInfrastructureProfiles() or Infrastructure.empty()
         profileStates = {}
         for _, profile in ipairs(profiles.profiles or {}) do
             profileStates[profile.id] = ctx:jobInfrastructureState(profile)
         end
         selected = math.max(1, math.min(selected, math.max(1, #data.jobs)))
-        for _, job in ipairs(data.jobs) do
-            if job.trigger == "timer" and job.enabled and not job.paused then
-                local interval = Jobs.timerInterval(job)
-                if interval and not nextTimer[job.id] then nextTimer[job.id] = os.clock() + interval end
-            end
-        end
     end
 
     local function save()
@@ -113,6 +110,29 @@ return function(ctx)
         return ok, failure
     end
 
+    local function exportJobs()
+        local ok, reason = ctx:writeFile("/qalcom/data/jobs.export", Jobs.serialize(data))
+        status = ok and "Validated job definitions exported" or (reason or "Unable to export jobs")
+    end
+
+    local function importJobs()
+        local text, reason = ctx:readFile("/qalcom/data/jobs.export")
+        if not text then status = reason or "No job export found"; return end
+        local imported = Jobs.parseStrict(text)
+        if imported.error then status = imported.error; return end
+        local valid, validation = Jobs.dataValid(imported)
+        if not valid then status = "Export rejected: " .. tostring(validation); return end
+        local ok, failure = ctx:writeJobDefinitions(imported)
+        if ok then
+            data = imported
+            selected = math.max(1, math.min(selected, math.max(1, #data.jobs)))
+            status = "Validated job definitions imported"
+            if ctx.reloadJobs then ctx:reloadJobs() end
+        else
+            status = failure or "Unable to import jobs"
+        end
+    end
+
     local function addJob()
         if #data.jobs >= Jobs.maxJobs then status = "Job limit reached"; return end
         local index = #data.jobs + 1
@@ -161,6 +181,9 @@ return function(ctx)
             detail("Action", job.action)
             detail("Target", job.target ~= "" and job.target or "all enabled outputs")
             detail("Cooldown", job.cooldown .. "s / retries " .. job.maxRetries)
+            local live = statuses[job.id]
+            detail("Runtime", live and (live.state .. " / attempt " .. tostring(live.attempts)) or "idle", live and (live.state == "failed" and UI.colors.danger or live.state == "retrying" and UI.colors.warning or UI.colors.success))
+            if live and live.lastDetail ~= "" then detail("Reason", live.lastDetail, live.state == "failed" and UI.colors.danger or UI.colors.muted) end
             detail("State", job.paused and "PAUSED" or (job.enabled and "ENABLED" or "DISABLED"), job.paused and UI.colors.warning or UI.colors.success)
             if detailRow < footer then detailRow = detailRow + 1 end
             UI.text(ctx.win, split, detailRow, "Last runs", UI.colors.accent, UI.colors.surface, width - split - 1)
@@ -206,6 +229,8 @@ return function(ctx)
             elseif value == keys.space then if job then job.paused = not job.paused; status = job.paused and "Job paused" or "Job resumed"; render() end
             elseif value == keys.d then if job then job.enabled = not job.enabled; status = job.enabled and "Job enabled" or "Job disabled"; render() end
             elseif value == keys.s then save(); render()
+            elseif value == keys.i then exportJobs(); render()
+            elseif value == keys.o then importJobs(); load(); render()
             elseif value == keys.r then load(); status = "Jobs refreshed"; render()
             elseif value == keys.e then
                 for _, item in ipairs(data.jobs) do item.paused = true end
@@ -237,15 +262,6 @@ return function(ctx)
                 if ctx:isSafeMode() then ctx:close()
                 elseif save() then ctx:close() end
             end
-        elseif event == "timer" then
-            for _, job in ipairs(data.jobs) do
-                if job.trigger == "timer" and job.enabled and not job.paused and nextTimer[job.id] and os.clock() >= nextTimer[job.id] then
-                    run(job, "timer")
-                    local interval = Jobs.timerInterval(job) or 10
-                    nextTimer[job.id] = os.clock() + interval
-                end
-            end
-            render()
         elseif event == "redstone" then
             for _, job in ipairs(data.jobs) do
                 if job.trigger == "redstone" and job.enabled and not job.paused then
@@ -256,6 +272,11 @@ return function(ctx)
             end
             render()
         elseif event == "qalcom_tick" or event == "term_resize" then
+            if ctx.jobStatus then
+                local jobStatus = ctx:jobStatus()
+                statuses = {}
+                for _, item in ipairs(jobStatus.statuses or {}) do statuses[item.id] = item end
+            end
             render()
         end
     end

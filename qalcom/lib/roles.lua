@@ -26,7 +26,7 @@ local definitions = {
         label = "Operations officer",
         description = "Base operations and approved infrastructure response",
         capabilities = {
-            "fs.read", "peripheral.read", "redstone.read", "redstone.control", "infrastructure.control", "jobs.manage",
+            "fs.read", "fs.write", "peripheral.read", "redstone.read", "redstone.control", "infrastructure.control", "jobs.manage",
             "network.send", "network.receive",
         },
     },
@@ -63,7 +63,7 @@ local definitions = {
         label = "Automation service",
         description = "Bounded service identity for structured local jobs",
         capabilities = {
-            "fs.read", "peripheral.read", "redstone.read", "redstone.control", "infrastructure.control", "jobs.manage",
+            "fs.read", "fs.write", "peripheral.read", "redstone.read", "redstone.control", "infrastructure.control", "jobs.manage",
             "network.send", "network.receive",
         },
     },
