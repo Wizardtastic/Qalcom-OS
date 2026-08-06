@@ -1,4 +1,4 @@
-# Qalcom OS 0.2.6
+# Qalcom OS 0.4.4
 
 Qalcom OS is a clean, Windows-inspired desktop environment for ComputerCraft: Tweaked. This milestone runs entirely inside CC:T and does not require a Minecraft mod or CraftOS modification.
 
@@ -39,12 +39,22 @@ Copy the repository contents to the root of a CC:T computer so the layout looks 
 /qalcom/apps/jobs.lua
 /qalcom/apps/jobs_service.lua
 /qalcom/apps/infrastructure.lua
+/qalcom/lib/network.lua
+/qalcom/lib/crypto.lua
+/qalcom/lib/protocol.lua
+/qalcom/lib/nodes.lua
+/qalcom/lib/telemetry.lua
+/qalcom/apps/network.lua
+/qalcom/apps/network_service.lua
+/qalcom/apps/telemetry.lua
+/qalcom/lib/incidents.lua
+/qalcom/apps/incidents.lua
 /qalcom/lib/calculator.lua
 /qalcom/apps/calculator.lua
 /qalcom/apps/capabilities.lua
 ```
 
-Reboot the computer. Qalcom starts through `/startup.lua`, shows the first-run account setup, and will enter a small recovery prompt if the kernel fails to load. When upgrading from 0.1.10, copy the updated `/qalcom/kernel/init.lua`, `/qalcom/lib/ui.lua`, `/qalcom/lib/ui/animation.lua`, `/qalcom/lib/ui/hit.lua`, `/qalcom/lib/config.lua`, `/qalcom/apps/settings.lua`, `/qalcom/lib/capabilities.lua`, `/qalcom/lib/roles.lua`, `/qalcom/lib/managed.lua`, `/qalcom/lib/peripherals.lua`,`/qalcom/lib/infrastructure.lua`, `/qalcom/lib/jobs.lua`, `/qalcom/lib/calculator.lua`, `/qalcom/apps/calculator.lua`, `/qalcom/apps/capabilities.lua`, `/qalcom/apps/peripherals.lua`, `/qalcom/apps/infrastructure.lua`, `/qalcom/apps/jobs.lua`, `/qalcom/apps/jobs_service.lua`, and `/qalcom/version.lua` files. Configuration schema migration runs automatically, including the Reduced motion preference; account data in `/qalcom/data/accounts` is preserved.
+Reboot the computer. Qalcom starts through `/startup.lua`, shows the first-run account setup, and will enter a small recovery prompt if the kernel fails to load. When upgrading from 0.1.10, copy the updated `/qalcom/kernel/init.lua`, `/qalcom/lib/ui.lua`, `/qalcom/lib/ui/animation.lua`, `/qalcom/lib/ui/hit.lua`, `/qalcom/lib/config.lua`, `/qalcom/apps/settings.lua`, `/qalcom/lib/capabilities.lua`, `/qalcom/lib/roles.lua`, `/qalcom/lib/managed.lua`, `/qalcom/lib/peripherals.lua`,`/qalcom/lib/infrastructure.lua`, `/qalcom/lib/jobs.lua`, `/qalcom/lib/calculator.lua`, `/qalcom/apps/calculator.lua`, `/qalcom/apps/capabilities.lua`, `/qalcom/apps/peripherals.lua`, `/qalcom/apps/infrastructure.lua`, `/qalcom/apps/jobs.lua`, `/qalcom/apps/jobs_service.lua`, `/qalcom/lib/network.lua`, `/qalcom/lib/crypto.lua`, `/qalcom/lib/protocol.lua`, `/qalcom/lib/nodes.lua`, `/qalcom/lib/telemetry.lua`, `/qalcom/lib/incidents.lua`, `/qalcom/apps/network.lua`, `/qalcom/apps/network_service.lua`, `/qalcom/apps/telemetry.lua`, `/qalcom/apps/incidents.lua`, and `/qalcom/version.lua` files. Configuration schema migration runs automatically, including the Reduced motion preference; account data in `/qalcom/data/accounts` is preserved.
 
 ## Controls
 
@@ -65,6 +75,8 @@ Reboot the computer. Qalcom starts through `/startup.lua`, shows the first-run a
 - File Explorer supports mouse selection, keyboard navigation, opening directories, and refresh.
 - System Monitor is available from Start and reports peripheral/modem status; it does not launch automatically.
 - Open **Control Center** from Start to inspect processes, memory, storage, services, automation activity, and declared capability profiles.
+- Open **Network Operations** from Start to inspect modem hardware, opt-in encrypted transport, trusted-node state, and recent authenticated-request audit. Encryption authenticates and hides messages in transit but cannot prevent radio/game-level jamming or protect a compromised computer.
+- Open **Operations Telemetry** from Start to inspect normalized read-only radar, Aeronautics, CBC, and Create: Propulsion candidates, health, stale/degraded state, and bounded contacts. It never controls a device.
 - Open **Recovery → Disable all automation jobs** to pause every persisted job and reload the hidden scheduler safely.
 - In **Automation Jobs**, press I to export validated definitions to `/qalcom/data/jobs.export`, or O to import that file after validation. Runtime state shows running, retrying, blocked, failed, or successful jobs with bounded attempt counts and failure details.
 - Open **Peripheral Manager** from Start to inspect attached devices, adapter health, safe status, and normalized radar contacts. Press A to edit an alias, B to block, T to mark trusted, S to save staged metadata, and R to refresh; it is read-only.
@@ -93,8 +105,16 @@ Reboot the computer. Qalcom starts through `/startup.lua`, shows the first-run a
 - **Account**: View the current session and local war-server role; Administrators can manage account roles, and all users can sign out.
 - **Text Viewer**: View and edit local text, Lua, and log files.
 - **Calculator**: Perform basic arithmetic with a screenshot-inspired display and keypad.
+- **Network Operations**: Configure opt-in encrypted transport, inspect trusted nodes, block/quarantine nodes, and review bounded request audit history.
+- **Incident Response**: Acknowledge structured incidents and preview bounded alarm/lockdown playbooks in dry-run mode; no playbook action executes automatically.
+- **Operations Telemetry**: Inspect normalized read-only radar, Aeronautics, CBC, and Create: Propulsion telemetry and bounded contacts.
+- **Encrypted Network Service**: Hidden kernel service for authenticated status and defensive safe-state/job-pause requests only.
 
-## Version 0.2.6
+## Version 0.4.4
+
+This release delivers the currently safe, implementable roadmap slice: authenticated encrypted datagrams, persisted transmit/receive counters, trust-state operations, read-only telemetry, bounded defensive requests, and structured incident dry-runs. Full pairing UX, fleet/logistics dashboards, and playbook execution remain explicitly partial or deferred. Pairing still requires an explicit local node record or separate trusted enrollment channel; no secret is generated from an unauthenticated network message.
+
+
 
 Qalcom retains the capability policy layer from 0.2.0, role approvals from 0.2.1, and managed application context from 0.2.2. Trusted Lua still has normal CC:T globals, so this is not a secure sandbox. The native Windows-like UI foundation from 0.1.10 remains active.
 
@@ -104,7 +124,9 @@ The 0.2.4 milestone adds local Infrastructure Controls. Operators can define nam
 
 The 0.2.5 milestone added **Automation Jobs**. Jobs are persisted as validated records in `/qalcom/data/jobs.meta`, with bounded run history in `/qalcom/data/jobs.history`. A hidden kernel-launched service continues scheduling after the UI closes; the application provides creation, observation, editing, pause/disable, and emergency-stop controls. Jobs support manual, timer, and redstone-input triggers and can perform only structured infrastructure toggles or safe-state actions. Jobs enforce capability checks, cooldowns, bounded retries/history, pause/disable controls, and Safe Mode blocking; they never evaluate Lua strings or invoke arbitrary peripheral methods. Peripheral-attach and radar-contact triggers remain deferred.
 
-The 0.2.6 milestone adds automation observability and recovery. The service persists bounded runtime state in `/qalcom/data/jobs.status`, separates retries with bounded exponential backoff, records explicit blocked/failure reasons when infrastructure targets disappear, and exposes summaries in Control Center. Automation Jobs can export/import validated definitions through `/qalcom/data/jobs.export`, and Recovery can pause all persisted jobs and reload the service without deleting definitions.
+The 0.2.6 milestone added automation observability and recovery. The 0.3.0–0.4.4 milestones add authenticated encrypted operations, telemetry, bounded defensive response, and structured incident coordination. Network configuration, modem inventory, trusted-node state, HMAC-SHA256 authenticated encryption, persistent counters, replay rejection, allowlisted request kinds, bounded payloads, rate limits, and audit records are implemented in `/qalcom/lib/network.lua`, `/qalcom/lib/crypto.lua`, `/qalcom/lib/protocol.lua`, and `/qalcom/lib/nodes.lua`. Telemetry normalizes discovered Aeronautics, CBC, Create: Propulsion, Create Radar, and Create Aero Radar candidates into bounded health/status/contact records and remains read-only. Incident Response stores bounded records and offers dry-run previews only.
+
+Persistent 0.4.4 records are optional `/qalcom/data/network.meta` (local modem configuration), `/qalcom/data/nodes.meta` (explicitly enrolled nodes), `/qalcom/data/network.state` (counter/replay state), `/qalcom/data/network.audit` (bounded request audit), and `/qalcom/data/incidents.meta` (bounded incident records); malformed records fail closed. Research boundary: CC:Tweaked provides the modem/peripheral primitives, but the target Create mods do not all expose the same native CC API. Create Radar/Create Aero Radar support is not assumed without an in-game bridge. Create Aeronautics telemetry/control is expected through a separately installed bridge such as Create: Avionics where present. CBC control/telemetry may be exposed by CC:CBC or another server-approved peripheral addon. Qalcom discovers methods at runtime, calls only its small read allowlist, reports unknown/stale/degraded/unavailable state, and never turns radar observations into targeting or firing authority. The network transport uses pure-Lua SHA-256/HMAC-SHA256, HKDF-derived encryption/authentication keys, authenticated stream encryption, persistent transmit and receive counters, replay checks, rate limits, and authenticated associated data. It still cannot prevent RF/game-level jamming/interference, protect a compromised CC:T host or copied secret, guarantee clock availability, or guarantee constant-time side-channel resistance; those limitations are explicit.
 
 Managed peripheral reads use an allowlist of known read-only methods and reject arbitrary method invocation. Absent or failing peripherals are reported as degraded device state and do not prevent Qalcom from booting.
 
@@ -118,6 +140,6 @@ The complete future roadmap is preserved in [ROADMAP.md](ROADMAP.md). See [TESTI
 
 Qalcom replaces the default CraftOS user experience after the CC:T host and BIOS have loaded. It intentionally uses only standard CC:T Lua APIs, including `term`, `window`, `fs`, `peripheral`, and the event system. It is not a replacement for the Java-side CC:T firmware.
 
-Safe Mode limits the launcher to recovery, logs, terminal, settings, the read-only Peripheral Manager, Infrastructure Controls, and Automation Jobs for troubleshooting, closes disallowed desktop apps when the setting takes effect, and blocks sensitive managed writes, redstone/infrastructure controls, job management/execution, label changes, and power actions. Read-only managed inspection remains available where the app is allowed. The current networking and remote automation layers are intentionally not enabled yet. The kernel forwards standard modem/rednet events to trusted applications, but this milestone does not expose a network control service. Future versions should add authenticated, allowlisted commands rather than arbitrary remote Lua execution.
+Safe Mode limits the launcher to recovery, logs, terminal, settings, the read-only Peripheral Manager, Operations Telemetry, Incident Response, Network Operations diagnostics, Infrastructure Controls, and Automation Jobs for troubleshooting, closes disallowed desktop apps when the setting takes effect, and blocks sensitive managed writes, redstone/infrastructure controls, job management/execution, label changes, power actions, and network transport. Read-only managed inspection remains available where the app is allowed. The Network Operations app provides explicit opt-in encrypted transport, trust-state management, replay protection, request limits, and audit visibility. The hidden service handles only authenticated allowlisted status and narrowly bounded safe-state/job-pause requests. Incident Response provides acknowledgement and dry-run previews. There is no arbitrary remote execution, remote peripheral call, firing, launch, movement, propulsion actuation, or radar-guided targeting.
 
 Built-in applications are trusted and currently execute with the normal CC:T global APIs. Login credentials are stored locally in `/qalcom/data/accounts`; the included digest is a lightweight local deterrent, not cryptographic protection. Anyone with CraftOS recovery or server/file access can bypass it. Qalcom's process model provides lifecycle and UI isolation, not a security sandbox; third-party applications should not be installed until a capability-based service boundary is added.

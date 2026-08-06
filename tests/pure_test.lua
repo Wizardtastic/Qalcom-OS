@@ -52,6 +52,36 @@ local function loadAnimation()
 end
 
 local Animation = loadAnimation()
+local function loadNetwork()
+    local candidates = { "qalcom/lib/network.lua", "../qalcom/lib/network.lua", "/qalcom/lib/network.lua" }
+    for _, path in ipairs(candidates) do
+        local ok, module = pcall(dofile, path)
+        if ok and type(module) == "table" then return module end
+    end
+    fail("Unable to load qalcom/lib/network.lua")
+end
+
+local Network = loadNetwork()
+local function loadCrypto()
+    local candidates = { "qalcom/lib/crypto.lua", "../qalcom/lib/crypto.lua", "/qalcom/lib/crypto.lua" }
+    for _, path in ipairs(candidates) do
+        local ok, module = pcall(dofile, path)
+        if ok and type(module) == "table" then return module end
+    end
+    fail("Unable to load qalcom/lib/crypto.lua")
+end
+
+local Crypto = loadCrypto()
+local function loadIncidents()
+    local candidates = { "qalcom/lib/incidents.lua", "../qalcom/lib/incidents.lua", "/qalcom/lib/incidents.lua" }
+    for _, path in ipairs(candidates) do
+        local ok, module = pcall(dofile, path)
+        if ok and type(module) == "table" then return module end
+    end
+    fail("Unable to load qalcom/lib/incidents.lua")
+end
+
+local Incidents = loadIncidents()
 local function loadPeripherals()
     local candidates = { "qalcom/lib/peripherals.lua", "../qalcom/lib/peripherals.lua", "/qalcom/lib/peripherals.lua" }
     for _, path in ipairs(candidates) do
@@ -146,6 +176,45 @@ test("validates roles and policies", function()
     equal(safe.reason, "Safe Mode blocks sensitive actions", "Safe Mode reason")
     local readOnly = Capabilities.policy("Observer", "monitor", "peripheral.read", true)
     truthy(readOnly.allowed, "Safe Mode preserves read-only inspection")
+end)
+
+test("validates bounded network envelopes and replay protection", function()
+    local envelope = { protocol = "qalcom.v1", version = 1, source = "node-a", kind = "status_request", nonce = "n1", timestamp = 100, auth = "x" }
+    truthy(Pure.validateNetworkEnvelope(envelope, 100, 30, 10), "valid envelope")
+    equal(Pure.validateNetworkEnvelope(envelope, 140, 30, 10), false, "expired envelope")
+    local replay = {}
+    local first = Pure.replayAccept(replay, "node-a:n1", 100, 2, 30)
+    truthy(first, "first replay token")
+    equal(Pure.replayAccept(replay, "node-a:n1", 100, 2, 30), false, "duplicate replay token")
+    truthy(Network.validateRequest({ request = "telemetry.snapshot" }, "status_request"), "read request allowlist")
+    equal(Network.validateRequest({ request = "shell.run" }, "status_request"), false, "arbitrary request rejected")
+    local config = Network.emptyConfig("node-a")
+    local envelope = Network.createSecureEnvelope(config, "node-b", "status_request", { request = "telemetry.snapshot", requestId = "r1" }, "shared secret", 1, 100)
+    local node = Network.normalizeNode({ id = "node-a", secret = "shared secret", state = "paired" })
+    local replay = {}
+    local payload = Network.openSecureEnvelope(envelope, "shared secret", config.protocol, 100, node, replay, "node-b")
+    truthy(payload and payload.requestId == "r1", "secure envelope opens")
+    equal(Network.openSecureEnvelope(envelope, "shared secret", config.protocol, 100, node, replay, "node-b"), nil, "secure replay rejected")
+    envelope.tag = string.rep("00", 16)
+    local altered = Network.openSecureEnvelope(envelope, "shared secret", config.protocol, 100, node, {}, "node-b")
+    equal(altered, nil, "altered tag rejected")
+    local state = { txCounter = 4, rxCounters = { ["node-a"] = { highWater = 7, seen = { [6] = true, [7] = true } } } }
+    local restored = Network.parseState(Network.serializeState(state))
+    equal(restored.rxCounters["node-a"].highWater, 7, "receive counter persists")
+    truthy(restored.rxCounters["node-a"].seen[6], "receive window persists")
+end)
+
+test("bounds incidents and previews playbooks", function()
+    local incidents = Incidents.empty()
+    local ok, item = Incidents.add(incidents, { id = "i1", title = "Base alarm", severity = "high", source = "radar" }, 10)
+    truthy(ok, "incident added")
+    truthy(Incidents.setState(incidents, item.id, "acknowledged", "operator", 11), "incident acknowledged")
+    local previewOk, preview = Incidents.preview("lockdown", { ["infrastructure.safe_state"] = true, ["jobs.pause"] = false })
+    truthy(previewOk, "playbook preview")
+    truthy(preview.blocked, "preview policy block")
+    local restored = Incidents.parse(Incidents.serialize(incidents))
+    equal(#restored.incidents, 1, "incident persistence")
+    equal(restored.incidents[1].state, "acknowledged", "incident state persistence")
 end)
 
 test("normalizes peripheral metadata and radar contacts", function()

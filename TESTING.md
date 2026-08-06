@@ -1,8 +1,8 @@
 # Qalcom OS Testing Guide
 
-The current source version is 0.2.6. The 0.1.x, 0.2.0, 0.2.1, 0.2.2, and 0.2.3 checks below remain required regression checks; the Infrastructure Controls and Automation Jobs checks cover the current milestones. No local Lua runtime or CC:T instance is available in this checkout, so automated and in-game validation remain pending.
+The current source version is 0.4.4. The 0.1.x, 0.2.0, 0.2.1, 0.2.2, and 0.2.3 checks below remain required regression checks; the Infrastructure Controls and Automation Jobs checks cover the current milestones. No local Lua runtime or CC:T instance is available in this checkout, so automated and in-game validation remain pending.
 
-The 0.2.6 service is intentionally conservative: only manual, timer, and redstone-edge triggers are implemented; peripheral-attach and radar-contact triggers are deferred. Runtime status is persisted in `/qalcom/data/jobs.status`; the hidden service uses bounded retry backoff and remains recoverable from Recovery or CraftOS.
+The 0.2.6 service is intentionally conservative: only manual, timer, and redstone-edge triggers are implemented; peripheral-attach and radar-contact triggers are deferred. Runtime status is persisted in `/qalcom/data/jobs.status`; the hidden service uses bounded retry backoff and remains recoverable from Recovery or CraftOS. Version 0.4.4 adds opt-in authenticated encrypted datagrams, persisted replay/counter state, Network Operations, read-only Operations Telemetry, and Incident Response dry-runs. Encryption cannot prevent jamming or protect a compromised host.
 
 ## Offline pure-helper checks
 
@@ -25,6 +25,8 @@ Covered helper behavior:
 - Integer setting clamping
 - Window geometry fitting
 - Animation interpolation and cancellation
+- HMAC-SHA256 encrypted envelope validation, expiry, destination binding, persistent counter replay rejection, request allowlists, rate limits, and bounded node/config records
+- Incident record validation, acknowledgement, and dry-run playbook previews
 
 ## Manual CC:T checklist
 
@@ -205,6 +207,29 @@ Run these checks on a fresh copy and again over an existing 0.1.x installation.
 - [ ] Recovery pauses all persisted jobs and the scheduler reloads without deleting job definitions or history.
 - [ ] Safe Mode prevents execution while preserving status inspection.
 - [ ] CraftOS recovery can pause jobs by editing `/qalcom/data/jobs.meta` to set `paused=true` records or removing the file when a full reset is intentional.
+
+## 0.4.4 Network, telemetry, and incident operations
+
+- [ ] Network Operations appears in Start and Safe Mode and does not crash when no modem is present.
+- [ ] Incident Response appears in Start and Safe Mode and does not crash with empty or malformed incident storage.
+- [ ] Modem inventory reports side/name/type and refreshes after attach/detach; enabled transport opens configured channels and persists transmit/receive counters.
+- [ ] `/qalcom/data/network.meta` parses defensively, clamps channels, and persists only through the configured manager.
+- [ ] The default network state is disabled; enabling requires local configuration save and an explicit service reload.
+- [ ] Encrypted envelopes reject altered ciphertext/tag/associated data, wrong destination, unknown nodes, stale timestamps, duplicate/out-of-order counters, oversized ciphertext, and unsupported suites.
+- [ ] Rebooting with `/qalcom/data/network.state` preserves receive high-water/window state and rejects captured packets.
+- [ ] Network Operations can block/quarantine/approve a node and review bounded audit entries.
+- [ ] A modem jammer or interference is reported as unavailable/stale rather than treated as a cryptographic failure.
+- [ ] Incident Response acknowledges an incident and previews alarm/lockdown/evacuation without executing a playbook automatically.
+- [ ] `/qalcom/data/nodes.meta` rejects malformed/duplicate/over-limit node records.
+- [ ] Authenticated envelopes reject protocol/version mismatch, missing fields, expiry, future timestamps, unknown nodes, bad authentication, and replay.
+- [ ] Read request names are allowlisted; `shell.run`, arbitrary Lua, arbitrary peripheral calls, firing, movement, and propulsion requests are rejected.
+- [ ] Operations Telemetry appears in Start and remains read-only in Safe Mode.
+- [ ] Aeronautics, CBC, Create: Propulsion, Create Radar, and Create Aero Radar candidates are discovered by type/method evidence rather than fixed names.
+- [ ] Telemetry distinguishes online, stale, degraded, unavailable, blocked, and unknown data.
+- [ ] Radar contacts remain bounded, timestamped, uncertain, and never become hostile/firing decisions.
+- [ ] If a bridge addon is absent, Qalcom boots and shows a clear degraded/unavailable state.
+- [ ] Verify the actual modpack's CC:CBC/Create: Avionics/radar bridge method names in-game before enabling any future control adapter.
+- [ ] Confirm only successful adapter-specific probes become `apiCompatible`; name/type guesses remain unknown/degraded.
 
 ## Session and resize behavior
 

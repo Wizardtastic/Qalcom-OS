@@ -8,9 +8,15 @@ local Roles = dofile("/qalcom/lib/roles.lua")
 local Managed = dofile("/qalcom/lib/managed.lua")
 local Infrastructure = dofile("/qalcom/lib/infrastructure.lua")
 local Jobs = dofile("/qalcom/lib/jobs.lua")
+local Network = dofile("/qalcom/lib/network.lua")
 local unpack = table.unpack or unpack
 local config = Config.load()
 Config.apply(UI, config)
+
+local function hasMethod(methods, wanted)
+    for _, method in ipairs(methods or {}) do if method == wanted then return true end end
+    return false
+end
 
 local APP_PATHS = {
     terminal = "/qalcom/apps/terminal.lua",
@@ -30,6 +36,10 @@ local APP_PATHS = {
     jobs = "/qalcom/apps/jobs.lua",
     calculator = "/qalcom/apps/calculator.lua",
     jobs_service = "/qalcom/apps/jobs_service.lua",
+    network = "/qalcom/apps/network.lua",
+    telemetry = "/qalcom/apps/telemetry.lua",
+    network_service = "/qalcom/apps/network_service.lua",
+    incidents = "/qalcom/apps/incidents.lua",
 }
 
 local APP_META = {
@@ -50,10 +60,14 @@ local APP_META = {
     jobs = { title = "Automation Jobs", icon = "J", x = 3, y = 3, width = 56, height = 21 },
     calculator = { title = "Calculator", icon = "=", x = 12, y = 4, width = 38, height = 21 },
     jobs_service = { title = "Automation Service", icon = "J", x = 3, y = 3, width = 20, height = 8, service = true, hidden = true },
+    network = { title = "Network Manager", icon = "N", x = 3, y = 3, width = 56, height = 21 },
+    telemetry = { title = "Operations Telemetry", icon = "T", x = 3, y = 3, width = 56, height = 21 },
+    network_service = { title = "Network Service", icon = "N", x = 3, y = 3, width = 20, height = 8, service = true, hidden = true },
+    incidents = { title = "Incident Response", icon = "!", x = 3, y = 3, width = 56, height = 21 },
 }
 
-local NORMAL_LAUNCHER_APPS = { "terminal", "explorer", "calculator", "monitor", "peripherals", "infrastructure", "jobs", "control", "capabilities", "settings", "recovery", "logs", "account" }
-local SAFE_LAUNCHER_APPS = { "recovery", "logs", "terminal", "calculator", "settings", "peripherals", "infrastructure", "jobs" }
+local NORMAL_LAUNCHER_APPS = { "terminal", "explorer", "calculator", "monitor", "peripherals", "telemetry", "incidents", "network", "infrastructure", "jobs", "control", "capabilities", "settings", "recovery", "logs", "account" }
+local SAFE_LAUNCHER_APPS = { "recovery", "logs", "terminal", "calculator", "settings", "peripherals", "telemetry", "network", "infrastructure", "jobs" }
 local LAUNCHER_APPS = config.safeMode and SAFE_LAUNCHER_APPS or NORMAL_LAUNCHER_APPS
 
 local native = term.native()
@@ -475,6 +489,87 @@ local function makeContext(task)
         return Infrastructure.state(self, profile)
     end
 
+    function context:networkConfig()
+        local text = self:readFile("/qalcom/data/network.meta")
+        return Network.parseConfig(text or "", "computer-" .. tostring(os.getComputerID()))
+    end
+
+    function context:writeNetworkConfig(data)
+        if not self:hasCapability("network.configure") then return false, "Network configuration denied" end
+        return self:writeFile("/qalcom/data/network.meta", Network.serializeConfig(data))
+    end
+
+    function context:networkConfigFile()
+        return self:readFile("/qalcom/data/network.meta")
+    end
+
+    function context:networkNodes()
+        local text = self:readFile("/qalcom/data/nodes.meta")
+        return Network.parseNodes(text or "")
+    end
+
+    function context:writeNetworkNodes(data)
+        if not self:hasCapability("network.pair") then return false, "Node enrollment denied" end
+        return self:writeFile("/qalcom/data/nodes.meta", Network.serializeNodes(data))
+    end
+
+    function context:writeIncidentData(data)
+        if not self:hasCapability("incident.manage") then return false, "Incident management denied" end
+        if not fs.exists("/qalcom/data") then fs.makeDir("/qalcom/data") end
+        local file = fs.open("/qalcom/data/incidents.meta", "w")
+        if not file then return false, "Unable to save incident records" end
+        local ok, reason = pcall(file.write, dofile("/qalcom/lib/incidents.lua").serialize(data))
+        pcall(file.close)
+        return ok, ok and nil or tostring(reason or "Unable to save incident records")
+    end
+
+    function context:networkModems()
+        local result = {}
+        for _, name in ipairs(self:peripheralNames() or {}) do
+            if self:peripheralType(name) == "modem" then result[#result + 1] = name end
+        end
+        return result
+    end
+
+    function context:modemOpen(name, channel)
+        if not self:hasCapability("network.receive") then return false, "Network receive denied" end
+        local methods = self:peripheralMethods(name)
+        if not hasMethod(methods, "open") then return false, "Modem open unavailable" end
+        local wrapped = peripheral.wrap(name)
+        local ok = wrapped and pcall(wrapped.open, channel)
+        return ok == true
+    end
+
+    function context:modemTransmit(name, channel, replyChannel, payload)
+        if not self:hasCapability("network.send") then return false, "Network send denied" end
+        local methods = self:peripheralMethods(name)
+        if not hasMethod(methods, "transmit") then return false, "Modem transmit unavailable" end
+        local wrapped = peripheral.wrap(name)
+        if not wrapped then return false, "Modem unavailable" end
+        local ok, reason = pcall(wrapped.transmit, channel, replyChannel, payload)
+        return ok, ok and nil or tostring(reason or "Modem transmit failed")
+    end
+
+    function context:writeNetworkServiceFile(path, text)
+        if task.name ~= "network_service" then return false, "Network service persistence is restricted" end
+        if path ~= "/qalcom/data/network.state" and path ~= "/qalcom/data/network.audit" and path ~= "/qalcom/data/nodes.meta" then return false, "Network service path is restricted" end
+        if not fs.exists("/qalcom/data") then fs.makeDir("/qalcom/data") end
+        local file = fs.open(path, "w")
+        if not file then return false, "Unable to persist network state" end
+        local ok, reason = pcall(file.write, tostring(text or ""))
+        pcall(file.close)
+        return ok, ok and nil or tostring(reason or "Unable to persist network state")
+    end
+
+    function context:telemetrySnapshot()
+        local Peripherals = dofile("/qalcom/lib/peripherals.lua")
+        local Telemetry = dofile("/qalcom/lib/telemetry.lua")
+        local text = self:peripheralMetadataFile()
+        local metadata = Peripherals.parseMetadata(text or "")
+        local devices = Peripherals.inspect(self, metadata, os.clock())
+        return Telemetry.snapshot(self, devices, os.clock())
+    end
+
     function context:jobDefinitions()
         local text, reason = self:readFile("/qalcom/data/jobs.meta")
         local data = Jobs.parse(text or "")
@@ -650,7 +745,7 @@ end
 local function startTask(name, options)
     local meta = APP_META[name]
     local path = APP_PATHS[name]
-    if config.safeMode and name ~= "recovery" and name ~= "logs" and name ~= "terminal" and name ~= "calculator" and name ~= "settings" and name ~= "peripherals" and name ~= "infrastructure" and name ~= "jobs" and name ~= "jobs_service" then
+    if config.safeMode and name ~= "recovery" and name ~= "logs" and name ~= "terminal" and name ~= "calculator" and name ~= "settings" and name ~= "peripherals" and name ~= "telemetry" and name ~= "incidents" and name ~= "network" and name ~= "infrastructure" and name ~= "jobs" and name ~= "jobs_service" and name ~= "network_service" then
         notify("Safe Mode blocked " .. tostring(name), UI.colors.warning)
         return nil
     end
@@ -1167,6 +1262,8 @@ local function dispatch(event)
         if state.focused then send(state.focused, event) end
     elseif name == "timer" or name == "alarm" or name == "redstone" or name == "term_resize" or name == "peripheral" or name == "peripheral_detach" or name == "disk" or name == "disk_eject" or name == "rednet_message" or name == "modem_message" then
         for _, task in ipairs(state.tasks) do send(task, event) end
+    elseif name == "qalcom_network_reload" then
+        for _, task in ipairs(state.tasks) do send(task, event) end
     elseif name == "qalcom_config_changed" then
         config = Config.load()
         Config.apply(UI, config)
@@ -1176,7 +1273,7 @@ local function dispatch(event)
         LAUNCHER_APPS = config.safeMode and SAFE_LAUNCHER_APPS or NORMAL_LAUNCHER_APPS
         if config.safeMode then
             for _, task in ipairs(state.tasks) do
-                if task.name ~= "recovery" and task.name ~= "logs" and task.name ~= "terminal" and task.name ~= "settings" and task.name ~= "peripherals" and task.name ~= "infrastructure" and task.name ~= "jobs" and task.name ~= "jobs_service" then
+                if task.name ~= "recovery" and task.name ~= "logs" and task.name ~= "terminal" and task.name ~= "settings" and task.name ~= "peripherals" and task.name ~= "telemetry" and task.name ~= "incidents" and task.name ~= "network" and task.name ~= "infrastructure" and task.name ~= "jobs" and task.name ~= "jobs_service" and task.name ~= "network_service" then
                     task.closeRequested = true
                 end
             end
@@ -1205,6 +1302,7 @@ Capabilities.audit("login", state.user)
 if config.safeMode then notify("Safe Mode enabled", UI.colors.warning) end
 notify("Welcome, " .. state.user, UI.colors.accent)
 spawn("jobs_service", { hidden = true })
+spawn("network_service", { hidden = true })
 state.clockTimer = os.startTimer(1)
 state.uiTimer = os.startTimer(0.1)
 drawDesktop()
@@ -1260,6 +1358,7 @@ while true do
         if config.safeMode then notify("Safe Mode enabled", UI.colors.warning) end
         notify("Welcome, " .. state.user, UI.colors.accent)
         spawn("jobs_service", { hidden = true })
+spawn("network_service", { hidden = true })
         state.clockTimer = os.startTimer(1)
         state.uiTimer = os.startTimer(0.1)
         state.dirty = true

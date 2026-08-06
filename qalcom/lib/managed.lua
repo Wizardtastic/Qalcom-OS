@@ -23,6 +23,12 @@ local READ_ONLY_METHODS = {
     getReadiness = true,
     getAmmo = true,
     getInventory = true,
+    getLocation = true,
+    getVelocity = true,
+    getSpeed = true,
+    getYaw = true,
+    getAmmunition = true,
+    isReady = true,
 }
 
 local function hasMethod(methods, wanted)

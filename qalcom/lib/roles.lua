@@ -10,7 +10,7 @@ local definitions = {
         description = "Full local administrative access",
         capabilities = {
             "fs.read", "fs.write", "system.label", "peripheral.read", "peripheral.control", "account.manage",
-            "redstone.read", "redstone.control", "infrastructure.control", "infrastructure.emergency", "jobs.manage", "network.send", "network.receive",
+            "redstone.read", "redstone.control", "infrastructure.control", "infrastructure.emergency", "jobs.manage", "network.send", "network.receive", "network.configure", "network.pair", "network.control", "telemetry.read", "incident.manage",
             "system.reboot", "system.shutdown",
         },
     },
@@ -19,7 +19,7 @@ local definitions = {
         description = "Strategic operations and emergency oversight",
         capabilities = {
             "fs.read", "peripheral.read", "redstone.read", "redstone.control", "infrastructure.control", "infrastructure.emergency", "jobs.manage",
-            "network.send", "network.receive", "system.reboot",
+            "network.send", "network.receive", "network.configure", "network.pair", "network.control", "telemetry.read", "incident.manage", "system.reboot",
         },
     },
     ["Operations officer"] = {
@@ -27,14 +27,14 @@ local definitions = {
         description = "Base operations and approved infrastructure response",
         capabilities = {
             "fs.read", "fs.write", "peripheral.read", "redstone.read", "redstone.control", "infrastructure.control", "jobs.manage",
-            "network.send", "network.receive",
+            "network.send", "network.receive", "network.configure", "network.pair", "network.control", "telemetry.read", "incident.manage",
         },
     },
     ["Artillery officer"] = {
         label = "Artillery officer",
         description = "Artillery telemetry and future server-approved actions",
         capabilities = {
-            "fs.read", "peripheral.read", "network.receive",
+            "fs.read", "peripheral.read", "network.receive", "telemetry.read",
         },
     },
     Engineer = {
@@ -42,21 +42,21 @@ local definitions = {
         description = "Vehicle, propulsion, and infrastructure telemetry",
         capabilities = {
             "fs.read", "peripheral.read", "peripheral.control", "redstone.read",
-            "redstone.control", "infrastructure.control", "infrastructure.emergency", "network.receive",
+            "redstone.control", "infrastructure.control", "infrastructure.emergency", "network.receive", "telemetry.read", "incident.manage",
         },
     },
     ["Logistics officer"] = {
         label = "Logistics officer",
         description = "Supply, storage, and transport telemetry",
         capabilities = {
-            "fs.read", "peripheral.read", "redstone.read", "network.receive",
+            "fs.read", "peripheral.read", "redstone.read", "network.receive", "telemetry.read", "incident.manage",
         },
     },
     Observer = {
         label = "Observer",
         description = "Read-only status and incident visibility",
         capabilities = {
-            "fs.read", "peripheral.read", "redstone.read", "network.receive",
+            "fs.read", "peripheral.read", "redstone.read", "network.receive", "telemetry.read", "incident.manage",
         },
     },
     ["Automation service"] = {
@@ -64,7 +64,7 @@ local definitions = {
         description = "Bounded service identity for structured local jobs",
         capabilities = {
             "fs.read", "fs.write", "peripheral.read", "redstone.read", "redstone.control", "infrastructure.control", "jobs.manage",
-            "network.send", "network.receive",
+            "network.send", "network.receive", "network.configure", "network.pair", "network.control", "telemetry.read", "incident.manage",
         },
     },
     ["Restricted guest"] = {

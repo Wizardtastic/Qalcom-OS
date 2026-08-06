@@ -24,6 +24,11 @@ Capabilities.names = {
     "jobs.manage",
     "network.send",
     "network.receive",
+    "network.configure",
+    "telemetry.read",
+    "network.pair",
+    "network.control",
+    "incident.manage",
     "system.label",
     "system.reboot",
     "system.shutdown",
@@ -42,6 +47,11 @@ Capabilities.descriptions = {
     ["jobs.manage"] = "Create, pause, and stop structured local jobs",
     ["network.send"] = "Send approved network messages",
     ["network.receive"] = "Receive approved network messages",
+    ["network.configure"] = "Configure the local modem foundation",
+    ["telemetry.read"] = "Inspect normalized mod telemetry",
+    ["network.pair"] = "Enroll and revoke Qalcom nodes",
+    ["network.control"] = "Issue approved authenticated network controls",
+    ["incident.manage"] = "Manage structured war-server incidents",
     ["system.label"] = "Change the computer label",
     ["system.reboot"] = "Request a computer reboot",
     ["system.shutdown"] = "Request a computer shutdown",
@@ -62,7 +72,7 @@ local manifests = {
     },
     monitor = {
         title = "System Monitor", trusted = true,
-        requested = { "peripheral.read" },
+        requested = { "peripheral.read", "telemetry.read" },
         unmanaged = { "term", "os.pullEvent" },
     },
     settings = {
@@ -112,7 +122,7 @@ local manifests = {
     },
     peripherals = {
         title = "Peripheral Manager", trusted = true,
-        requested = { "fs.read", "fs.write", "peripheral.read" },
+        requested = { "fs.read", "fs.write", "peripheral.read", "telemetry.read" },
         unmanaged = { "os.pullEvent" },
     },
     infrastructure = {
@@ -133,6 +143,26 @@ local manifests = {
     jobs_service = {
         title = "Automation Service", trusted = true,
         requested = { "fs.read", "fs.write", "jobs.manage", "redstone.read", "redstone.control", "infrastructure.control", "infrastructure.emergency" },
+        unmanaged = { "os.pullEvent" },
+    },
+    network = {
+        title = "Network Manager", trusted = true,
+        requested = { "fs.read", "fs.write", "peripheral.read", "network.configure", "network.receive", "network.pair", "network.control" },
+        unmanaged = { "os.pullEvent" },
+    },
+    network_service = {
+        title = "Encrypted Network Service", trusted = true,
+        requested = { "fs.read", "fs.write", "peripheral.read", "network.send", "network.receive", "network.control", "telemetry.read", "jobs.manage", "redstone.read", "redstone.control", "infrastructure.control", "infrastructure.emergency" },
+        unmanaged = { "os.pullEvent" },
+    },
+    incidents = {
+        title = "Incident Response", trusted = true,
+        requested = { "fs.read", "fs.write", "incident.manage", "telemetry.read", "infrastructure.emergency", "jobs.manage" },
+        unmanaged = { "os.pullEvent" },
+    },
+    telemetry = {
+        title = "Operations Telemetry", trusted = true,
+        requested = { "peripheral.read", "telemetry.read", "incident.manage" },
         unmanaged = { "os.pullEvent" },
     },
 }
@@ -182,7 +212,7 @@ end
 local function safeModeBlocks(capability)
     return capability == "fs.write" or capability == "peripheral.control"
         or capability == "redstone.control" or capability == "infrastructure.control"
-        or capability == "infrastructure.emergency" or capability == "jobs.manage" or capability == "system.label"
+        or capability == "infrastructure.emergency" or capability == "jobs.manage" or capability == "network.send" or capability == "network.receive" or capability == "network.configure" or capability == "network.pair" or capability == "network.control" or capability == "system.label"
         or capability == "system.reboot" or capability == "system.shutdown"
 end
 

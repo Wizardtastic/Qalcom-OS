@@ -71,6 +71,39 @@ function Pure.validatePolicyDecision(decision)
         and (decision.allowed == true or decision.allowed == false)
 end
 
+function Pure.validateNetworkEnvelope(envelope, now, maxAge, futureSkew)
+    if type(envelope) ~= "table" then return false, "not a table" end
+    if type(envelope.protocol) ~= "string" or envelope.protocol == "" then return false, "protocol missing" end
+    if tonumber(envelope.version) ~= 1 then return false, "version invalid" end
+    if type(envelope.source) ~= "string" or envelope.source == "" then return false, "source missing" end
+    if type(envelope.kind) ~= "string" or envelope.kind == "" then return false, "kind missing" end
+    if type(envelope.nonce) ~= "string" or envelope.nonce == "" then return false, "nonce missing" end
+    local timestamp = tonumber(envelope.timestamp)
+    if not timestamp then return false, "timestamp missing" end
+    now = tonumber(now) or 0
+    if timestamp < now - (tonumber(maxAge) or 30) then return false, "expired" end
+    if timestamp > now + (tonumber(futureSkew) or 10) then return false, "future" end
+    if type(envelope.auth) ~= "string" or envelope.auth == "" then return false, "auth missing" end
+    return true
+end
+
+function Pure.replayAccept(replay, key, now, maximum, age)
+    replay = replay or {}
+    now = tonumber(now) or 0
+    maximum = Pure.clampInteger(maximum, 1, 1024, 64)
+    age = tonumber(age) or 30
+    if replay[key] then return false, replay end
+    replay[key] = now
+    local count = 0
+    for existing, timestamp in pairs(replay) do
+        if now - (tonumber(timestamp) or now) > age then replay[existing] = nil else count = count + 1 end
+    end
+    while count > maximum do
+        for existing, _ in pairs(replay) do replay[existing] = nil; count = count - 1; break end
+    end
+    return true, replay
+end
+
 function Pure.retainDecisions(decisions, limit)
     return Pure.retainLines(decisions, limit)
 end

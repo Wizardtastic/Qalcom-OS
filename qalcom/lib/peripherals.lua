@@ -155,7 +155,7 @@ function Peripherals.adapterFor(peripheralType, methods)
             stale = false,
             failure = nil,
             compatibility = "unknown",
-            apiCompatible = nil,
+            apiCompatible = false,
             supportedReadOperations = copyList(operations),
         }
     end
@@ -298,14 +298,32 @@ function Peripherals.inspect(ctx, metadata, now)
         end
         for _, adapter in ipairs(device.adapters) do
             if adapter.name == "create_radar" or adapter.name == "create_aero_radar" then
-                local raw
-                if listContains(methods, "getContacts") then raw = ctx:peripheralRead(name, "getContacts")
-                elseif listContains(methods, "getScan") then raw = ctx:peripheralRead(name, "getScan") end
+                local raw, method
+                if listContains(methods, "getContacts") then raw, method = ctx:peripheralRead(name, "getContacts"), "getContacts"
+                elseif listContains(methods, "getScan") then raw, method = ctx:peripheralRead(name, "getScan"), "getScan" end
                 device.contacts = Peripherals.normalizeContacts(raw, name, now, Peripherals.maxContacts)
-                if #device.contacts == 0 then
+                if method and raw ~= nil then
+                    adapter.apiCompatible = true
+                    adapter.compatibility = "confirmed-read"
+                else
                     adapter.stale = true
-                    adapter.failure = "No current contacts reported"
+                    adapter.failure = "No confirmed contact read method"
                 end
+            elseif adapter.name == "aeronautics" then
+                local probe
+                if listContains(methods, "getPosition") then probe = ctx:peripheralRead(name, "getPosition")
+                elseif listContains(methods, "getLocation") then probe = ctx:peripheralRead(name, "getLocation") end
+                if probe ~= nil then adapter.apiCompatible = true; adapter.compatibility = "confirmed-read" end
+            elseif adapter.name == "cbc" then
+                local probe
+                if listContains(methods, "getReadiness") then probe = ctx:peripheralRead(name, "getReadiness")
+                elseif listContains(methods, "isReady") then probe = ctx:peripheralRead(name, "isReady") end
+                if probe ~= nil then adapter.apiCompatible = true; adapter.compatibility = "confirmed-read" end
+            elseif adapter.name == "create_propulsion" then
+                local probe
+                if listContains(methods, "getEnergy") then probe = ctx:peripheralRead(name, "getEnergy")
+                elseif listContains(methods, "getFuel") then probe = ctx:peripheralRead(name, "getFuel") end
+                if probe ~= nil then adapter.apiCompatible = true; adapter.compatibility = "confirmed-read" end
             end
         end
         devices[#devices + 1] = device

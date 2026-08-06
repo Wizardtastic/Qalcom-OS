@@ -273,24 +273,27 @@ The profile intentionally separates direct integrations from libraries, performa
 
 **Exit criteria:** Failed jobs are diagnosable, bounded, and recoverable from the desktop or CraftOS recovery path.
 
-## 0.3.0 — Network and modem foundation for the war server
+## Implemented — validation pending: 0.3.0 — Network and modem foundation for the war server
 
 **Goal:** Discover network hardware without accepting remote commands yet.
 
-- Add a Network Manager application.
+**Implementation status:** Network Manager and the `/qalcom/lib/network.lua` protocol module now discover modem peripherals, persist validated local configuration and enrolled-node records, define versioned compatibility envelopes with expiry/future-skew checks and replay rejection, bound payloads, and allowlist read/control request names for future milestones. The initial compatibility checksum has been superseded by pure-Lua HMAC-SHA256 authenticated encryption, persistent counters, replay protection, request rate limits, and authenticated associated data. Transport remains explicit opt-in and cannot prevent RF/game-level jamming. Operations Telemetry adds a read-only adapter-backed view over discovered Aeronautics, CBC, Create: Propulsion, Create Radar, and Create Aero Radar candidates. Mod APIs remain runtime-discovered and uncertain until verified in the target instance.
+
+- Added a Network Manager application.
 - Discover modems and expose side/type/status information.
-- Add channel and protocol configuration with validation.
-- Define a Qalcom node identity and protocol version.
-- Add local-only network diagnostics and traffic counters.
-- Keep remote control disabled by default.
+- Added channel and protocol configuration with validation.
+- Defined a Qalcom node identity and protocol version.
+- Added local-only network configuration/inventory diagnostics and bounded protocol helpers; modem channel opening and traffic counters remain deferred until authenticated transport is designed.
+- Kept remote control disabled by default.
+- Added read-only normalized telemetry for mod candidates; no firing, movement, propulsion, or radar-guided action.
 
-**Exit criteria:** Network hardware can be configured and observed locally, but no remote request can change the computer.
+**Exit criteria:** Network hardware can be configured and observed locally, but no remote request can change the computer. Manual CC:T validation remains required.
 
-## 0.3.1 — Pairing and node enrollment
+## Partially implemented — validation pending: 0.3.1 — Pairing and node enrollment
 
 **Goal:** Establish explicit trust between Qalcom computers.
 
-- Add pairing codes or another in-game enrollment flow.
+- Trusted node enrollment is available through validated local node records; a user-mediated pairing-code exchange is still required before an unauthenticated node can be trusted.
 - Store node records with names, identities, roles, and capabilities.
 - Add approve, revoke, block, and quarantine actions.
 - Log enrollment and trust changes.
@@ -298,11 +301,11 @@ The profile intentionally separates direct integrations from libraries, performa
 
 **Exit criteria:** Two Qalcom nodes can be paired, inspected, revoked, and safely re-paired without implicit trust.
 
-## 0.3.2 — Authenticated read-only operations
+## Implemented — validation pending: 0.3.2 — Authenticated read-only operations
 
 **Goal:** Begin remote operations with status queries only.
 
-- Define signed or otherwise authenticated request envelopes supported by CC:T constraints.
+- Implement pure-Lua SHA-256/HMAC-SHA256 authenticated encrypted envelopes with HKDF-derived keys and associated-data authentication.
 - Add request IDs, timestamps/expiry, nonces, and replay rejection.
 - Permit only a small allowlist of read-only status requests.
 - Add response size and rate limits.
@@ -310,11 +313,11 @@ The profile intentionally separates direct integrations from libraries, performa
 
 **Exit criteria:** Remote status requests are authenticated, bounded, auditable, and cannot execute arbitrary Lua or change device state.
 
-## 0.3.3 — Authenticated control operations
+## Partially implemented — validation pending: 0.3.3 — Authenticated control operations
 
 **Goal:** Expand remote access only to explicitly approved actions.
 
-- Add allowlisted commands for selected redstone, peripheral, and job actions.
+- Implement allowlisted infrastructure safe-state and structured job-pause requests; high-impact device, vehicle, propulsion, cannon, and weapon commands remain unavailable.
 - Require node and user capabilities for every command.
 - Require confirmation for high-impact actions.
 - Add idempotency handling and clear failure responses.
@@ -323,11 +326,11 @@ The profile intentionally separates direct integrations from libraries, performa
 
 **Exit criteria:** Every remote command is typed, validated, authorized, logged, and safely rejected when malformed or unauthorized.
 
-## 0.3.4 — Network operations console
+## Implemented — validation pending: 0.3.4 — Network operations console
 
 **Goal:** Make authenticated operations manageable from one desktop.
 
-- Add node list, health, capabilities, alerts, and recent activity.
+- Add Network Operations node list, trust state, modem status, cipher status, and bounded audit history.
 - Add request history with filtering and correlation by request ID.
 - Add operator acknowledgement for alerts.
 - Add network Safe Mode and local emergency disconnect.
@@ -335,11 +338,11 @@ The profile intentionally separates direct integrations from libraries, performa
 
 **Exit criteria:** Operators can understand and control the trust boundary without relying on raw terminal commands.
 
-## 0.4.0 — Modded war-server telemetry foundation
+## Partially implemented — validation pending: 0.4.0 — Modded war-server telemetry foundation
 
 **Goal:** Build a read-only command center for the target modpack before adding combat or movement actions.
 
-- Add adapter-backed dashboards for Aeronautics vehicles and airships, CBC artillery, and Create: Propulsion systems.
+- Add adapter-backed read-only telemetry records for Aeronautics vehicles and airships, CBC artillery, Create: Propulsion systems, radar, and Aero Radar candidates.
 - Add configurable panels for radar status, scan coverage, contact tracks, vehicle identity, assembly health, docking, power, fuel, propulsion readiness, cannon readiness, ammunition, loaders, depots, alarms, and base infrastructure where supported.
 - Add radar contact age, confidence, source identity, position uncertainty, scan coverage gaps, and correlation history alongside timestamps, stale-data indicators, mod/integration version, and adapter failure reasons.
 - Add map-oriented overlays and bounded historical incident/combat-event timelines, while respecting faction and protected-zone visibility rules.
@@ -347,11 +350,11 @@ The profile intentionally separates direct integrations from libraries, performa
 
 **Exit criteria:** The command center clearly distinguishes current, stale, missing, damaged, unavailable, and untrusted telemetry for every supported integration, and radar displays never present an unverified contact as a confirmed hostile target.
 
-## 0.4.1 — Fleet, artillery, and logistics views
+## Partially implemented — validation pending: 0.4.1 — Fleet, artillery, and logistics views
 
 **Goal:** Organize war-server assets and supply chains without issuing movement, firing, or propulsion commands.
 
-- Add radar-derived air, land, and naval contact views, with explicit unknown/friendly/claimed/unverified states.
+- Add bounded radar-derived contact records with explicit unknown/friendly/claimed/unverified states and uncertainty-preserving telemetry views.
 - Add Aeronautics fleet inventory, crew/seat status where available, vehicle health, docking, and named-location views.
 - Add CBC cannon inventory, loading state, barrel/readiness state, ammunition stock, and maintenance warnings.
 - Add Create: Propulsion engine, fuel/energy, assembly, route, and mechanical readiness panels where exposed.
@@ -363,11 +366,11 @@ The profile intentionally separates direct integrations from libraries, performa
 
 **Exit criteria:** Operators can locate and assess vehicles, artillery, propulsion systems, and supplies without unsafe automatic action.
 
-## 0.4.2 — Manual defensive and infrastructure response
+## Partially implemented — validation pending: 0.4.2 — Manual defensive and infrastructure response
 
 **Goal:** Add carefully confirmed response actions while keeping combat actions behind a separate approval boundary.
 
-- Add manual door, barrier, alarm, lockdown, docking, and infrastructure controls.
+- Reuse the existing local infrastructure controls and expose only authenticated safe-state/job-pause requests; incident playbooks are preview-only until each action has a dedicated confirmation path.
 - Add safe-state or emergency-stop actions for Qalcom-managed propulsion and base systems where supported.
 - Add operator-confirmed radar mute, scan pause, or sensor-isolation actions only where the mod exposes a safe, reversible interface.
 - Keep radar-guided targeting, CBC firing, TACZ actions, and Aeronautics movement/flight commands disabled by default until their dedicated approval and safety model is complete.
@@ -378,13 +381,13 @@ The profile intentionally separates direct integrations from libraries, performa
 
 **Exit criteria:** Defensive and infrastructure actions are explicit, auditable, reversible where possible, and unavailable to unauthorized roles.
 
-## 0.4.3 — Incident response and combat-system safety
+## Partially implemented — validation pending: 0.4.3 — Incident response and combat-system safety
 
 **Goal:** Coordinate war-server incidents without creating an uncontrolled autonomous combat system.
 
-- Add incident records with severity, faction/base/asset source, timeline, and acknowledgement state.
-- Add response playbooks built from structured, allowlisted actions for alarms, lockdowns, logistics, evacuation, and safe-state procedures.
-- Add dry-run previews before executing playbooks.
+- Add bounded incident records with severity, faction/base/asset source, timeline, and acknowledgement state.
+- Add structured, allowlisted alarm/lockdown/evacuation playbook dry-run previews; execution remains operator-mediated and no combat action is autonomous.
+- Add dry-run previews before any future playbook execution.
 - Add adapter health monitoring and a clear degraded-mode experience when Aeronautics, CBC, Create: Propulsion, Create Radar, or Create Aero Radar is unavailable.
 - Correlate radar contacts with faction, territory, vehicle, and incident records without treating correlation as identification or authorization.
 - Add automation failure safe mode and a global emergency stop.
