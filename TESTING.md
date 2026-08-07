@@ -1,8 +1,8 @@
 # Qalcom OS Testing Guide
 
-The current source version is 0.4.6. The 0.1.x, 0.2.0, 0.2.1, 0.2.2, and 0.2.3 checks below remain required regression checks; the Infrastructure Controls and Automation Jobs checks cover the current milestones. No local Lua runtime or CC:T instance is available in this checkout, so automated and in-game validation remain pending.
+The current source version is 0.4.7. The 0.1.x, 0.2.0, 0.2.1, 0.2.2, and 0.2.3 checks below remain required regression checks; the Infrastructure Controls and Automation Jobs checks cover the current milestones. No local Lua runtime or CC:T instance is available in this checkout, so automated and in-game validation remain pending.
 
-The 0.2.6 service is intentionally conservative: only manual, timer, and redstone-edge triggers are implemented; peripheral-attach and radar-contact triggers are deferred. Runtime status is persisted in `/qalcom/data/jobs.status`; the hidden service uses bounded retry backoff and remains recoverable from Recovery or CraftOS. Version 0.4.6 adds the operator-confirmed CBC Fire Control app. Version 0.4.5 added verified CC:CBC read-only cannon-mount telemetry through `getInfo()` for `cannon_mount` and `compact_cannon_mount`; generic inspection still does not call firing, assembly, computer-control, or aiming methods. Version 0.4.4 added opt-in authenticated encrypted datagrams, persisted replay/counter state, Network Operations, read-only Operations Telemetry, and Incident Response dry-runs. Encryption cannot prevent jamming or protect a compromised host.
+The 0.2.6 service is intentionally conservative: only manual, timer, and redstone-edge triggers are implemented; peripheral-attach and radar-contact triggers are deferred. Runtime status is persisted in `/qalcom/data/jobs.status`; the hidden service uses bounded retry backoff and remains recoverable from Recovery or CraftOS. Version 0.4.6 added the operator-confirmed CBC Fire Control app. Version 0.4.7 adds its mouse-first coordinate fields, mode switch, radar controls, mount selection, hover feedback, and action buttons. Version 0.4.5 added verified CC:CBC read-only cannon-mount telemetry through `getInfo()` for `cannon_mount` and `compact_cannon_mount`; generic inspection still does not call firing, assembly, computer-control, or aiming methods. Version 0.4.4 added opt-in authenticated encrypted datagrams, persisted replay/counter state, Network Operations, read-only Operations Telemetry, and Incident Response dry-runs. Encryption cannot prevent jamming or protect a compromised host.
 
 ## Offline pure-helper checks
 
@@ -208,7 +208,7 @@ Run these checks on a fresh copy and again over an existing 0.1.x installation.
 - [ ] Safe Mode prevents execution while preserving status inspection.
 - [ ] CraftOS recovery can pause jobs by editing `/qalcom/data/jobs.meta` to set `paused=true` records or removing the file when a full reset is intentional.
 
-## 0.4.6 Network, telemetry, incident operations, CC:CBC telemetry, and Fire Control
+## 0.4.7 Interactive CBC Fire Control (plus 0.4.6 regression checks)
 
 - [ ] Network Operations appears in Start and Safe Mode and does not crash when no modem is present.
 - [ ] Incident Response appears in Start and Safe Mode and does not crash with empty or malformed incident storage.
@@ -233,8 +233,17 @@ Run these checks on a fresh copy and again over an existing 0.1.x installation.
 - [ ] Confirm Operations Telemetry labels CC:CBC ammunition and firing readiness as unknown rather than inventing values.
 - [ ] Confirm generic Peripheral Manager and Operations Telemetry never invoke CC:CBC `fire`, `assemble`, `setComputerControl`, `setTargetAngles`, `setTargetYaw`, or `setTargetPitch`.
 - [ ] In CBC Fire Control, confirm only verified `cannon_mount`/`compact_cannon_mount` devices appear and blocklisted/unverified devices cannot be controlled.
+- [ ] Click COORDS and confirm the visible X/Y/Z text fields accept mouse focus, numeric typing, paste, backspace, negative values, and decimal values.
+- [ ] Click COORDS and confirm the visible X/Y/Z text fields accept mouse focus, numeric typing, paste, backspace, negative values, and decimal values.
+- [ ] Confirm mouse_move produces hover feedback and mouse clicks are routed to the focused app with window-relative coordinates.
 - [ ] Confirm geometric line-of-sight coordinate yaw/pitch with inert unloaded mounts, including the configured yaw offset and pitch sign, before any live test; do not treat this as a ballistic solution.
 - [ ] Confirm radar contacts without positions cannot be selected as firing targets, ambiguous contacts are rejected, and fresh unverified contacts remain observations requiring explicit operator confirmation.
+- [ ] Confirm visible mount rows and TOGGLE CURRENT select/deselect one or more mounts without requiring keybinds.
+- [ ] Confirm visible UP/DOWN, radar previous/next, REFRESH SENSORS, PLAN, AIM, FIRE, and STOP buttons work by mouse click.
+- [ ] Confirm visible mount rows and TOGGLE CURRENT select/deselect one or more mounts without requiring keybinds.
+- [ ] Confirm visible UP/DOWN, radar previous/next, REFRESH SENSORS, PLAN, AIM, FIRE, and STOP buttons work by mouse click.
+- [ ] Confirm visible mount rows and TOGGLE CURRENT select/deselect one or more mounts without requiring keybinds.
+- [ ] Confirm visible UP/DOWN, radar previous/next, REFRESH SENSORS, PLAN, AIM, FIRE, and STOP buttons work by mouse click.
 - [ ] Confirm multi-cannon selection calculates independent angles from each mount position.
 - [ ] Confirm aim requires explicit confirmation and invokes only `setComputerControl(true)` and `setTargetAngles`.
 - [ ] Confirm firing requires a second explicit confirmation, refuses unassembled or misaligned mounts, sends a bounded `fire(true)` pulse, and automatically sends `fire(false)`; validate projectile behavior separately because the app does not model ballistics.

@@ -5,8 +5,13 @@ local Crypto = {}
 -- intended for authenticated datagrams, not protection from a compromised host.
 local MOD = 4294967296
 local bit = bit32
+local unpack = table.unpack or unpack
 
 local function u32(value)
+    -- Short-circuit the common case (already a 32-bit word) and keep the
+    -- modulo path for larger sums: bit32.band semantics on values >= 2^32 are
+    -- not guaranteed across every CC:T/Cobalt runtime.
+    if value >= 0 and value < MOD then return value end
     value = value % MOD
     if value < 0 then value = value + MOD end
     return value
@@ -52,11 +57,12 @@ local function rrotate(value, amount)
     return bor(rshift(value, amount), lshift(value, 32 - amount))
 end
 
-local function add(...)
-    local result = 0
-    for index = 1, select("#", ...) do result = u32(result + (select(index, ...) or 0)) end
-    return result
-end
+-- Fixed-arity additions for the SHA-256 inner loop. Each operand is already
+-- a 32-bit word, so a single modulo at the end is equivalent to the previous
+-- per-step reduction and avoids variadic select() overhead in the hot path.
+local function add2(a, b) return u32(a + b) end
+local function add4(a, b, c, d) return u32(a + b + c + d) end
+local function add5(a, b, c, d, e) return u32(a + b + c + d + e) end
 
 local function wordFromBytes(text, index)
     local a = string.byte(text, index) or 0
@@ -98,8 +104,11 @@ local ROUND = {
 function Crypto.sha256(message)
     message = tostring(message or "")
     local bitLength = #message * 8
-    local padded = message .. string.char(128)
-    while (#padded % 64) ~= 56 do padded = padded .. string.char(0) end
+    -- Append 0x80, enough zero padding so the total is 64 mod 64, then the
+    -- 64-bit length. Computing the padding once avoids char-by-char string
+    -- growth that would otherwise be quadratic on larger messages.
+    local zeros = (64 - ((#message + 9) % 64)) % 64
+    local padded = message .. string.char(128) .. string.rep(string.char(0), zeros)
     local high = math.floor(bitLength / 4294967296)
     local low = bitLength % 4294967296
     padded = padded .. wordToBytes(high) .. wordToBytes(low)
@@ -114,7 +123,7 @@ function Crypto.sha256(message)
             local small0 = bxor(rrotate(value, 7), rrotate(value, 18), rshift(value, 3))
             value = schedule[index - 2]
             local small1 = bxor(rrotate(value, 17), rrotate(value, 19), rshift(value, 10))
-            schedule[index] = add(schedule[index - 16], small0, schedule[index - 7], small1)
+            schedule[index] = add4(schedule[index - 16], small0, schedule[index - 7], small1)
         end
         local a, b, c, d = state[1], state[2], state[3], state[4]
         local e, f, g, h = state[5], state[6], state[7], state[8]
@@ -123,19 +132,19 @@ function Crypto.sha256(message)
             local majority = bxor(band(a, b), band(a, c), band(b, c))
             local big0 = bxor(rrotate(a, 2), rrotate(a, 13), rrotate(a, 22))
             local big1 = bxor(rrotate(e, 6), rrotate(e, 11), rrotate(e, 25))
-            local temp1 = add(h, big1, choice, ROUND[index + 1], schedule[index])
-            local temp2 = add(big0, majority)
-            h, g, f, e = g, f, e, add(d, temp1)
-            d, c, b, a = c, b, a, add(temp1, temp2)
+            local temp1 = add5(h, big1, choice, ROUND[index + 1], schedule[index])
+            local temp2 = add2(big0, majority)
+            h, g, f, e = g, f, e, add2(d, temp1)
+            d, c, b, a = c, b, a, add2(temp1, temp2)
         end
-        state[1] = add(state[1], a)
-        state[2] = add(state[2], b)
-        state[3] = add(state[3], c)
-        state[4] = add(state[4], d)
-        state[5] = add(state[5], e)
-        state[6] = add(state[6], f)
-        state[7] = add(state[7], g)
-        state[8] = add(state[8], h)
+        state[1] = add2(state[1], a)
+        state[2] = add2(state[2], b)
+        state[3] = add2(state[3], c)
+        state[4] = add2(state[4], d)
+        state[5] = add2(state[5], e)
+        state[6] = add2(state[6], f)
+        state[7] = add2(state[7], g)
+        state[8] = add2(state[8], h)
     end
     local result = {}
     for index = 1, 8 do result[#result + 1] = wordToBytes(state[index]) end
@@ -149,10 +158,10 @@ function Crypto.hmac(key, message)
     local inner, outer = {}, {}
     for index = 1, 64 do
         local value = string.byte(key, index)
-        inner[index] = string.char(bxor(value, 0x36))
-        outer[index] = string.char(bxor(value, 0x5c))
+        inner[index] = bxor(value, 0x36)
+        outer[index] = bxor(value, 0x5c)
     end
-    return Crypto.sha256(table.concat(outer) .. Crypto.sha256(table.concat(inner) .. message))
+    return Crypto.sha256(string.char(unpack(outer)) .. Crypto.sha256(string.char(unpack(inner)) .. message))
 end
 
 function Crypto.hkdf(secret, salt, info, length)
@@ -176,9 +185,19 @@ function Crypto.constantTimeEqual(left, right)
     return difference == 0
 end
 
+-- Precomputed hex/nibble tables replace per-byte string.format/tonumber
+-- calls in the transport hot path.
+local HEX = {}
+for index = 0, 255 do HEX[index] = string.format("%02x", index) end
+local HEXVAL = {}
+for index = 48, 57 do HEXVAL[index] = index - 48 end
+for index = 97, 102 do HEXVAL[index] = index - 87 end
+for index = 65, 70 do HEXVAL[index] = index - 55 end
+
 function Crypto.hex(value)
     local result = {}
-    for index = 1, #tostring(value or "") do result[#result + 1] = string.format("%02x", string.byte(value, index)) end
+    local text = tostring(value or "")
+    for index = 1, #text do result[index] = HEX[string.byte(text, index)] end
     return table.concat(result)
 end
 
@@ -186,28 +205,45 @@ function Crypto.unhex(value)
     value = tostring(value or "")
     if #value % 2 ~= 0 then return nil end
     local result = {}
+    local count = 0
     for index = 1, #value, 2 do
-        local byte = tonumber(value:sub(index, index + 1), 16)
-        if not byte then return nil end
-        result[#result + 1] = string.char(byte)
+        local high = HEXVAL[string.byte(value, index)]
+        local low = HEXVAL[string.byte(value, index + 1)]
+        if not high or not low then return nil end
+        count = count + 1
+        result[count] = string.char(high * 16 + low)
     end
     return table.concat(result)
 end
 
 local function xorBytes(left, right)
-    local result = {}
-    for index = 1, #left do result[index] = string.char(bxor(string.byte(left, index), string.byte(right, index) or 0)) end
-    return table.concat(result)
+    -- XOR 64 bytes per string.char call instead of one tiny string per byte.
+    local parts, index = {}, 1
+    while index <= #left do
+        local chunk = {}
+        local count = 0
+        for offset = 1, 64 do
+            if index > #left then break end
+            count = count + 1
+            chunk[count] = bxor(string.byte(left, index), string.byte(right, index) or 0)
+            index = index + 1
+        end
+        parts[#parts + 1] = string.char(unpack(chunk))
+    end
+    return table.concat(parts)
 end
 
 function Crypto.seal(key, nonce, plaintext, associatedData)
     key, nonce, plaintext, associatedData = tostring(key or ""), tostring(nonce or ""), tostring(plaintext or ""), tostring(associatedData or "")
     local encryptionKey = Crypto.hkdf(key, nonce, "qalcom encryption", 32)
     local macKey = Crypto.hkdf(key, nonce, "qalcom authentication", 32)
-    local stream, counter = {}, 0
-    while #table.concat(stream) < #plaintext do
+    -- Each keystream block is exactly 32 bytes, so track the running length
+    -- instead of re-concatenating the whole stream on every iteration.
+    local stream, counter, length = {}, 0, 0
+    while length < #plaintext do
         stream[#stream + 1] = Crypto.hmac(encryptionKey, nonce .. string.char(math.floor(counter / 16777216) % 256, math.floor(counter / 65536) % 256, math.floor(counter / 256) % 256, counter % 256))
         counter = counter + 1
+        length = length + 32
     end
     local ciphertext = xorBytes(plaintext, table.concat(stream):sub(1, #plaintext))
     local tag = Crypto.hmac(macKey, associatedData .. nonce .. ciphertext):sub(1, 16)
@@ -220,10 +256,11 @@ function Crypto.open(key, nonce, ciphertext, tag, associatedData)
     local expected = Crypto.hmac(macKey, associatedData .. nonce .. ciphertext):sub(1, 16)
     if not Crypto.constantTimeEqual(expected, tag) then return nil, "Authentication failed" end
     local encryptionKey = Crypto.hkdf(key, nonce, "qalcom encryption", 32)
-    local stream, counter = {}, 0
-    while #table.concat(stream) < #ciphertext do
+    local stream, counter, length = {}, 0, 0
+    while length < #ciphertext do
         stream[#stream + 1] = Crypto.hmac(encryptionKey, nonce .. string.char(math.floor(counter / 16777216) % 256, math.floor(counter / 65536) % 256, math.floor(counter / 256) % 256, counter % 256))
         counter = counter + 1
+        length = length + 32
     end
     return xorBytes(ciphertext, table.concat(stream):sub(1, #ciphertext))
 end

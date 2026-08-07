@@ -16,10 +16,6 @@ local function lower(value)
     return string.lower(clean(value, 160))
 end
 
-local function contains(text, needle)
-    return lower(text):find(needle, 1, true) ~= nil
-end
-
 local function listContains(list, value)
     for _, item in ipairs(list or {}) do
         if item == value then return true end
@@ -144,6 +140,11 @@ function Peripherals.adapterFor(peripheralType, methods)
     local typeText = lower(peripheralType)
     local methodText = lower(table.concat(methods or {}, " "))
     local combined = typeText .. " " .. methodText
+    -- Lower the combined evidence string once; each contains() call below
+    -- would otherwise re-clean and re-lower the same text repeatedly.
+    local function has(needle)
+        return combined:find(needle, 1, true) ~= nil
+    end
     local adapters = {}
     local function add(name, title, operations, apiVersion)
         adapters[#adapters + 1] = {
@@ -159,21 +160,21 @@ function Peripherals.adapterFor(peripheralType, methods)
             supportedReadOperations = copyList(operations),
         }
     end
-    if contains(combined, "aeronautics") or contains(combined, "aeroworks") or contains(combined, "airship") or contains(combined, "vehicle") then
+    if has("aeronautics") or has("aeroworks") or has("airship") or has("vehicle") then
         add("aeronautics", "Aeronautics", { "status", "vehicle telemetry" })
     end
-    if contains(combined, "cbc") or contains(combined, "cannon") or contains(combined, "big_cannon") then
+    if has("cbc") or has("cannon") or has("big_cannon") then
         -- CC:CBC exposes standard mounts as cannon_mount and the compact-mount
         -- addon as compact_cannon_mount. Both share the read-only getInfo()
         -- telemetry contract; control methods are deliberately not allowlisted.
         add("cbc", "Create: Big Cannons", { "cannon telemetry", "mount readiness", "aim state", "mount position" })
     end
-    if contains(combined, "propulsion") or (contains(combined, "create") and (contains(combined, "engine") or contains(combined, "assembly"))) then
+    if has("propulsion") or (has("create") and (has("engine") or has("assembly"))) then
         add("create_propulsion", "Create: Propulsion", { "status", "propulsion telemetry" })
     end
-    if contains(combined, "aero radar") or contains(combined, "aeroradar") then
+    if has("aero radar") or has("aeroradar") then
         add("create_aero_radar", "Create Aero Radar", { "status", "radar contacts", "scan metadata" })
-    elseif contains(combined, "radar") then
+    elseif has("radar") then
         add("create_radar", "Create Radar", { "status", "radar contacts", "scan metadata" })
     end
     if #adapters == 0 then
@@ -201,7 +202,8 @@ local function safeStatus(ctx, name, methods)
                         summary[#summary + 1] = clean(key, 24) .. "=" .. clean(item, 32)
                     end
                 end
-                return table.concat(summary, ", ") ~= "" and table.concat(summary, ", ") or "reported"
+                local summaryText = table.concat(summary, ", ")
+                return summaryText ~= "" and summaryText or "reported"
             end
             return clean(value)
         end

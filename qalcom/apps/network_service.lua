@@ -13,6 +13,7 @@ return function(ctx)
     local counter = { txCounter = 0, rxCounters = {} }
     local modems = {}
     local lastConfig = ""
+    local lastConfigMtime = nil
 
     local function persist(path, text)
         if ctx.writeNetworkServiceFile then return ctx:writeNetworkServiceFile(path, text) end
@@ -52,6 +53,9 @@ return function(ctx)
             end
         end
         lastConfig = tostring(configText)
+        -- Cache the file's modification time so the per-second tick can avoid
+        -- re-reading the config just to discover nothing changed.
+        lastConfigMtime = fs.getLastModified and fs.getLastModified("/qalcom/data/network.meta") or nil
     end
 
     local function syncReplayState()
@@ -155,8 +159,15 @@ return function(ctx)
         if event[1] == "modem_message" and config.enabled and not config.error then
             handle(event)
         elseif event[1] == "qalcom_network_reload" or event[1] == "qalcom_tick" then
-            local text = ctx:readFile("/qalcom/data/network.meta") or ""
-            if text ~= lastConfig or event[1] == "qalcom_network_reload" then load() end
+            local mtime = fs.getLastModified and fs.getLastModified("/qalcom/data/network.meta") or nil
+            if event[1] == "qalcom_network_reload" then
+                load()
+            elseif mtime then
+                if mtime ~= lastConfigMtime then load() end
+            else
+                local text = ctx:readFile("/qalcom/data/network.meta") or ""
+                if text ~= lastConfig then load() end
+            end
         elseif event[1] == "peripheral" or event[1] == "peripheral_detach" then
             load()
         end

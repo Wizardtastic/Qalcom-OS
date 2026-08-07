@@ -100,7 +100,15 @@ local state = {
     notifications = {},
     clockTimer = nil,
     uiTimer = nil,
+    -- dirty means the whole terminal must be repainted (clear + everything).
+    -- The region flags below repaint only the taskbar or the notification
+    -- boxes without ever touching window content.
     dirty = true,
+    taskbarDirty = false,
+    notificationsDirty = false,
+    mouseInTaskbar = false,
+    notificationRects = {},
+    nextNotificationExpiry = nil,
     drag = nil,
     mouseX = 1,
     mouseY = 1,
@@ -165,7 +173,9 @@ local function notify(message, color)
     state.notifications[#state.notifications + 1] = item
     while #state.notifications > 3 do table.remove(state.notifications, 1) end
     UI.animate(item, { offset = 0 }, 0.18, "outQuad")
-    state.dirty = true
+    state.nextNotificationExpiry = math.min(state.nextNotificationExpiry or math.huge, item.expires)
+    -- Notifications live in their own region; no need to clear the desktop.
+    state.notificationsDirty = true
 end
 
 local function runCleanup(task)
@@ -214,17 +224,135 @@ local function removeTask(task)
     state.dirty = true
 end
 
-local function focusTask(task)
-    if not task or task.modal or task.hidden then return end
-    state.focused = task
-    for index, candidate in ipairs(state.tasks) do
-        if candidate == task then
-            table.remove(state.tasks, index)
-            state.tasks[#state.tasks + 1] = task
-            break
+local function redrawTitlebar(task)
+    -- The titlebar row belongs to the frame on the native terminal, so it can
+    -- be repainted in place without touching the window's content buffer.
+    if not task or task.minimized or task.hidden then return end
+    UI.titleBar(native, task.x, task.y, task.width, task.meta.title, task.meta.icon, task == state.focused, task.maximized)
+end
+
+local function flushWindow(task)
+    -- Repaint one window's frame and content from its own buffer: the same
+    -- work the full repaint performs for every visible task.
+    if not task or task.minimized or task.hidden then return end
+    UI.fill(native, task.x, task.y, task.width, task.height, colors.white)
+    UI.titleBar(native, task.x, task.y, task.width, task.meta.title, task.meta.icon, task == state.focused, task.maximized)
+    if task.failed then
+        task.window.setBackgroundColor(colors.black)
+        task.window.setTextColor(colors.white)
+        task.window.clear()
+        UI.text(task.window, 2, 2, "Application stopped", colors.red, colors.black, task.width - 5)
+        UI.text(task.window, 2, 4, "Open Control Center", colors.yellow, colors.black, task.width - 5)
+        UI.text(task.window, 2, 5, "to restart this process", colors.yellow, colors.black, task.width - 5)
+    else
+        -- Normalize the shared body surface before each app redraw; individual
+        -- screens may still choose their own text colors.
+        task.window.setBackgroundColor(colors.white)
+        task.window.redraw()
+    end
+end
+
+local function restoreRegion(x, y, width, height)
+    -- The launcher is chrome drawn over windows; restoring underneath it would
+    -- erase its panel and nothing here redraws it, so escalate to a full
+    -- repaint when the region touches an open launcher. This is rare (the
+    -- launcher is transient) and only happens while it is actually open.
+    if state.launcher and state.launcherRect then
+        local rect = state.launcherRect
+        if x < rect.x + rect.w and x + width > rect.x and y < rect.y + rect.h and y + height > rect.y then
+            state.dirty = true
+            return
         end
     end
-    state.dirty = true
+    -- Re-establish the desktop underneath a chrome layer (notification boxes,
+    -- a just-moved window): paint the desktop color across the region, then
+    -- flush any windows overlapping it from back to front so their buffers
+    -- repaint the correct pixels on top.
+    UI.fill(native, x, y, width, height, UI.colors.desktop)
+    for _, task in ipairs(state.tasks) do
+        if not task.minimized and not task.hidden then
+            if x < task.x + task.width and x + width > task.x
+                and y < task.y + task.height and y + height > task.y then
+                flushWindow(task)
+            end
+        end
+    end
+end
+
+local function notificationsOverlap(x, y, width, height)
+    for _, rect in ipairs(state.notificationRects or {}) do
+        if x < rect.x + rect.w and x + width > rect.x and y < rect.y + rect.h and y + height > rect.y then
+            return true
+        end
+    end
+    return false
+end
+
+local function moveWindow(task, newX, newY, newWidth, newHeight, repaint)
+    if not task or not task.window then return false end
+    local oldX, oldY = task.x, task.y
+    local oldWidth, oldHeight = task.width, task.height
+    newX = tonumber(newX) or oldX
+    newY = tonumber(newY) or oldY
+    newWidth = tonumber(newWidth) or oldWidth
+    newHeight = tonumber(newHeight) or oldHeight
+    -- Leave room for the frame and content window. Current callers already
+    -- provide larger bounded dimensions, but reject malformed future requests
+    -- before changing task state or passing invalid sizes to CC:T.
+    if newWidth < 3 or newHeight < 3 then return false end
+    if oldX == newX and oldY == newY and oldWidth == newWidth and oldHeight == newHeight then
+        return false
+    end
+
+    task.x, task.y = newX, newY
+    task.width, task.height = newWidth, newHeight
+    -- Reposition before any targeted restore. Otherwise restoreRegion can
+    -- flush this window's buffer through its old terminal mapping, recreating
+    -- the smear that this helper is intended to prevent.
+    task.window.reposition(newX + 1, newY + 1, newWidth - 2, newHeight - 2)
+    if repaint == false then return true end
+
+    -- Restore both sides of the move: the old rectangle may expose desktop or
+    -- lower windows, while the new rectangle may cover windows and chrome.
+    restoreRegion(oldX, oldY, oldWidth, oldHeight)
+    restoreRegion(newX, newY, newWidth, newHeight)
+    if notificationsOverlap(oldX, oldY, oldWidth, oldHeight)
+        or notificationsOverlap(newX, newY, newWidth, newHeight) then
+        state.notificationsDirty = true
+    end
+    return true
+end
+
+local function focusTask(task)
+    if not task or task.modal or task.hidden then return end
+    local previous = state.focused
+    local index
+    for candidateIndex, candidate in ipairs(state.tasks) do
+        if candidate == task then index = candidateIndex; break end
+    end
+    if not index then
+        -- A newly spawned task: the full repaint that follows a launch draws it.
+        state.focused = task
+        return
+    end
+    table.remove(state.tasks, index)
+    state.tasks[#state.tasks + 1] = task
+    state.focused = task
+    if previous == task and index == #state.tasks then
+        -- Already focused and already on top; nothing visible changed.
+        return
+    end
+    -- Raising a window only changes what is on top: dim the old titlebar,
+    -- repaint the raised window (frame + content) and the taskbar underline
+    -- instead of clearing the whole terminal. If either repaint covered a
+    -- notification box, the boxes are redrawn on top afterwards.
+    if previous and previous ~= task then redrawTitlebar(previous) end
+    flushWindow(task)
+    state.taskbarDirty = true
+    if notificationsOverlap(task.x, task.y, task.width, task.height)
+        or (previous and notificationsOverlap(previous.x, previous.y, previous.width, previous.height)) then
+        state.notificationsDirty = true
+    end
 end
 
 local spawn
@@ -239,6 +367,21 @@ local function focusOtherVisibleTask(exclude)
         end
     end
     return nil
+end
+
+local function minimizeTask(task)
+    -- Hide the window, restore the area it vacated (desktop plus any windows
+    -- underneath it, in z-order), refresh the taskbar underline, and hand
+    -- focus to the next visible task -- all without clearing the terminal.
+    if not task or task.minimized then return end
+    task.minimized = true
+    task.window.setVisible(false)
+    restoreRegion(task.x, task.y, task.width, task.height)
+    if notificationsOverlap(task.x, task.y, task.width, task.height) then
+        state.notificationsDirty = true
+    end
+    if state.focused == task then focusOtherVisibleTask(task) end
+    state.taskbarDirty = true
 end
 
 local function makeContext(task)
@@ -285,7 +428,7 @@ local function makeContext(task)
 
     function context:clearNotifications()
         state.notifications = {}
-        state.dirty = true
+        state.notificationsDirty = true
     end
 
     function context:close()
@@ -873,6 +1016,9 @@ local function send(task, event)
         if not task.hidden then task.window.setVisible(true) end
         task.minimized = false
         task.closeRequested = false
+        -- The failure screen is painted by the full repaint, so a crash still
+        -- needs the whole desktop redrawn.
+        state.dirty = true
     elseif coroutine.status(task.co) == "dead" then
         task.state = "stopped"
         task.closeRequested = true
@@ -883,43 +1029,17 @@ end
 
 local launcherGeometry
 
-local function drawDesktop()
-    width, height = native.getSize()
-    native.setBackgroundColor(UI.colors.desktop)
-    native.setTextColor(colors.white)
-    native.clear()
-
-    UI.desktopBackground(native, width, height)
-
-    for _, task in ipairs(state.tasks) do
-        local focused = task == state.focused
-        if not task.minimized and not task.hidden then
-            -- Keep the frame flush with its content; no shadow may protrude into
-            -- neighboring windows or the taskbar.
-            UI.fill(native, task.x, task.y, task.width, task.height, colors.white)
-            UI.titleBar(native, task.x, task.y, task.width, task.meta.title, task.meta.icon, focused, task.maximized)
-            if task.failed then
-                task.window.setBackgroundColor(colors.black)
-                task.window.setTextColor(colors.white)
-                task.window.clear()
-                UI.text(task.window, 2, 2, "Application stopped", colors.red, colors.black, task.width - 5)
-                UI.text(task.window, 2, 4, "Open Control Center", colors.yellow, colors.black, task.width - 5)
-                UI.text(task.window, 2, 5, "to restart this process", colors.yellow, colors.black, task.width - 5)
-            else
-                -- Normalize the shared body surface before each app redraw;
-                -- individual screens may still choose their own text colors.
-                task.window.setBackgroundColor(colors.white)
-                task.window.redraw()
-            end
-        end
+local function drawNotifications()
+    -- Repaint the top-right notification boxes in place. The boxes are chrome
+    -- drawn over the desktop and possibly windows, so the previous boxes are
+    -- restored first; the full-repaint path clears state.notificationRects
+    -- beforehand so that step is skipped there.
+    for _, rect in ipairs(state.notificationRects or {}) do
+        restoreRegion(rect.x, rect.y, rect.w, rect.h)
     end
-
+    state.notificationRects = {}
+    state.nextNotificationExpiry = nil
     local now = os.clock()
-    for _, task in ipairs(state.tasks) do
-        if task.failed and not task.hidden then
-            task.window.setVisible(true)
-        end
-    end
     for index = #state.notifications, 1, -1 do
         if state.notifications[index].expires < now then table.remove(state.notifications, index) end
     end
@@ -929,45 +1049,110 @@ local function drawDesktop()
         local y = 2 + (index - 1) * 2
         UI.fill(native, x, y, boxWidth, 1, item.color)
         UI.text(native, x + 1, y, item.message, colors.white, item.color, boxWidth - 2)
+        state.notificationRects[#state.notificationRects + 1] = { x = x, y = y, w = boxWidth, h = 1 }
+        if not state.nextNotificationExpiry or item.expires < state.nextNotificationExpiry then
+            state.nextNotificationExpiry = item.expires
+        end
     end
+end
 
-    if state.launcher then
-        local menuX, menuY, menuWidth, menuHeight, visibleCount, items, start = launcherGeometry()
-        UI.shadow(native, menuX, menuY, menuWidth, menuHeight, 1, UI.colors.shadow)
-        UI.panel(native, menuX, menuY, menuWidth, menuHeight, UI.colors.surface, UI.colors.borderStrong)
-        UI.fill(native, menuX + 1, menuY + 1, menuWidth - 2, 1, UI.colors.accent)
-        UI.text(native, menuX + 2, menuY + 1, "Q  Qalcom", colors.white, UI.colors.accent, menuWidth - 4)
-        UI.text(native, menuX + menuWidth - 11, menuY + 1, tostring(state.user or "-"), UI.colors.lightBlue, UI.colors.accent, 9)
+local function drawLauncher()
+    local menuX, menuY, menuWidth, menuHeight, visibleCount, items, start = launcherGeometry()
+    -- Remember the launcher's on-screen extent (plus its one-cell shadow) so
+    -- region restores can escalate to a full repaint instead of erasing it.
+    state.launcherRect = { x = menuX, y = menuY, w = menuWidth + 1, h = menuHeight + 1 }
+    UI.shadow(native, menuX, menuY, menuWidth, menuHeight, 1, UI.colors.shadow)
+    UI.panel(native, menuX, menuY, menuWidth, menuHeight, UI.colors.surface, UI.colors.borderStrong)
+    UI.fill(native, menuX + 1, menuY + 1, menuWidth - 2, 1, UI.colors.accent)
+    UI.text(native, menuX + 2, menuY + 1, "Q  Qalcom", colors.white, UI.colors.accent, menuWidth - 4)
+    UI.text(native, menuX + menuWidth - 11, menuY + 1, tostring(state.user or "-"), UI.colors.lightBlue, UI.colors.accent, 9)
 
-        local searchBackground = state.launcherSearchFocused and UI.colors.accentLight or UI.colors.surfaceAlt
-        local searchForeground = state.launcherSearchFocused and colors.white or UI.colors.text
-        UI.fill(native, menuX + 2, menuY + 2, menuWidth - 4, 1, searchBackground)
-        local searchText = state.launcherSearch == "" and "Search programs" or state.launcherSearch
-        if state.launcherSearchFocused and state.launcherSearch ~= "" then searchText = searchText .. "_" end
-        UI.text(native, menuX + 3, menuY + 2, searchText, searchForeground, searchBackground, menuWidth - 6)
+    local searchBackground = state.launcherSearchFocused and UI.colors.accentLight or UI.colors.surfaceAlt
+    local searchForeground = state.launcherSearchFocused and colors.white or UI.colors.text
+    UI.fill(native, menuX + 2, menuY + 2, menuWidth - 4, 1, searchBackground)
+    local searchText = state.launcherSearch == "" and "Search programs" or state.launcherSearch
+    if state.launcherSearchFocused and state.launcherSearch ~= "" then searchText = searchText .. "_" end
+    UI.text(native, menuX + 3, menuY + 2, searchText, searchForeground, searchBackground, menuWidth - 6)
 
-        local heading = state.launcherSearch == "" and (#state.recentApps > 0 and "Recent apps" or "All apps") or "Search results"
-        UI.text(native, menuX + 2, menuY + 3, heading, UI.colors.muted, UI.colors.surface, menuWidth - 4)
-        if #items == 0 then
-            UI.text(native, menuX + 3, menuY + 4, "No matching programs", UI.colors.muted, UI.colors.surface, menuWidth - 6)
-        else
-            for offset = 1, visibleCount do
-                local index = start + offset - 1
-                local name = items[index]
-                if name then
-                    local itemY = menuY + 3 + offset
-                    local active = index == state.launcherSelection
-                    local background = active and UI.colors.accentLight or UI.colors.surface
-                    local foreground = active and colors.white or UI.colors.text
-                    UI.fill(native, menuX + 2, itemY, menuWidth - 4, 1, background)
-                    UI.text(native, menuX + 4, itemY, APP_META[name].icon .. "  " .. APP_META[name].title, foreground, background, menuWidth - 8)
-                end
+    local heading = state.launcherSearch == "" and (#state.recentApps > 0 and "Recent apps" or "All apps") or "Search results"
+    UI.text(native, menuX + 2, menuY + 3, heading, UI.colors.muted, UI.colors.surface, menuWidth - 4)
+    if #items == 0 then
+        UI.text(native, menuX + 3, menuY + 4, "No matching programs", UI.colors.muted, UI.colors.surface, menuWidth - 6)
+    else
+        for offset = 1, visibleCount do
+            local index = start + offset - 1
+            local name = items[index]
+            if name then
+                local itemY = menuY + 3 + offset
+                local active = index == state.launcherSelection
+                local background = active and UI.colors.accentLight or UI.colors.surface
+                local foreground = active and colors.white or UI.colors.text
+                UI.fill(native, menuX + 2, itemY, menuWidth - 4, 1, background)
+                UI.text(native, menuX + 4, itemY, APP_META[name].icon .. "  " .. APP_META[name].title, foreground, background, menuWidth - 8)
             end
         end
     end
+end
 
+local function drawTaskbar()
     local barY = math.max(1, height - 2)
     UI.taskbar(native, width, barY, state.tasks, state.focused, state.launcher, 15, state.mouseX, state.mouseY)
+end
+
+local function openLauncher()
+    state.launcher = true
+    state.launcherSelection = 1
+    state.launcherSearch = ""
+    state.launcherSearchFocused = true
+    -- The launcher is self-contained chrome; draw it over the desktop and
+    -- windows in place and refresh the Q button instead of clearing the
+    -- whole terminal.
+    drawLauncher()
+    state.taskbarDirty = true
+end
+
+local function closeLauncher()
+    if not state.launcher then return end
+    local rect = state.launcherRect
+    state.launcher = false
+    state.launcherSearch = ""
+    state.launcherSearchFocused = true
+    state.taskbarDirty = true
+    -- Restore the panel's area (desktop plus any windows underneath) and
+    -- redraw notification boxes the panel was covering.
+    if rect then
+        restoreRegion(rect.x, rect.y, rect.w, rect.h)
+        if notificationsOverlap(rect.x, rect.y, rect.w, rect.h) then
+            state.notificationsDirty = true
+        end
+    end
+end
+
+local function drawDesktop()
+    width, height = native.getSize()
+    native.setBackgroundColor(UI.colors.desktop)
+    native.setTextColor(colors.white)
+    native.clear()
+
+    UI.desktopBackground(native, width, height)
+
+    for _, task in ipairs(state.tasks) do
+        if not task.minimized and not task.hidden then
+            flushWindow(task)
+        end
+    end
+
+    for _, task in ipairs(state.tasks) do
+        if task.failed and not task.hidden then
+            task.window.setVisible(true)
+        end
+    end
+
+    -- The clear already removed any previous boxes, so skip the restore step.
+    state.notificationRects = {}
+    drawNotifications()
+    if state.launcher then drawLauncher() end
+    drawTaskbar()
 end
 
 local function hitTask(x, y)
@@ -1058,10 +1243,7 @@ local function handleMouse(button, x, y)
         end
         -- Match the normal Start-menu behavior: clicking outside dismisses it,
         -- while the original click can still focus a taskbar item or window.
-        state.launcher = false
-        state.launcherSearch = ""
-        state.launcherSearchFocused = true
-        state.dirty = true
+        closeLauncher()
     end
     if y >= height - 2 then
         if activeModal() then return end
@@ -1069,34 +1251,31 @@ local function handleMouse(button, x, y)
         for _, item in ipairs(items) do
             if x >= item.x and x < item.x + item.width then
                 if item.kind == "start" then
-                    state.launcher = not state.launcher
-                    state.launcherSelection = 1
-                    state.launcherSearch = ""
-                    state.launcherSearchFocused = true
+                    if state.launcher then closeLauncher() else openLauncher() end
                 elseif item.kind == "overflow" then
-                    state.launcher = true
-                    state.launcherSelection = 1
-                    state.launcherSearch = ""
-                    state.launcherSearchFocused = true
+                    openLauncher()
                 elseif item.task then
                     local task = item.task
                     if task.minimized then
                         -- A second click restores a minimized task, matching the
-                        -- familiar taskbar toggle behavior.
+                        -- familiar taskbar toggle behavior. focusTask raises and
+                        -- repaints it; only notification boxes it may have
+                        -- covered need a redraw.
                         task.minimized = false
                         task.window.setVisible(true)
                         focusTask(task)
+                        if notificationsOverlap(task.x, task.y, task.width, task.height) then
+                            state.notificationsDirty = true
+                        end
                     elseif task == state.focused then
                         -- Clicking the active task button minimizes its window
                         -- instead of opening another app-name action/tooltip.
-                        task.minimized = true
-                        task.window.setVisible(false)
-                        focusOtherVisibleTask(task)
+                        minimizeTask(task)
                     else
                         focusTask(task)
                     end
+                    state.taskbarDirty = true
                 end
-                state.dirty = true
                 return
             end
         end
@@ -1110,15 +1289,18 @@ local function handleMouse(button, x, y)
         return
     end
     if not task then
-        state.launcher = false
-        state.dirty = true
+        closeLauncher()
         return
     end
     focusTask(task)
     if task.minimized then
         task.minimized = false
         task.window.setVisible(true)
-        state.dirty = true
+        flushWindow(task)
+        state.taskbarDirty = true
+        if notificationsOverlap(task.x, task.y, task.width, task.height) then
+            state.notificationsDirty = true
+        end
         return
     end
     if y == task.y and x == task.x + 1 then
@@ -1126,30 +1308,27 @@ local function handleMouse(button, x, y)
         return
     end
     if y == task.y and x == task.x + 3 then
-        task.minimized = true
-        task.window.setVisible(false)
-        if state.focused == task then focusOtherVisibleTask(task) end
-        state.dirty = true
+        minimizeTask(task)
         return
     end
     if y == task.y and x == task.x + 5 then
+        local newX, newY = task.x, task.y
+        local newWidth, newHeight = task.width, task.height
         if task.maximized then
             local restore = task.restoreGeometry
             if restore then
-                task.x, task.y = restore.x, restore.y
-                task.width, task.height = restore.width, restore.height
-                task.window.reposition(task.x + 1, task.y + 1, task.width - 2, task.height - 2)
+                newX, newY = restore.x, restore.y
+                newWidth, newHeight = restore.width, restore.height
             end
             task.maximized = false
             task.restoreGeometry = nil
         else
             task.restoreGeometry = { x = task.x, y = task.y, width = task.width, height = task.height }
-            task.x, task.y = 2, 2
-            task.width, task.height = math.max(20, width - 2), math.max(8, height - 4)
-            task.window.reposition(task.x + 1, task.y + 1, task.width - 2, task.height - 2)
+            newX, newY = 2, 2
+            newWidth, newHeight = math.max(20, width - 2), math.max(8, height - 4)
             task.maximized = true
         end
-        state.dirty = true
+        moveWindow(task, newX, newY, newWidth, newHeight)
         return
     end
     if y == task.y and x >= task.x + 7 then
@@ -1168,15 +1347,30 @@ local function dispatch(event)
         handleMouse(event[2], event[3], event[4])
     elseif name == "mouse_move" then
         state.mouseX, state.mouseY = event[2], event[3]
-        state.dirty = true
+        -- Hover only affects the taskbar (tooltip and the Q button highlight),
+        -- which never overlaps windows, so repaint just that region instead of
+        -- clearing the whole terminal. Applications still receive every
+        -- movement for their own hover rendering.
+        local inTaskbar = state.mouseY >= height - 2
+        if inTaskbar or state.mouseInTaskbar then state.taskbarDirty = true end
+        state.mouseInTaskbar = inTaskbar
+        if state.focused then
+            local task = state.focused
+            send(task, { name, nil, event[2] - task.x, event[3] - task.y })
+        end
     elseif name == "mouse_drag" then
         state.mouseX, state.mouseY = event[3], event[4]
         if state.drag then
             local task = state.drag.task
-            task.x = math.max(2, math.min(width - task.width, event[3] - state.drag.offsetX))
-            task.y = math.max(2, math.min(height - task.height - 2, event[4] - state.drag.offsetY))
-            task.window.reposition(task.x + 1, task.y + 1)
-            state.dirty = true
+            local newX = math.max(2, math.min(width - task.width, event[3] - state.drag.offsetX))
+            local newY = math.max(2, math.min(height - task.height - 2, event[4] - state.drag.offsetY))
+            if newX ~= task.x or newY ~= task.y then
+                -- Pass proposed coordinates without mutating task first;
+                -- moveWindow must capture the old rectangle before updating it.
+                -- It centralizes reposition-before-restore ordering, both
+                -- region restores, and notification overlap bookkeeping.
+                moveWindow(task, newX, newY, task.width, task.height)
+            end
         elseif state.focused then
             local task = state.focused
             send(task, { name, event[2], event[3] - task.x, event[4] - task.y })
@@ -1256,10 +1450,7 @@ local function dispatch(event)
                     end
                     return
                 elseif event[2] == keys.escape then
-                    state.launcher = false
-                    state.launcherSearch = ""
-                    state.launcherSearchFocused = true
-                    state.dirty = true
+                    closeLauncher()
                     return
                 end
             end
@@ -1317,21 +1508,38 @@ while true do
     if state.dirty then
         drawDesktop()
         state.dirty = false
+        state.taskbarDirty = false
+        state.notificationsDirty = false
+    else
+        if state.taskbarDirty then
+            drawTaskbar()
+            state.taskbarDirty = false
+        end
+        if state.notificationsDirty then
+            drawNotifications()
+            state.notificationsDirty = false
+        end
     end
     local event = { os.pullEventRaw() }
     if event[1] == "timer" and event[2] == state.clockTimer then
         state.clockTimer = os.startTimer(1)
         dispatch({ "qalcom_tick" })
-        state.dirty = true
+        -- The per-second clock only changes the taskbar; repaint that region.
+        -- Notification boxes repaint on their own expiry timer, not every tick.
+        state.taskbarDirty = true
+        if state.nextNotificationExpiry and os.clock() >= state.nextNotificationExpiry then
+            state.notificationsDirty = true
+        end
     elseif event[1] == "timer" and event[2] == state.uiTimer then
         state.uiTimer = os.startTimer(0.1)
-        if UI.tick() then state.dirty = true end
+        -- Only notification boxes animate, so animation ticks repaint just
+        -- the notification region.
+        if UI.tick() then state.notificationsDirty = true end
     elseif event[1] == "terminate" then
         state.modifiers.alt = false
         state.modifiers.ctrl = false
         state.modifiers.shift = false
         notify("Ctrl+T is handled by Qalcom; close apps from their title bars.", UI.colors.warning)
-        state.dirty = true
     elseif event[1] == "qalcom_power_confirmed" then
         closeAllTasks()
         recordBootStage("power " .. tostring(event[2]))
@@ -1383,17 +1591,20 @@ spawn("network_service", { hidden = true })
         for _, task in ipairs(state.tasks) do
             local minimumWidth = math.max(20, width - 2)
             local minimumHeight = math.max(8, height - 4)
-            task.width = math.min(task.width, minimumWidth)
-            task.height = math.min(task.height, minimumHeight)
-            task.x = math.max(2, math.min(task.x, width - task.width))
-            task.y = math.max(2, math.min(task.y, height - task.height - 2))
+            local newWidth = math.min(task.width, minimumWidth)
+            local newHeight = math.min(task.height, minimumHeight)
+            local newX = math.max(2, math.min(task.x, width - newWidth))
+            local newY = math.max(2, math.min(task.y, height - newHeight - 2))
             if task.restoreGeometry then
                 task.restoreGeometry.width = math.min(task.restoreGeometry.width, minimumWidth)
                 task.restoreGeometry.height = math.min(task.restoreGeometry.height, minimumHeight)
                 task.restoreGeometry.x = math.max(2, math.min(task.restoreGeometry.x, width - task.restoreGeometry.width))
                 task.restoreGeometry.y = math.max(2, math.min(task.restoreGeometry.y, height - task.restoreGeometry.height - 2))
             end
-            task.window.reposition(task.x + 1, task.y + 1, task.width - 2, task.height - 2)
+            -- Resize always schedules the full desktop repaint below, so
+            -- update the window mapping through the same helper but skip its
+            -- targeted restore work.
+            moveWindow(task, newX, newY, newWidth, newHeight, false)
         end
         state.dirty = true
         dispatch(event)

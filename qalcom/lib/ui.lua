@@ -287,7 +287,10 @@ function UI.taskbar(target, width, y, tasks, focused, launcher, trayWidth, hover
     if hovered and hovered.title and hovered.kind ~= "start" then
         local tipWidth = math.min(width - 2, math.max(8, #hovered.title + 2))
         local tipX = math.max(1, math.min(width - tipWidth + 1, hovered.x + math.floor((hovered.width - tipWidth) / 2)))
-        local tipY = math.max(1, y - 1)
+        -- Keep the tooltip on the taskbar's own top row. Windows never reach
+        -- this row, so taskbar-only repaints do not need to restore window
+        -- content that a tooltip was drawn over.
+        local tipY = y
         UI.fill(target, tipX, tipY, tipWidth, 1, UI.colors.surfaceStrong)
         UI.text(target, tipX + 1, tipY, hovered.title, UI.colors.text, UI.colors.surfaceStrong, tipWidth - 2)
     end
