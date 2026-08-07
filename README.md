@@ -2,62 +2,6 @@
 
 Qalcom OS is a clean, Windows-inspired desktop environment for ComputerCraft: Tweaked. This milestone runs entirely inside CC:T and does not require a Minecraft mod or CraftOS modification.
 
-## Install
-
-Copy the repository contents to the root of a CC:T computer so the layout looks like this:
-
-```text
-/startup.lua
-/qalcom/kernel/init.lua
-/qalcom/lib/ui.lua
-/qalcom/lib/ui/animation.lua
-/qalcom/lib/ui/hit.lua
-/qalcom/lib/ui/screen.lua
-/qalcom/lib/config.lua
-/qalcom/lib/auth.lua
-/qalcom/version.lua
-/qalcom/apps/terminal.lua
-/qalcom/apps/explorer.lua
-/qalcom/apps/monitor.lua
-/qalcom/apps/settings.lua
-/qalcom/apps/account.lua
-/qalcom/apps/editor.lua
-/qalcom/apps/dialog.lua
-/qalcom/apps/control.lua
-/qalcom/apps/logs.lua
-/qalcom/apps/recovery.lua
-/qalcom/apps/diagnostics.lua
-/qalcom/lib/system.lua
-/qalcom/lib/pure.lua
-/qalcom/lib/capabilities.lua
-/qalcom/lib/roles.lua
-/qalcom/lib/managed.lua
-/qalcom/lib/peripherals.lua
-/qalcom/lib/infrastructure.lua
-/qalcom/lib/jobs.lua
-/qalcom/apps/peripherals.lua
-/qalcom/apps/jobs.lua
-/qalcom/apps/jobs_service.lua
-/qalcom/apps/infrastructure.lua
-/qalcom/lib/network.lua
-/qalcom/lib/crypto.lua
-/qalcom/lib/protocol.lua
-/qalcom/lib/nodes.lua
-/qalcom/lib/telemetry.lua
-/qalcom/lib/cannon.lua
-/qalcom/apps/network.lua
-/qalcom/apps/network_service.lua
-/qalcom/apps/telemetry.lua
-/qalcom/apps/cannon.lua
-/qalcom/lib/incidents.lua
-/qalcom/apps/incidents.lua
-/qalcom/lib/calculator.lua
-/qalcom/apps/calculator.lua
-/qalcom/apps/capabilities.lua
-```
-
-Reboot the computer. Qalcom starts through `/startup.lua`, shows the first-run account setup, and will enter a small recovery prompt if the kernel fails to load. When upgrading from 0.1.10, copy the updated `/qalcom/kernel/init.lua`, `/qalcom/lib/ui.lua`, `/qalcom/lib/ui/animation.lua`, `/qalcom/lib/ui/hit.lua`, `/qalcom/lib/config.lua`, `/qalcom/apps/settings.lua`, `/qalcom/lib/capabilities.lua`, `/qalcom/lib/roles.lua`, `/qalcom/lib/managed.lua`, `/qalcom/lib/peripherals.lua`,`/qalcom/lib/infrastructure.lua`, `/qalcom/lib/jobs.lua`, `/qalcom/lib/calculator.lua`, `/qalcom/apps/calculator.lua`, `/qalcom/apps/capabilities.lua`, `/qalcom/apps/peripherals.lua`, `/qalcom/apps/infrastructure.lua`, `/qalcom/apps/jobs.lua`, `/qalcom/apps/jobs_service.lua`, `/qalcom/lib/network.lua`, `/qalcom/lib/crypto.lua`, `/qalcom/lib/protocol.lua`, `/qalcom/lib/nodes.lua`, `/qalcom/lib/telemetry.lua`, `/qalcom/lib/incidents.lua`, `/qalcom/apps/network.lua`, `/qalcom/apps/network_service.lua`, `/qalcom/apps/telemetry.lua`, `/qalcom/apps/incidents.lua`, and `/qalcom/version.lua` files. Configuration schema migration runs automatically, including the Reduced motion preference; account data in `/qalcom/data/accounts` is preserved.
-
 ## Controls
 
 - Qalcom requires a terminal at least 30 columns wide and 14 rows tall.
@@ -65,7 +9,7 @@ Reboot the computer. Qalcom starts through `/startup.lua`, shows the first-run a
 - Click the green **Q** button at the bottom-left to open the Windows-style Start menu above the taskbar; type in its search bar to find programs, or choose from recently used apps below it. Use Up/Down and Enter while it is open.
 - Taskbar applications use compact icons immediately after the green Q button; they are left-aligned, and the active app is marked with a subtle light-blue underline. Hover with the mouse to see the application name.
 - Window headers are yellow with white bodies; click the left-side `x` to close, `-` to minimize, and `+` to expand/restore. Click the remaining header area to drag.
-- Built-in apps share the native graphics system: yellow section headers, gray keycaps/buttons, compact list rows, status badges, meters, cards, and clean content-first layouts. The shared primitives live in `/qalcom/lib/ui.lua` and `/qalcom/lib/ui/screen.lua`.
+- Built-in apps share the native graphics system: yellow section headers, gray keycaps/buttons, compact list rows, status badges, meters, cards, and clean content-first layouts. The shared primitives live in `/qalcom/lib/ui.lua` and `/qalcom/lib/ui/screen.lua`; `/qalcom/apps/_screen.lua` is no longer shipped because it duplicated that library entrypoint without any runtime caller.
 - Click an active taskbar icon to minimize its window; click it again to restore it, or click another app icon to focus that window. Hovering still shows the app name.
 - Click a window title bar to focus it.
 - Click `x` in a title bar to close an application.

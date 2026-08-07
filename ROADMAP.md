@@ -21,7 +21,7 @@ The modernization must preserve Qalcom's operational boundaries: capability gate
 
 ## Milestone 1 — Design-system foundation
 
-**Status:** In progress
+**Status:** Complete (source-level; target CC:T visual validation pending)
 
 **Goal:** Build the shared visual language and app-shell primitives before redesigning individual applications.
 
@@ -87,8 +87,8 @@ Existing apps may continue using `Screen.begin` while they are migrated.
 - New applications can use the app shell and common state components without reimplementing layout plumbing.
 - Light, dark, and terminal themes provide the same token names.
 - Helpers clamp layout dimensions safely for CC:T.
-- Pure helper tests and structural checks pass.
-- No full repaint or region-repaint regressions are introduced.
+- Pure helper tests and structural checks pass where a Lua 5.1-compatible runtime is available; this checkout has no Lua interpreter.
+- No full repaint or region-repaint regressions are introduced by the foundation changes; target CC:T repaint validation remains required.
 
 ## Milestone 2 — Shell redesign
 
