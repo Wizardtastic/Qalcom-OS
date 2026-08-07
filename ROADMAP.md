@@ -92,6 +92,8 @@ Existing apps may continue using `Screen.begin` while they are migrated.
 
 ## Milestone 2 — Shell redesign
 
+**Status:** Complete (source-level; target CC:T visual validation pending)
+
 **Goal:** Make the desktop itself feel like a unified modern operating environment.
 
 - Modernize active/inactive window chrome, title controls, borders, focus states, and compact layouts.
@@ -99,6 +101,8 @@ Existing apps may continue using `Screen.begin` while they are migrated.
 - Upgrade the Start menu into a searchable command palette with recent apps, categories, availability state, and Safe Mode explanation.
 - Upgrade notifications with severity, grouping, titles, detail, persistent critical state, and consistent timing.
 - Polish login, logout, recovery, and crash surfaces.
+
+**Source-level delivery:** Shared title tokens now distinguish active/inactive windows; taskbar surfaces provide hover/active states and health rails for crashed, slow, and service tasks; notifications carry severity markers, severity-specific contrast, and severity-specific durations; launcher and taskbar rendering use semantic theme tokens throughout. Grouping, rich title/detail notifications, and persistent critical storage remain future work. Target-terminal interaction and repaint validation remains required.
 - Preserve targeted repainting and the corrected reposition-before-restore window movement invariant.
 
 ## Milestone 3 — Reference applications

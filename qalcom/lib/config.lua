@@ -13,7 +13,7 @@ Config.themes = {
         text = colors.black, muted = colors.gray, textMuted = colors.gray, textSubtle = colors.gray, textInverse = colors.white,
         accent = colors.blue, accentLight = colors.lightBlue, accentSoft = colors.lightBlue, accentStrong = colors.blue, hover = colors.lightBlue, focus = colors.lightBlue, info = colors.lightBlue,
         success = colors.lime, successSoft = colors.lime, warning = colors.yellow, warningSoft = colors.yellow, danger = colors.red, dangerSoft = colors.red,
-        shadow = colors.gray, button = colors.gray, buttonText = colors.black, buttonActive = colors.blue, section = colors.yellow, sectionText = colors.black,
+        shadow = colors.gray, button = colors.gray, buttonText = colors.black, buttonActive = colors.blue, section = colors.yellow, sectionText = colors.black, taskbar = colors.lightGray, taskbarHover = colors.gray, titleActive = colors.yellow, titleInactive = colors.gray, titleControl = colors.black, statusText = colors.white, infoText = colors.white, successText = colors.black, dangerText = colors.white, warningText = colors.black,
     },
     dark = {
         name = "Midnight",
@@ -25,7 +25,7 @@ Config.themes = {
         text = colors.white, muted = colors.lightGray, textMuted = colors.lightGray, textSubtle = colors.gray, textInverse = colors.black,
         accent = colors.purple, accentLight = colors.magenta, accentSoft = colors.purple, accentStrong = colors.magenta, hover = colors.magenta, focus = colors.magenta, info = colors.cyan,
         success = colors.lime, successSoft = colors.lime, warning = colors.yellow, warningSoft = colors.yellow, danger = colors.red, dangerSoft = colors.red,
-        shadow = colors.black, button = colors.gray, buttonText = colors.black, buttonActive = colors.purple, section = colors.purple, sectionText = colors.white,
+        shadow = colors.black, button = colors.gray, buttonText = colors.black, buttonActive = colors.purple, section = colors.purple, sectionText = colors.white, taskbar = colors.black, taskbarHover = colors.gray, titleActive = colors.purple, titleInactive = colors.gray, titleControl = colors.white, statusText = colors.white, infoText = colors.white, successText = colors.black, dangerText = colors.white, warningText = colors.black,
     },
     green = {
         name = "Terminal",
@@ -37,7 +37,7 @@ Config.themes = {
         text = colors.white, muted = colors.lightGray, textMuted = colors.lightGray, textSubtle = colors.gray, textInverse = colors.black,
         accent = colors.lime, accentLight = colors.lime, accentSoft = colors.green, accentStrong = colors.lime, hover = colors.lime, focus = colors.lime, info = colors.lime,
         success = colors.lime, successSoft = colors.green, warning = colors.yellow, warningSoft = colors.yellow, danger = colors.red, dangerSoft = colors.red,
-        shadow = colors.black, button = colors.gray, buttonText = colors.black, buttonActive = colors.green, section = colors.green, sectionText = colors.white,
+        shadow = colors.black, button = colors.gray, buttonText = colors.black, buttonActive = colors.green, section = colors.green, sectionText = colors.white, taskbar = colors.black, taskbarHover = colors.gray, titleActive = colors.green, titleInactive = colors.gray, titleControl = colors.white, statusText = colors.white, infoText = colors.black, successText = colors.black, dangerText = colors.white, warningText = colors.black,
     },
 }
 

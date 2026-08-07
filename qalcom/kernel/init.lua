@@ -68,6 +68,13 @@ local APP_META = {
     cannon = { title = "CBC Fire Control", icon = "C", x = 3, y = 3, width = 56, height = 21 },
 }
 
+local APP_CATEGORIES = {
+    terminal = "System", explorer = "Files", calculator = "Tools", monitor = "System",
+    peripherals = "Operations", telemetry = "Operations", incidents = "Response", cannon = "Defense",
+    network = "Network", infrastructure = "Control", jobs = "Automation", control = "System",
+    capabilities = "Security", settings = "System", recovery = "Recovery", logs = "System", account = "Account",
+}
+
 local NORMAL_LAUNCHER_APPS = { "terminal", "explorer", "calculator", "monitor", "peripherals", "telemetry", "incidents", "cannon", "network", "infrastructure", "jobs", "control", "capabilities", "settings", "recovery", "logs", "account" }
 local SAFE_LAUNCHER_APPS = { "recovery", "logs", "terminal", "calculator", "settings", "peripherals", "telemetry", "network", "infrastructure", "jobs" }
 local LAUNCHER_APPS = config.safeMode and SAFE_LAUNCHER_APPS or NORMAL_LAUNCHER_APPS
@@ -164,10 +171,16 @@ local function recordCrash(task, reason)
 end
 
 local function notify(message, color)
+    local notificationColor = color or UI.colors.accent
+    local severity = notificationColor == UI.colors.danger and "danger"
+        or notificationColor == UI.colors.warning and "warning"
+        or notificationColor == UI.colors.success and "success"
+        or "info"
     local item = {
         message = tostring(message),
-        color = color or UI.colors.accent,
-        expires = os.clock() + 4,
+        color = notificationColor,
+        severity = severity,
+        expires = os.clock() + (severity == "danger" and 8 or severity == "warning" and 6 or 4),
         offset = math.min(width, 8),
     }
     state.notifications[#state.notifications + 1] = item
@@ -235,19 +248,24 @@ local function flushWindow(task)
     -- Repaint one window's frame and content from its own buffer: the same
     -- work the full repaint performs for every visible task.
     if not task or task.minimized or task.hidden then return end
-    UI.fill(native, task.x, task.y, task.width, task.height, colors.white)
+    local surface = UI.colors.surface or colors.white
+    local textColor = UI.colors.text or colors.black
+    UI.fill(native, task.x, task.y, task.width, task.height, surface)
     UI.titleBar(native, task.x, task.y, task.width, task.meta.title, task.meta.icon, task == state.focused, task.maximized)
     if task.failed then
-        task.window.setBackgroundColor(colors.black)
-        task.window.setTextColor(colors.white)
+        local failureSurface = UI.colors.surfaceMuted or UI.colors.surfaceAlt or colors.black
+        local failureText = UI.colors.textInverse or colors.white
+        task.window.setBackgroundColor(failureSurface)
+        task.window.setTextColor(failureText)
         task.window.clear()
-        UI.text(task.window, 2, 2, "Application stopped", colors.red, colors.black, task.width - 5)
-        UI.text(task.window, 2, 4, "Open Control Center", colors.yellow, colors.black, task.width - 5)
-        UI.text(task.window, 2, 5, "to restart this process", colors.yellow, colors.black, task.width - 5)
+        UI.text(task.window, 2, 2, "Application stopped", UI.colors.danger, failureSurface, task.width - 5)
+        UI.text(task.window, 2, 4, "Open Control Center", UI.colors.warning, failureSurface, task.width - 5)
+        UI.text(task.window, 2, 5, "to restart this process", UI.colors.warning, failureSurface, task.width - 5)
     else
         -- Normalize the shared body surface before each app redraw; individual
         -- screens may still choose their own text colors.
-        task.window.setBackgroundColor(colors.white)
+        task.window.setBackgroundColor(surface)
+        task.window.setTextColor(textColor)
         task.window.redraw()
     end
 end
@@ -1047,8 +1065,14 @@ local function drawNotifications()
         local boxWidth = math.min(width - 4, math.max(18, #item.message + 4))
         local x = math.max(1, math.min(width - boxWidth + 1, width - boxWidth + 1 + math.floor(item.offset or 0)))
         local y = 2 + (index - 1) * 2
-        UI.fill(native, x, y, boxWidth, 1, item.color)
-        UI.text(native, x + 1, y, item.message, colors.white, item.color, boxWidth - 2)
+        local marker = item.severity == "danger" and "! " or item.severity == "warning" and "~ " or "i "
+        local background = item.color
+        UI.fill(native, x, y, boxWidth, 1, background)
+        local notificationText = item.severity == "warning" and (UI.colors.warningText or UI.colors.text)
+            or item.severity == "success" and (UI.colors.successText or UI.colors.text)
+            or item.severity == "danger" and (UI.colors.dangerText or UI.colors.textInverse)
+            or (UI.colors.infoText or UI.colors.statusText or UI.colors.textInverse)
+        UI.text(native, x + 1, y, marker .. item.message, notificationText, background, boxWidth - 2)
         state.notificationRects[#state.notificationRects + 1] = { x = x, y = y, w = boxWidth, h = 1 }
         if not state.nextNotificationExpiry or item.expires < state.nextNotificationExpiry then
             state.nextNotificationExpiry = item.expires
@@ -1064,17 +1088,18 @@ local function drawLauncher()
     UI.shadow(native, menuX, menuY, menuWidth, menuHeight, 1, UI.colors.shadow)
     UI.panel(native, menuX, menuY, menuWidth, menuHeight, UI.colors.surface, UI.colors.borderStrong)
     UI.fill(native, menuX + 1, menuY + 1, menuWidth - 2, 1, UI.colors.accent)
-    UI.text(native, menuX + 2, menuY + 1, "Q  Qalcom", colors.white, UI.colors.accent, menuWidth - 4)
-    UI.text(native, menuX + menuWidth - 11, menuY + 1, tostring(state.user or "-"), UI.colors.lightBlue, UI.colors.accent, 9)
+    UI.text(native, menuX + 2, menuY + 1, "Q  Qalcom", UI.colors.textInverse, UI.colors.accent, menuWidth - 4)
+    UI.text(native, menuX + menuWidth - 11, menuY + 1, tostring(state.user or "-"), UI.colors.textInverse, UI.colors.accent, 9)
 
     local searchBackground = state.launcherSearchFocused and UI.colors.accentLight or UI.colors.surfaceAlt
-    local searchForeground = state.launcherSearchFocused and colors.white or UI.colors.text
+    local searchForeground = state.launcherSearchFocused and UI.colors.textInverse or UI.colors.text
     UI.fill(native, menuX + 2, menuY + 2, menuWidth - 4, 1, searchBackground)
     local searchText = state.launcherSearch == "" and "Search programs" or state.launcherSearch
     if state.launcherSearchFocused and state.launcherSearch ~= "" then searchText = searchText .. "_" end
     UI.text(native, menuX + 3, menuY + 2, searchText, searchForeground, searchBackground, menuWidth - 6)
 
     local heading = state.launcherSearch == "" and (#state.recentApps > 0 and "Recent apps" or "All apps") or "Search results"
+    if config.safeMode then heading = heading .. " / Safe Mode" end
     UI.text(native, menuX + 2, menuY + 3, heading, UI.colors.muted, UI.colors.surface, menuWidth - 4)
     if #items == 0 then
         UI.text(native, menuX + 3, menuY + 4, "No matching programs", UI.colors.muted, UI.colors.surface, menuWidth - 6)
@@ -1086,9 +1111,14 @@ local function drawLauncher()
                 local itemY = menuY + 3 + offset
                 local active = index == state.launcherSelection
                 local background = active and UI.colors.accentLight or UI.colors.surface
-                local foreground = active and colors.white or UI.colors.text
+                local foreground = active and UI.colors.textInverse or UI.colors.text
                 UI.fill(native, menuX + 2, itemY, menuWidth - 4, 1, background)
-                UI.text(native, menuX + 4, itemY, APP_META[name].icon .. "  " .. APP_META[name].title, foreground, background, menuWidth - 8)
+                local available = APP_PATHS[name] and fs.exists(APP_PATHS[name])
+                local category = APP_CATEGORIES[name] or "Apps"
+                local marker = available and "  " or "? "
+                local label = marker .. APP_META[name].icon .. "  " .. APP_META[name].title
+                if menuWidth >= 30 then label = label .. " [" .. category .. "]" end
+                UI.text(native, menuX + 4, itemY, label, foreground, background, menuWidth - 8)
             end
         end
     end
@@ -1108,6 +1138,9 @@ local function openLauncher()
     -- windows in place and refresh the Q button instead of clearing the
     -- whole terminal.
     drawLauncher()
+    -- Launcher chrome sits above notifications. Notifications that arrive
+    -- while it is open are deferred until closeLauncher restores this region.
+    state.notificationsDirty = false
     state.taskbarDirty = true
 end
 
@@ -1122,9 +1155,9 @@ local function closeLauncher()
     -- redraw notification boxes the panel was covering.
     if rect then
         restoreRegion(rect.x, rect.y, rect.w, rect.h)
-        if notificationsOverlap(rect.x, rect.y, rect.w, rect.h) then
-            state.notificationsDirty = true
-        end
+        -- Rebuild the notification layer after restoring the launcher area;
+        -- this also handles notifications created while the launcher was open.
+        state.notificationsDirty = true
     end
 end
 
@@ -1515,7 +1548,7 @@ while true do
             drawTaskbar()
             state.taskbarDirty = false
         end
-        if state.notificationsDirty then
+        if state.notificationsDirty and not state.launcher then
             drawNotifications()
             state.notificationsDirty = false
         end

@@ -82,6 +82,19 @@ Run these checks on a fresh copy and again over an existing 0.1.x installation.
 - [ ] Changing Reduced motion persists after reboot and does not affect account data.
 - [ ] Settings and Recovery remain usable at the supported minimum size.
 
+### Milestone 2 shell redesign
+
+- [ ] Active and inactive window title bars have distinct, readable focus states in Ocean, Midnight, and Terminal themes.
+- [ ] Title controls remain visible and correctly hit-testable in inactive and narrow windows.
+- [ ] Taskbar hover, active underline, minimized state, overflow, and tray remain readable at 30 x 14 and normal sizes.
+- [ ] Taskbar health rails identify crashed applications, slow/watchdog applications, and hidden services without relying on color alone.
+- [ ] Notification markers distinguish informational, warning, and danger messages; danger notifications remain visible longer.
+- [ ] Notification marker/text contrast remains readable across all themes.
+- [ ] Launcher header, search field, selected row, user identity, Safe Mode app list, and empty results remain readable across themes.
+- [ ] Launcher keyboard and mouse selection continue to work after shell repaint-only updates.
+- [ ] Shell hover, notification animation, and taskbar clock updates do not trigger full-terminal clears.
+- [ ] Opening, closing, focusing, dragging, minimizing, maximizing, and restoring windows does not erase launcher/notification chrome unexpectedly.
+
 ### Taskbar and window chrome polish
 
 - [ ] The green Q launcher is flush to the bottom-left and never displays the old Start label.

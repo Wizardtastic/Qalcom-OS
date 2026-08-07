@@ -49,6 +49,16 @@ UI.colors = {
     buttonActive = colors.blue,
     section = colors.yellow,
     sectionText = colors.black,
+    taskbar = colors.lightGray,
+    taskbarHover = colors.gray,
+    titleActive = colors.yellow,
+    titleInactive = colors.gray,
+    titleControl = colors.black,
+    statusText = colors.white,
+    infoText = colors.black,
+    successText = colors.black,
+    dangerText = colors.white,
+    warningText = colors.black,
 
     -- Compatibility aliases used by older shell code.
     lightBlue = colors.lightBlue,
@@ -358,12 +368,38 @@ function UI.taskbarLayout(width, tasks, trayWidth)
     return items, firstAppX, available
 end
 
+function UI.taskHealth(task)
+    if not task then return nil end
+    if task.failed or task.restartLocked or task.state == "crashed" then
+        return { name = "error", glyph = "!", color = UI.colors.danger }
+    end
+    if task.kind == "service" and (task.state == "stopped" or task.closeRequested) then
+        return { name = "warning", glyph = "~", color = UI.colors.warning }
+    end
+    if task.watchdog == "slow" then
+        return { name = "warning", glyph = "~", color = UI.colors.warning }
+    end
+    if task.kind == "service" then
+        return { name = "service", glyph = ".", color = UI.colors.info }
+    end
+    return nil
+end
+
 function UI.taskbar(target, width, y, tasks, focused, launcher, trayWidth, hoverX, hoverY)
     width = math.max(1, math.floor(tonumber(width) or 1))
     y = math.floor(tonumber(y) or 1)
     trayWidth = UI.taskbarTrayWidth(width, trayWidth)
     local height = math.min(3, select(2, target.getSize()) - y + 1)
-    UI.fill(target, 1, y, width, height, UI.colors.surfaceAlt)
+    UI.fill(target, 1, y, width, height, UI.colors.taskbar or UI.colors.surfaceAlt)
+    local serviceHealth
+    for _, task in ipairs(tasks or {}) do
+        if task.hidden and task.kind == "service" then
+            local health = UI.taskHealth(task)
+            if health and (not serviceHealth or health.name == "error" or (health.name == "warning" and serviceHealth.name == "service")) then
+                serviceHealth = health
+            end
+        end
+    end
     local items = UI.taskbarLayout(width, tasks, trayWidth)
     local hovered
     for _, item in ipairs(items) do
@@ -372,14 +408,24 @@ function UI.taskbar(target, width, y, tasks, focused, launcher, trayWidth, hover
         if item.kind == "start" then
             UI.taskbarStart(target, item.x, y, item.width, launcher, item.hovered)
         elseif item.kind == "task" then
-            UI.taskbarIcon(target, item.x, y, item.width, item.label, item.task == focused and not item.task.minimized, item.hovered)
+            UI.taskbarIcon(target, item.x, y, item.width, item.label, item.task == focused and not item.task.minimized, item.hovered, UI.taskHealth(item.task))
         else
-            UI.taskbarIcon(target, item.x, y, item.width, item.label, false, item.hovered)
+            UI.taskbarIcon(target, item.x, y, item.width, item.label, false, item.hovered, nil)
         end
     end
     local trayX = width - trayWidth
-    UI.text(target, trayX, y + math.max(0, math.floor((height - 1) / 2)), os.date("%H:%M"), UI.colors.text, UI.colors.surfaceAlt, 6)
-    UI.text(target, width - 8, y + math.max(0, math.floor((height - 1) / 2)), "ID " .. tostring(os.getComputerID()), UI.colors.muted, UI.colors.surfaceAlt, 7)
+    local taskbarBackground = UI.colors.taskbar or UI.colors.surfaceAlt
+    local serviceMarker = serviceHealth and serviceHealth.glyph or ""
+    local clockText = serviceMarker .. os.date("%H:%M")
+    local idText = width >= 42 and "ID " .. tostring(os.getComputerID()) or tostring(os.getComputerID())
+    local rowY = y + math.max(0, math.floor((height - 1) / 2))
+    local idWidth = math.min(#idText, math.max(0, width - trayX + 1))
+    local idX = width - idWidth + 1
+    local clockWidth = math.min(#clockText, math.max(0, idX - trayX - 1))
+    if clockWidth > 0 then UI.text(target, trayX, rowY, clockText, serviceHealth and serviceHealth.color or UI.colors.text, taskbarBackground, clockWidth) end
+    if idWidth > 0 and idX > trayX + clockWidth then
+        UI.text(target, idX, rowY, idText, UI.colors.muted, taskbarBackground, idWidth)
+    end
     if hovered and hovered.title and hovered.kind ~= "start" then
         local tipWidth = math.min(width - 2, math.max(8, #hovered.title + 2))
         local tipX = math.max(1, math.min(width - tipWidth + 1, hovered.x + math.floor((hovered.width - tipWidth) / 2)))
@@ -450,12 +496,11 @@ function UI.header(target, title)
 end
 
 function UI.titleBar(target, x, y, width, title, icon, active, maximized)
-    -- A simple, bright desktop chrome inspired by the supplied reference: the
-    -- entire title row is yellow, controls sit on the left, and the content
-    -- area below remains a clean white surface.
-    local color = UI.colors.section
-    local foreground = UI.colors.sectionText
-    local titleForeground = active and UI.colors.sectionText or UI.colors.muted
+    -- Active windows use the strong title token; inactive windows recede while
+    -- retaining visible controls and a clear focus distinction.
+    local color = active and (UI.colors.titleActive or UI.colors.section) or (UI.colors.titleInactive or UI.colors.border)
+    local foreground = active and (UI.colors.titleControl or UI.colors.sectionText) or UI.colors.text
+    local titleForeground = active and foreground or (UI.colors.titleControl or UI.colors.text)
     UI.fill(target, x, y, width, 1, color)
     if width < 9 then
         UI.text(target, x + 1, y, "x-+", foreground, color, math.max(1, width - 2))
@@ -485,13 +530,17 @@ function UI.taskButton(target, x, y, width, label, active)
     if active then UI.fill(target, x, y + 1, width, 1, UI.colors.accentLight) end
 end
 
-function UI.taskbarIcon(target, x, y, width, icon, active, hovered)
-    local background = UI.colors.surfaceAlt
+function UI.taskbarIcon(target, x, y, width, icon, active, hovered, health)
+    local background = hovered and (UI.colors.taskbarHover or UI.colors.surfaceAlt) or (UI.colors.taskbar or UI.colors.surfaceAlt)
     local foreground = UI.colors.text
     local height = math.min(3, select(2, target.getSize()) - y + 1)
-    -- Icons stay visually quiet on the taskbar. Hover is communicated by the
-    -- name tooltip; selection is communicated only by the thin underline.
+    -- Icons stay compact; a colored top rail and optional glyph expose health
+    -- without relying on hover or color alone.
     UI.fill(target, x, y, width, height, background)
+    if health then
+        UI.fill(target, x, y, width, 1, health.color)
+        if width >= 2 then UI.text(target, x + width - 1, y, health.glyph, UI.colors.textInverse, health.color, 1) end
+    end
     local iconWidth = math.max(1, width - 2)
     local iconText = tostring(icon or "?")
     local iconX = x + math.max(0, math.floor((width - math.min(#iconText, iconWidth)) / 2))
@@ -501,8 +550,9 @@ function UI.taskbarIcon(target, x, y, width, icon, active, hovered)
 end
 
 function UI.taskbarStart(target, x, y, width, active, hovered)
-    local background = hovered and UI.colors.success or UI.colors.accentStrong
-    local foreground = UI.colors.textInverse
+    local background = hovered and (UI.colors.taskbarHover or UI.colors.success)
+        or UI.colors.success
+    local foreground = UI.colors.successText or UI.colors.textInverse
     local height = math.min(3, select(2, target.getSize()) - y + 1)
     UI.fill(target, x, y, width, height, background)
     UI.center(target, y + math.floor((height - 1) / 2), "Q", foreground, background, width)
