@@ -92,6 +92,26 @@ local function loadPeripherals()
 end
 
 local Peripherals = loadPeripherals()
+local function loadTelemetry()
+    local candidates = { "qalcom/lib/telemetry.lua", "../qalcom/lib/telemetry.lua", "/qalcom/lib/telemetry.lua" }
+    for _, path in ipairs(candidates) do
+        local ok, module = pcall(dofile, path)
+        if ok and type(module) == "table" then return module end
+    end
+    fail("Unable to load qalcom/lib/telemetry.lua")
+end
+
+local Telemetry = loadTelemetry()
+local function loadCannon()
+    local candidates = { "qalcom/lib/cannon.lua", "../qalcom/lib/cannon.lua", "/qalcom/lib/cannon.lua" }
+    for _, path in ipairs(candidates) do
+        local ok, module = pcall(dofile, path)
+        if ok and type(module) == "table" then return module end
+    end
+    fail("Unable to load qalcom/lib/cannon.lua")
+end
+
+local Cannon = loadCannon()
 local function loadInfrastructure()
     local candidates = { "qalcom/lib/infrastructure.lua", "../qalcom/lib/infrastructure.lua", "/qalcom/lib/infrastructure.lua" }
     for _, path in ipairs(candidates) do
@@ -237,9 +257,90 @@ test("normalizes peripheral metadata and radar contacts", function()
     local adapters = Peripherals.adapterFor("create radar", { "getContacts" })
     equal(adapters[1].name, "create_radar", "radar adapter discovery")
     equal(adapters[1].contractVersion, 1, "adapter contract version")
+    local cannonAdapters = Peripherals.adapterFor("cannon_mount", { "getInfo", "fire", "assemble", "setTargetAngles" })
+    equal(cannonAdapters[1].name, "cbc", "CC:CBC adapter discovery")
+    truthy(cannonAdapters[1].supportedReadOperations[1] == "cannon telemetry", "CC:CBC read contract")
     local contactsMany = {}
     for index = 1, 200 do contactsMany[index] = { id = tostring(index) } end
     equal(#Peripherals.normalizeContacts(contactsMany, "radar", 1, 32), 32, "contact output bound")
+
+    local info = { computerControl = false, assembled = true, yaw = 90, pitch = 12, targetYaw = 95, targetPitch = 15, yawShaftSpeed = 8, pitchShaftSpeed = 4, x = 10, y = 64, z = -3 }
+    local fake = {}
+    function fake:peripheralNames() return { "front" } end
+    function fake:peripheralType() return "cannon_mount" end
+    function fake:peripheralMethods() return { "getInfo", "fire", "assemble", "setTargetAngles" } end
+    local calls = {}
+    function fake:peripheralRead(_, method)
+        calls[#calls + 1] = method
+        if method == "getInfo" then return info end
+        return nil, "unexpected method"
+    end
+    local devices = Peripherals.inspect(fake, Peripherals.emptyMetadata(), 20)
+    equal(#calls, 1, "CC:CBC only probes getInfo")
+    equal(calls[1], "getInfo", "CC:CBC control methods are not called")
+    equal(#devices, 1, "CC:CBC device inspected")
+    truthy(devices[1].cbcInfo and devices[1].cbcInfo.assembled, "CC:CBC info bounded")
+    local records = Telemetry.snapshot(fake, devices, 20)
+    equal(records[1].kind, "cbc", "CC:CBC telemetry kind")
+    equal(records[1].data.yaw, 90, "CC:CBC yaw")
+    truthy(records[1].data.ammunition:find("unknown", 1, true) ~= nil, "CC:CBC ammunition remains unknown")
+    truthy(records[1].data.firingReadiness:find("unknown", 1, true) ~= nil, "CC:CBC readiness remains unknown")
+end)
+
+test("plans bounded CBC cannon targets", function()
+    local target = Cannon.target(10, 70, 10)
+    truthy(target, "coordinate target")
+    local angles = Cannon.anglesFromPosition({ x = 0, y = 64, z = 0 }, target, {})
+    equal(math.floor(angles.yaw + 0.5), 45, "coordinate yaw")
+    truthy(angles.pitch > 0, "coordinate pitch")
+    local contactTarget = Cannon.targetFromContact({ position = { x = 10, y = 70, z = 10 }, identityStatus = "claimed", age = 1 })
+    equal(contactTarget.z, 10, "radar target")
+    truthy(Cannon.targetFromContact({ position = { x = 1, y = 2, z = 3 }, identityStatus = "unverified", age = 1 }), "fresh unverified radar position accepted")
+    equal(Cannon.targetFromContact({ position = { x = 1, y = 2, z = 3 }, identityStatus = "ambiguous", age = 1 }), nil, "ambiguous radar target rejected")
+    equal(Cannon.targetFromContact({ position = { x = 1, y = 2, z = 3 }, identityStatus = "claimed", age = 11 }), nil, "stale radar target rejected")
+    local plan = Cannon.plan({ { name = "front", cbcInfo = { x = 0, y = 64, z = 0 } } }, target, {})
+    equal(#plan.entries, 1, "cannon plan")
+    truthy(Cannon.aligned({ yaw = angles.yaw, pitch = angles.pitch }, angles, 1), "alignment")
+    equal(Cannon.target("bad", 1, 1), nil, "invalid coordinates rejected")
+    equal(Cannon.target(1, nil, 3), nil, "incomplete coordinates rejected")
+    local invalid = Cannon.settings({ pulse = 99, tolerance = -1 })
+    equal(invalid.pulse, 1, "pulse upper bound")
+    equal(invalid.tolerance, 0.1, "tolerance lower bound")
+end)
+
+test("validates CBC control argument contracts", function()
+    local Managed = nil
+    local candidates = { "qalcom/lib/managed.lua", "../qalcom/lib/managed.lua", "/qalcom/lib/managed.lua" }
+    for _, path in ipairs(candidates) do
+        local ok, module = pcall(dofile, path)
+        if ok and type(module) == "table" then Managed = module; break end
+    end
+    truthy(Managed, "managed helper loaded")
+    local calls = {}
+    local fake = {
+        hasCapability = function() return true end,
+        peripheralType = function() return "cannon_mount" end,
+        peripheralMethods = function() return { "fire", "setTargetAngles" } end,
+        audit = function() end,
+    }
+    local oldPeripheral = peripheral
+    peripheral = {
+        getType = function() return "cannon_mount" end,
+        getMethods = function() return { "fire", "setTargetAngles" } end,
+        wrap = function()
+            return {
+                fire = function(value) calls[#calls + 1] = { "fire", value } end,
+                setTargetAngles = function(yaw, pitch) calls[#calls + 1] = { "setTargetAngles", yaw, pitch } end,
+            }
+        end,
+    }
+    truthy(Managed.cannonControl(fake, "front", "fire", true), "valid fire control")
+    equal(Managed.cannonControl(fake, "front", "fire", "true"), false, "boolean contract")
+    equal(Managed.cannonControl(fake, "front", "setTargetAngles", 1), false, "angle count contract")
+    equal(Managed.cannonControl(fake, "front", "setTargetAngles", 1, 2, 3), false, "extra angle rejected")
+    equal(Managed.cannonControl(fake, "front", "setTargetAngles", 999, 0), false, "angle range contract")
+    equal(#calls, 1, "invalid controls are not invoked")
+    peripheral = oldPeripheral
 end)
 
 test("normalizes infrastructure profiles and pulse limits", function()

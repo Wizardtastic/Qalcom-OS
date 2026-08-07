@@ -29,6 +29,7 @@ Capabilities.names = {
     "network.pair",
     "network.control",
     "incident.manage",
+    "cannon.control",
     "system.label",
     "system.reboot",
     "system.shutdown",
@@ -52,6 +53,7 @@ Capabilities.descriptions = {
     ["network.pair"] = "Enroll and revoke Qalcom nodes",
     ["network.control"] = "Issue approved authenticated network controls",
     ["incident.manage"] = "Manage structured war-server incidents",
+    ["cannon.control"] = "Aim and fire approved CBC cannon mounts",
     ["system.label"] = "Change the computer label",
     ["system.reboot"] = "Request a computer reboot",
     ["system.shutdown"] = "Request a computer shutdown",
@@ -165,6 +167,11 @@ local manifests = {
         requested = { "peripheral.read", "telemetry.read", "incident.manage" },
         unmanaged = { "os.pullEvent" },
     },
+    cannon = {
+        title = "CBC Fire Control", trusted = true,
+        requested = { "fs.read", "peripheral.read", "cannon.control", "telemetry.read", "incident.manage" },
+        unmanaged = { "os.pullEvent" },
+    },
 }
 
 local function contains(list, value)
@@ -213,6 +220,7 @@ local function safeModeBlocks(capability)
     return capability == "fs.write" or capability == "peripheral.control"
         or capability == "redstone.control" or capability == "infrastructure.control"
         or capability == "infrastructure.emergency" or capability == "jobs.manage" or capability == "network.send" or capability == "network.receive" or capability == "network.configure" or capability == "network.pair" or capability == "network.control" or capability == "system.label"
+        or capability == "cannon.control"
         or capability == "system.reboot" or capability == "system.shutdown"
 end
 

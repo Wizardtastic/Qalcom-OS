@@ -40,6 +40,7 @@ local APP_PATHS = {
     telemetry = "/qalcom/apps/telemetry.lua",
     network_service = "/qalcom/apps/network_service.lua",
     incidents = "/qalcom/apps/incidents.lua",
+    cannon = "/qalcom/apps/cannon.lua",
 }
 
 local APP_META = {
@@ -64,9 +65,10 @@ local APP_META = {
     telemetry = { title = "Operations Telemetry", icon = "T", x = 3, y = 3, width = 56, height = 21 },
     network_service = { title = "Network Service", icon = "N", x = 3, y = 3, width = 20, height = 8, service = true, hidden = true },
     incidents = { title = "Incident Response", icon = "!", x = 3, y = 3, width = 56, height = 21 },
+    cannon = { title = "CBC Fire Control", icon = "C", x = 3, y = 3, width = 56, height = 21 },
 }
 
-local NORMAL_LAUNCHER_APPS = { "terminal", "explorer", "calculator", "monitor", "peripherals", "telemetry", "incidents", "network", "infrastructure", "jobs", "control", "capabilities", "settings", "recovery", "logs", "account" }
+local NORMAL_LAUNCHER_APPS = { "terminal", "explorer", "calculator", "monitor", "peripherals", "telemetry", "incidents", "cannon", "network", "infrastructure", "jobs", "control", "capabilities", "settings", "recovery", "logs", "account" }
 local SAFE_LAUNCHER_APPS = { "recovery", "logs", "terminal", "calculator", "settings", "peripherals", "telemetry", "network", "infrastructure", "jobs" }
 local LAUNCHER_APPS = config.safeMode and SAFE_LAUNCHER_APPS or NORMAL_LAUNCHER_APPS
 
@@ -448,6 +450,10 @@ local function makeContext(task)
         return Managed.peripheralRead(self, name, method, ...)
     end
 
+    function context:cannonControl(name, method, ...)
+        return Managed.cannonControl(self, name, method, ...)
+    end
+
     function context:peripheralInventory()
         return Managed.peripheralInventory(self)
     end
@@ -745,7 +751,7 @@ end
 local function startTask(name, options)
     local meta = APP_META[name]
     local path = APP_PATHS[name]
-    if config.safeMode and name ~= "recovery" and name ~= "logs" and name ~= "terminal" and name ~= "calculator" and name ~= "settings" and name ~= "peripherals" and name ~= "telemetry" and name ~= "incidents" and name ~= "network" and name ~= "infrastructure" and name ~= "jobs" and name ~= "jobs_service" and name ~= "network_service" then
+    if config.safeMode and name ~= "recovery" and name ~= "logs" and name ~= "terminal" and name ~= "calculator" and name ~= "settings" and name ~= "peripherals" and name ~= "telemetry" and name ~= "incidents" and name ~= "cannon" and name ~= "network" and name ~= "infrastructure" and name ~= "jobs" and name ~= "jobs_service" and name ~= "network_service" then
         notify("Safe Mode blocked " .. tostring(name), UI.colors.warning)
         return nil
     end
@@ -1273,7 +1279,7 @@ local function dispatch(event)
         LAUNCHER_APPS = config.safeMode and SAFE_LAUNCHER_APPS or NORMAL_LAUNCHER_APPS
         if config.safeMode then
             for _, task in ipairs(state.tasks) do
-                if task.name ~= "recovery" and task.name ~= "logs" and task.name ~= "terminal" and task.name ~= "settings" and task.name ~= "peripherals" and task.name ~= "telemetry" and task.name ~= "incidents" and task.name ~= "network" and task.name ~= "infrastructure" and task.name ~= "jobs" and task.name ~= "jobs_service" and task.name ~= "network_service" then
+                if task.name ~= "recovery" and task.name ~= "logs" and task.name ~= "terminal" and task.name ~= "settings" and task.name ~= "peripherals" and task.name ~= "telemetry" and task.name ~= "incidents" and task.name ~= "cannon" and task.name ~= "network" and task.name ~= "infrastructure" and task.name ~= "jobs" and task.name ~= "jobs_service" and task.name ~= "network_service" then
                     task.closeRequested = true
                 end
             end

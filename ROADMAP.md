@@ -23,7 +23,7 @@ The roadmap is intentionally incremental. Each milestone should deliver one cohe
 - **Supporting vehicle and combat systems:** Create Aeronautics/Aeroworks, Sable and CC:Sable, Create Submarine, Drive-By-Wire, CBC Compact Mount, CBC Military Supplement, TACZ with aero compatibility, and RHA armor/projectile mods.
 - **Supporting server operations:** FTB Teams, FTB Chunks, FTB Essentials, FTB Quests, Warring Nations, Region Guard, Xaero's maps, Simple Voice Chat, admin tickets, and player-revive/medical systems.
 - **Supporting industrial/logistics systems:** Create Diesel Generators, Create Nuclear, Create Railways/Railways, Create Threaded Trains, Create Tweaked Controllers, Create Addition, Storage Drawers, Sophisticated Backpacks, and Create-linked storage/transport blocks.
-- The exact peripheral names, methods, block entities, and addon APIs are server-specific. Integration work must use an adapter layer and capability discovery instead of hard-coded assumptions throughout the desktop.
+- The exact peripheral names, methods, block entities, and addon APIs are server-specific. Integration work must use an adapter layer and capability discovery instead of hard-coded assumptions throughout the desktop. Verified CC:CBC references: [CC:CBC API README](https://github.com/Drakon7009/CC-CBC/blob/main/README.md) and [CC:CBC developer integration contract](https://github.com/Drakon7009/CC-CBC/blob/main/DEVELOPER_INTEGRATION.md).
 
 ## Integration boundary
 
@@ -356,7 +356,9 @@ The profile intentionally separates direct integrations from libraries, performa
 
 - Add bounded radar-derived contact records with explicit unknown/friendly/claimed/unverified states and uncertainty-preserving telemetry views.
 - Add Aeronautics fleet inventory, crew/seat status where available, vehicle health, docking, and named-location views.
-- Add CBC cannon inventory, loading state, barrel/readiness state, ammunition stock, and maintenance warnings.
+- CC:CBC read-only cannon-mount telemetry is implemented for standard `cannon_mount` and compact `compact_cannon_mount` peripherals through the verified `getInfo()` method: assembly, current/target yaw and pitch, shaft speeds, and mount position are normalized. `getInfo()` does not expose ammunition, propellant, barrel temperature, or firing readiness, so those remain unknown until a separate verified read-only bridge exists.
+- Add CBC cannon inventory, loading state, barrel/readiness state, ammunition stock, and maintenance warnings where a server-approved bridge exposes them; do not infer these fields from CC:CBC `getInfo()`.
+- Added a dedicated local CBC Fire Control app. It supports multi-mount selection, world-coordinate targets, radar-contact targets with positions, per-mount yaw/pitch planning, explicit aim confirmation, explicit fire confirmation, alignment/assembly checks, bounded fire pulses, cooldowns, stop controls, and audit records. It does not autonomously select targets or fire.
 - Add Create: Propulsion engine, fuel/energy, assembly, route, and mechanical readiness panels where exposed.
 - Add Create Diesel Generators and Create Nuclear power/fuel/heat telemetry where safely exposed.
 - Add Create Railways, trains, depots, and supply-route status where exposed.
@@ -395,6 +397,34 @@ The profile intentionally separates direct integrations from libraries, performa
 - Defer any radar-guided targeting, CBC firing, TACZ control, Aeronautics flight/movement, or Create: Propulsion actuation to a later milestone with server-specific rules, two-person approval where appropriate, and a dedicated manual CC:T test plan.
 
 **Exit criteria:** Incidents can be acknowledged, investigated, and resolved with bounded playbooks, clear emergency escape paths, and no accidental autonomous combat behavior.
+
+## Partially implemented — validation pending: 0.4.6 — CBC Fire Control
+
+**Goal:** Permit explicitly authorized operators to aim and fire selected CBC mounts without creating autonomous or unrestricted remote weapons control.
+
+- Use the verified CC:CBC `setComputerControl`, `setTargetAngles`, and level-triggered `fire(boolean)` methods only through the dedicated app.
+- Support one or more selected `cannon_mount` or `compact_cannon_mount` peripherals.
+- Accept explicit world coordinates or a normalized radar contact that includes a position.
+- Calculate independent geometric line-of-sight yaw/pitch per mount from its `getInfo()` position, with configurable yaw offset and pitch sign for the server’s mount orientation; ballistic solutions remain out of scope until projectile/ammunition data is verified.
+- Require verified mount telemetry, explicit aim confirmation, explicit fire confirmation, assembly and angular-alignment checks, bounded fire pulses, cooldowns, stop controls, and audit records.
+- Never fire merely because a radar contact exists. Radar contacts remain observations and require operator selection and confirmation.
+- Keep ammunition, propellant, barrel condition, and true ballistic readiness unknown unless a separate server-approved read-only bridge exposes them.
+
+**Validation status:** Source-level implementation is complete; target CC:T/modpack validation is required before use. Test angle conventions with inert mounts and a non-loaded range before enabling any live firing. The current planner is geometric line-of-sight only, not a ballistic solver.
+
+## Partially implemented — validation pending: 0.4.5 — Verified CC:CBC cannon-mount telemetry
+
+**Goal:** Use the documented CC:CBC peripheral safely to improve artillery visibility without enabling combat control.
+
+- Verified the CC:CBC `cannon_mount` API and the compact-mount addon’s `compact_cannon_mount` API.
+- Added runtime discovery and a strict `getInfo()` probe for read-only cannon telemetry.
+- Normalized assembly state, current/target yaw and pitch, shaft speeds, and mount position.
+- Bounded the returned table to documented scalar fields and reject weak/ambiguous probes.
+- Kept `fire`, `assemble`, `setComputerControl`, `setTargetAngles`, `setTargetYaw`, and `setTargetPitch` outside the managed read allowlist and never invoke them.
+- Clearly report ammunition, propellant, barrel/readiness, and maintenance data as unavailable because they are not part of the verified `getInfo()` contract.
+- Added UI detail, pure helper coverage, source references, and an in-game CC:T checklist.
+
+**Validation status:** Source-level validation is complete; target CC:T/modpack validation remains pending. The next safe extension is a separate server-approved read-only bridge for ammunition/loading data, not a guessed CC:CBC method.
 
 ## Cross-release quality requirements
 

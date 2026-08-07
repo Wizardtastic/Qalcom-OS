@@ -204,6 +204,52 @@ function Managed.peripheralRead(ctx, name, method, ...)
     return value
 end
 
+function Managed.cannonControl(ctx, name, method, ...)
+    local ok, reason = allowed(ctx, "cannon.control", name .. ":" .. tostring(method))
+    if not ok then return false, reason end
+    local peripheralType, typeReason = Managed.peripheralType(ctx, name)
+    if peripheralType ~= "cannon_mount" and peripheralType ~= "compact_cannon_mount" then
+        return false, typeReason or "Peripheral is not a verified CBC mount"
+    end
+    -- Keep this surface limited to the dedicated app's verified workflow.
+    -- Individual yaw/pitch setters and assembly controls are intentionally not
+    -- exposed; the app only needs one atomic angle command plus fire pulse.
+    local allowedMethods = {
+        setComputerControl = { count = 1, boolean = true },
+        setTargetAngles = { count = 2, numeric = true },
+        fire = { count = 1, boolean = true },
+    }
+    local contract = type(method) == "string" and allowedMethods[method]
+    if not contract then return false, "Cannon method is not allowlisted" end
+    local args = { ... }
+    if #args ~= contract.count then return false, "Invalid argument count for cannon method" end
+    for _, value in ipairs(args) do
+        if contract.boolean and type(value) ~= "boolean" then return false, "Cannon control requires a boolean argument" end
+        if contract.numeric and (type(value) ~= "number" or value ~= value or value == math.huge or value == -math.huge) then
+            return false, "Cannon control requires finite numeric arguments"
+        end
+    end
+    if method == "setTargetAngles" or method == "setTargetYaw" or method == "setTargetPitch" then
+        for _, value in ipairs(args) do
+            if value < -360 or value > 360 then return false, "Cannon angle is out of range" end
+        end
+    end
+    local methods = Managed.peripheralMethods(ctx, name)
+    if not hasMethod(methods, method) then return false, "Cannon method unavailable" end
+    local result, failure
+    local success = pcall(function()
+        local wrapped = peripheral.wrap(name)
+        if not wrapped or type(wrapped[method]) ~= "function" then
+            failure = "Cannon method unavailable"
+            return
+        end
+        result = wrapped[method](unpack(args))
+    end)
+    if not success then return false, "Cannon control failed" end
+    if failure then return false, failure end
+    return true, result
+end
+
 function Managed.peripheralMetadata(ctx, name)
     local methods, reason = Managed.peripheralMethods(ctx, name)
     if not methods then return nil, reason end

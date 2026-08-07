@@ -163,7 +163,10 @@ function Peripherals.adapterFor(peripheralType, methods)
         add("aeronautics", "Aeronautics", { "status", "vehicle telemetry" })
     end
     if contains(combined, "cbc") or contains(combined, "cannon") or contains(combined, "big_cannon") then
-        add("cbc", "Create: Big Cannons", { "status", "cannon readiness" })
+        -- CC:CBC exposes standard mounts as cannon_mount and the compact-mount
+        -- addon as compact_cannon_mount. Both share the read-only getInfo()
+        -- telemetry contract; control methods are deliberately not allowlisted.
+        add("cbc", "Create: Big Cannons", { "cannon telemetry", "mount readiness", "aim state", "mount position" })
     end
     if contains(combined, "propulsion") or (contains(combined, "create") and (contains(combined, "engine") or contains(combined, "assembly"))) then
         add("create_propulsion", "Create: Propulsion", { "status", "propulsion telemetry" })
@@ -180,7 +183,9 @@ function Peripherals.adapterFor(peripheralType, methods)
 end
 
 local function safeStatus(ctx, name, methods)
-    local candidates = { "getStatus", "getState", "getInfo", "getHealth", "getSignalStrength", "getRange", "isConnected" }
+    -- getInfo is adapter-specific (not a generic status probe); CC:CBC
+    -- handles it below so it is called once and normalized consistently.
+    local candidates = { "getStatus", "getState", "getHealth", "getSignalStrength", "getRange", "isConnected" }
     local allowed = {}
     for _, method in ipairs(candidates) do
         if listContains(methods, method) then allowed[#allowed + 1] = method end
@@ -212,6 +217,28 @@ local function normalizePosition(value)
     local z = tonumber(value.z or value[3])
     if not x and not y and not z then return nil end
     return { x = x, y = y, z = z }
+end
+
+local function normalizeCbcInfo(value)
+    if type(value) ~= "table" then return nil end
+    -- Keep only the documented CC:CBC getInfo() scalar fields. This prevents
+    -- an addon from injecting an unbounded or opaque table into the desktop.
+    local result, count = {}, 0
+    local fields = {
+        "computerControl", "assembled", "yaw", "pitch", "targetYaw", "targetPitch",
+        "yawShaftSpeed", "pitchShaftSpeed", "x", "y", "z",
+    }
+    for _, field in ipairs(fields) do
+        local item = value[field]
+        if type(item) == "boolean" then result[field] = item; count = count + 1
+        elseif type(item) == "number" then result[field] = item; count = count + 1 end
+    end
+    -- Require the mount-state field plus at least one position/angle field;
+    -- this avoids confirming arbitrary cannon-like peripherals on a single
+    -- coincidental key.
+    local hasMountState = type(result.assembled) == "boolean"
+    local hasTelemetry = result.yaw ~= nil or result.pitch ~= nil or result.x ~= nil or result.y ~= nil or result.z ~= nil
+    return hasMountState and hasTelemetry and result or nil
 end
 
 function Peripherals.normalizeContacts(raw, source, now, limit)
@@ -315,10 +342,21 @@ function Peripherals.inspect(ctx, metadata, now)
                 elseif listContains(methods, "getLocation") then probe = ctx:peripheralRead(name, "getLocation") end
                 if probe ~= nil then adapter.apiCompatible = true; adapter.compatibility = "confirmed-read" end
             elseif adapter.name == "cbc" then
-                local probe
-                if listContains(methods, "getReadiness") then probe = ctx:peripheralRead(name, "getReadiness")
-                elseif listContains(methods, "isReady") then probe = ctx:peripheralRead(name, "isReady") end
-                if probe ~= nil then adapter.apiCompatible = true; adapter.compatibility = "confirmed-read" end
+                -- Verified CC:CBC API: cannon_mount and compact_cannon_mount
+                -- provide getInfo(). Do not probe assemble/fire or any aiming
+                -- setter; those are world-changing controls.
+                local info
+                if listContains(methods, "getInfo") then info = ctx:peripheralRead(name, "getInfo") end
+                device.cbcInfo = normalizeCbcInfo(info)
+                if device.cbcInfo then
+                    device.status = "CC:CBC getInfo available"
+                    adapter.apiCompatible = true
+                    adapter.compatibility = "confirmed-read"
+                    adapter.apiVersion = "cc-cbc-getInfo-v1"
+                else
+                    adapter.stale = true
+                    adapter.failure = "CC:CBC getInfo() did not return telemetry"
+                end
             elseif adapter.name == "create_propulsion" then
                 local probe
                 if listContains(methods, "getEnergy") then probe = ctx:peripheralRead(name, "getEnergy")

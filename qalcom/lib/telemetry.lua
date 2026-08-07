@@ -127,6 +127,23 @@ function Telemetry.snapshot(ctx, devices, now)
             record.data.contactCount = #record.contacts
         end
         if device.status then record.data.status = clean(device.status) end
+        if kind == "cbc" and device.cbcInfo then
+            -- CC:CBC getInfo() is telemetry only. Ammunition, propellant,
+            -- barrel temperature, and firing readiness are not exposed by
+            -- the verified API, so they remain explicitly unknown.
+            record.data.computerControl = device.cbcInfo.computerControl
+            record.data.assembled = device.cbcInfo.assembled
+            record.data.yaw = number(device.cbcInfo.yaw)
+            record.data.pitch = number(device.cbcInfo.pitch)
+            record.data.targetYaw = number(device.cbcInfo.targetYaw)
+            record.data.targetPitch = number(device.cbcInfo.targetPitch)
+            record.data.yawShaftSpeed = number(device.cbcInfo.yawShaftSpeed)
+            record.data.pitchShaftSpeed = number(device.cbcInfo.pitchShaftSpeed)
+            record.data.position = copyPosition(device.cbcInfo)
+            record.data.ammunition = "unknown: CC:CBC getInfo() does not expose ammunition"
+            record.data.firingReadiness = "unknown: CC:CBC getInfo() does not expose firing readiness"
+        end
+
 
         local typeText = lower(device.type)
         local methods = device.methods or {}
@@ -139,9 +156,8 @@ function Telemetry.snapshot(ctx, devices, now)
                 record.data.heading = number(heading)
                 record.data.velocity = number(velocity)
             elseif kind == "cbc" then
-                record.data.readiness = read(ctx, device.name, { "getReadiness", "isReady", "getState" }, methods)
-                record.data.ammo = boundValue(read(ctx, device.name, { "getAmmo", "getAmmunition", "getInventory" }, methods))
-                record.data.position = copyPosition(read(ctx, device.name, { "getPosition" }, methods))
+                -- All verified CC:CBC state was read through getInfo() above.
+                -- Never call assemble(), fire(), or aiming setters here.
             elseif kind == "create_propulsion" then
                 record.data.energy = boundValue(read(ctx, device.name, { "getEnergy", "getPower" }, methods))
                 record.data.fuel = boundValue(read(ctx, device.name, { "getFuel" }, methods))

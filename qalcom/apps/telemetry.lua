@@ -60,14 +60,20 @@ return function(ctx)
             detail("Contacts", record.data.contactCount or 0)
             detail("Trust", record.trusted and "operator marked" or "untrusted/unknown")
             if record.failure ~= "" then detail("Reason", record.failure, UI.colors.warning) end
-            if record.kind == "cbc" then detail("Readiness", record.data.readiness) end
+            if record.kind == "cbc" then
+                detail("Assembled", record.data.assembled == nil and "unknown" or tostring(record.data.assembled))
+                detail("Yaw / pitch", tostring(record.data.yaw or "?") .. " / " .. tostring(record.data.pitch or "?"))
+                detail("Target", tostring(record.data.targetYaw or "?") .. " / " .. tostring(record.data.targetPitch or "?"))
+                detail("Ammunition", "unknown / API does not expose it", UI.colors.warning)
+                detail("Firing readiness", "unknown / API does not expose it", UI.colors.warning)
+            end
             if record.kind == "aeronautics" then detail("Heading", record.data.heading) end
             if record.kind == "create_propulsion" then detail("Energy", record.data.energy) end
             if record.kind == "create_radar" or record.kind == "create_aero_radar" then detail("Range", record.data.range) end
         elseif detailRow < footer then
             UI.text(ctx.win, split, detailRow, "No supported telemetry found", UI.colors.muted, UI.colors.surface, width - split - 1)
         end
-        if footer >= 1 then UI.text(ctx.win, 2, footer, "Up/Down select  R refresh  Esc close  No control actions", UI.colors.muted, UI.colors.surface, width - 3) end
+        if footer >= 1 then UI.text(ctx.win, 2, footer, "Up/Down select  R refresh  Esc close  Read-only; CBC fire/aim disabled", UI.colors.muted, UI.colors.surface, width - 3) end
     end
 
     refresh()
