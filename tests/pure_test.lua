@@ -122,6 +122,16 @@ local function loadHit()
 end
 
 local Hit = loadHit()
+local function loadPixelPalette()
+    local candidates = { "qalcom/lib/ui/pixel_palette.lua", "../qalcom/lib/ui/pixel_palette.lua", "/qalcom/lib/ui/pixel_palette.lua" }
+    for _, path in ipairs(candidates) do
+        local ok, module = pcall(dofile, path)
+        if ok and type(module) == "table" then return module end
+    end
+    fail("Unable to load qalcom/lib/ui/pixel_palette.lua")
+end
+
+local PixelPalette = loadPixelPalette()
 local passed = 0
 
 local function test(label, callback)
@@ -326,6 +336,20 @@ test("validates CBC control argument contracts", function()
     equal(Managed.cannonControl(fake, "front", "setTargetAngles", 999, 0), false, "angle range contract")
     equal(#calls, 1, "invalid controls are not invoked")
     peripheral = oldPeripheral
+end)
+
+test("builds the 256-color Fluent palette plan", function()
+    local plan = PixelPalette.plan()
+    truthy(#plan.list >= 40, "palette entries cover extended slots")
+    truthy(#plan.wallpaper == PixelPalette.slots.wallpaperCount, "wallpaper ramp slots")
+    truthy(#plan.shadow == PixelPalette.slots.shadowCount, "shadow ramp slots")
+    truthy(#plan.tiles == PixelPalette.slots.tileCount, "tile slot count")
+    local slots = {}
+    for _, entry in ipairs(plan.list) do slots[entry.slot] = true end
+    for index = PixelPalette.slots.wallpaperFrom, PixelPalette.slots.startPill do
+        truthy(slots[index], "slot " .. index .. " allocated")
+    end
+    equal(PixelPalette.ramp({ 0x000000, 0xFFFFFF }, 3)[2], 0x808080, "ramp midpoint")
 end)
 
 test("hit-tests shared button geometry", function()

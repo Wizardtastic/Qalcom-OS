@@ -109,4 +109,25 @@ function PixelPalette.apply(plan)
     return plan
 end
 
+function PixelPalette.verified(plan)
+    -- Confirm the host actually stored the extended palette by reading back the
+    -- slots the plan wrote and comparing them to the requested values. Some
+    -- hosts accept graphics mode but ignore writes above slot 15 (or rewrite
+    -- them, e.g. the mod's grayscale mode on non-colour terminals), which would
+    -- leave the scene flat black or gray. Returns false so callers can fall
+    -- back to a text explanation instead of sitting on a blank screen.
+    plan = plan or PixelPalette.plan()
+    if type(term) ~= "table" or type(term.getPaletteColor) ~= "function" then return false end
+    local function near(a, b) return math.abs(a - b) < 0.02 end
+    for _, entry in ipairs(plan.list) do
+        if entry.slot >= 16 then
+            local ok, r, g, b = pcall(term.getPaletteColor, entry.slot)
+            if not ok or type(r) ~= "number" or type(g) ~= "number" or type(b) ~= "number" then return false end
+            local er, eg, eb = channels(entry.hex)
+            if not (near(r, er / 255) and near(g, eg / 255) and near(b, eb / 255)) then return false end
+        end
+    end
+    return true
+end
+
 return PixelPalette

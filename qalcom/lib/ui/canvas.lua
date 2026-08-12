@@ -10,6 +10,22 @@ function Canvas.available()
     return Display.supportsGraphics()
 end
 
+function Canvas.isColour()
+    -- The 256-colour palette only renders properly on a colour terminal. The
+    -- CC:Graphics mod can be configured to allow mode 2 on standard computers
+    -- with grayscale rendering, which flattens every extended color to gray, so
+    -- a known non-colour terminal is treated as unsupported. Hosts that do not
+    -- expose isColour/isColor are left to the mode-switch probe below.
+    local function check(name)
+        if type(term) == "table" and type(term[name]) == "function" then
+            local ok, colour = pcall(term[name])
+            if ok and colour == false then return false end
+        end
+        return true
+    end
+    return check("isColour") and check("isColor")
+end
+
 function Canvas.enter()
     -- Switch to 256-color graphics mode, and verify it actually engaged. On a
     -- non-advanced computer (or a host that doesn't support mode 2) the call can
@@ -17,6 +33,7 @@ function Canvas.enter()
     -- claiming success -- otherwise the caller shows a text fallback instead of a
     -- blank window.
     if not Canvas.available() then return false end
+    if not Canvas.isColour() then return false end
     if not pcall(term.setGraphicsMode, 2) then return false end
     local ok, mode = pcall(term.getGraphicsMode)
     if not ok or mode ~= 2 then

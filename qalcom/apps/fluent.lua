@@ -138,7 +138,7 @@ return function(ctx)
             "It needs an Advanced (color) computer",
             "with CC:Graphics (or CraftOS-PC).",
             "",
-            "The desktop stays in text-mode Fluent dark.",
+            "The desktop stays in text-mode Fluent.",
         })
         return
     end
@@ -150,6 +150,23 @@ return function(ctx)
     end
 
     PixelPalette.apply(plan)
+    if not PixelPalette.verified(plan) then
+        -- The host accepted graphics mode but did not store the extended palette
+        -- (some graphics APIs ignore writes above slot 15, and the mod's
+        -- grayscale mode on non-colour terminals rewrites them). The scene
+        -- would render flat gray or black, so leave graphics mode and explain.
+        restoreText()
+        runInfo({
+            "This host did not keep the 256-color",
+            "palette, so the preview would look",
+            "flat gray or black. It needs an",
+            "Advanced (color) computer with CC:",
+            "Graphics (or CraftOS-PC).",
+            "",
+            "The desktop stays in text-mode Fluent.",
+        })
+        return
+    end
     render()
     while true do
         local event, value = ctx:pullEvent()
