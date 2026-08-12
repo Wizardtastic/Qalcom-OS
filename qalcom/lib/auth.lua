@@ -150,120 +150,237 @@ function Auth.verify(username, password)
     return false, "Incorrect username or password."
 end
 
-local function screenLayout(target, mode)
+-- Compact 3x5 block font for the lock-screen clock (digits + colon).
+local BIG_GLYPHS = {
+    ["0"] = { "###", "# #", "# #", "# #", "###" },
+    ["1"] = { " # ", "## ", " # ", " # ", "###" },
+    ["2"] = { "###", "  #", "###", "#  ", "###" },
+    ["3"] = { "###", "  #", "###", "  #", "###" },
+    ["4"] = { "# #", "# #", "###", "  #", "  #" },
+    ["5"] = { "###", "#  ", "###", "  #", "###" },
+    ["6"] = { "###", "#  ", "###", "# #", "###" },
+    ["7"] = { "###", "  #", "  #", "  #", "  #" },
+    ["8"] = { "###", "# #", "###", "# #", "###" },
+    ["9"] = { "###", "# #", "###", "  #", "###" },
+    [":"] = { " ", "#", " ", "#", " " },
+}
+
+local function bigTextWidth(text)
+    local total = 0
+    for index = 1, #text do
+        local glyph = BIG_GLYPHS[text:sub(index, index)]
+        if glyph then total = total + #glyph[1] + (index < #text and 1 or 0) end
+    end
+    return total
+end
+
+local function drawBigText(target, UI, centerX, topY, text, color, background)
+    local startX = centerX - math.floor(bigTextWidth(text) / 2)
+    local cursor = startX
+    for index = 1, #text do
+        local glyph = BIG_GLYPHS[text:sub(index, index)]
+        if glyph then
+            local glyphWidth = #glyph[1]
+            for row = 1, 5 do
+                local line = glyph[row]
+                for column = 1, glyphWidth do
+                    if line:sub(column, column) == "#" then
+                        UI.fill(target, cursor + column - 1, topY + row - 1, 1, 1, color)
+                    end
+                end
+            end
+            cursor = cursor + glyphWidth + 1
+        end
+    end
+    return startX
+end
+
+local function drawLockScreen(target, UI, version)
     local width, height = target.getSize()
-    local compact = height < 22
-    local panelWidth = math.min(38, width - 6)
-    local panelHeight = compact and (mode == "setup" and 12 or 10) or (mode == "setup" and 13 or 11)
-    local panelX = math.floor((width - panelWidth) / 2) + 1
-    local panelY = compact and 3 or math.max(6, math.floor((height - panelHeight) / 2))
-    local firstField = 4
-    local fieldGap = compact and 2 or 3
-    local buttonOffset = compact and (mode == "setup" and 10 or 8) or (mode == "setup" and 12 or 9)
+    target.setBackgroundColor(UI.colors.desktop)
+    target.setTextColor(UI.colors.text)
+    target.clear()
+    local clockText = os.date("%H:%M")
+    local dateText = width >= 34 and os.date("%A, %B %d") or os.date("%a %d %b")
+    local blockTop = math.max(2, math.floor(height / 2) - 3)
+    drawBigText(target, UI, math.floor(width / 2) + 1, blockTop, clockText, UI.colors.text, UI.colors.desktop)
+    UI.center(target, blockTop + 6, dateText, UI.colors.textMuted or UI.colors.muted, UI.colors.desktop, width)
+    UI.center(target, height - 2, "Press any key or click to sign in", UI.colors.textMuted or UI.colors.muted, UI.colors.desktop, width)
+    UI.center(target, height, "Qalcom OS " .. version .. "   -   Esc shuts down", UI.colors.textSubtle or UI.colors.muted, UI.colors.desktop, width)
+end
+
+local function cardLayout(target, mode)
+    local width, height = target.getSize()
+    local cardWidth = math.max(24, math.min(42, width - 4))
+    local fieldCount = mode == "setup" and 3 or 2
+
+    -- Positions are computed as offsets from the card's top border for a given
+    -- avatar/field-gap configuration. buttonOffset drives the required height.
+    local function offsets(avatarRows, fieldGap)
+        local cursor = 1
+        local avatarY
+        if avatarRows > 0 then avatarY = cursor; cursor = cursor + avatarRows + 1 end
+        local titleY = cursor; cursor = cursor + 1
+        local usernameY = cursor + 1; cursor = usernameY + 1 + fieldGap
+        local passwordY = cursor + 1; cursor = passwordY + 1 + fieldGap
+        local confirmY
+        if mode == "setup" then confirmY = cursor + 1; cursor = confirmY + 1 + fieldGap end
+        local buttonY = cursor + 1
+        return {
+            avatarY = avatarY, titleY = titleY, usernameY = usernameY,
+            passwordY = passwordY, confirmY = confirmY, buttonY = buttonY,
+            requiredHeight = buttonY + 2,
+        }
+    end
+
+    -- Pick the richest configuration that fits the available height, degrading
+    -- from avatar + spacing down to a bare card on very short terminals.
+    local avail = height - 2
+    local configs = { { 3, 1 }, { 3, 0 }, { 0, 1 }, { 0, 0 } }
+    local chosen = offsets(0, 0)
+    for _, cfg in ipairs(configs) do
+        local candidate = offsets(cfg[1], cfg[2])
+        if candidate.requiredHeight <= avail then chosen = candidate; break end
+    end
+
+    local cardHeight = math.min(math.max(9, chosen.requiredHeight), math.max(9, avail))
+    local cardX = math.floor((width - cardWidth) / 2) + 1
+    local cardY = math.max(1, math.floor((height - cardHeight) / 2))
+    local fieldX = cardX + 3
+    local fieldWidth = cardWidth - 6
+    local toggleWidth = 4
+
+    local function abs(offset) return offset and (cardY + offset) or nil end
     return {
-        width = width,
-        height = height,
-        compact = compact,
-        panelWidth = panelWidth,
-        panelHeight = panelHeight,
-        panelX = panelX,
-        panelY = panelY,
-        firstField = firstField,
-        fieldGap = fieldGap,
-        buttonOffset = buttonOffset,
+        width = width, height = height, compact = chosen.avatarY == nil,
+        cardX = cardX, cardY = cardY, cardWidth = cardWidth, cardHeight = cardHeight,
+        fieldX = fieldX, fieldWidth = fieldWidth,
+        avatarY = abs(chosen.avatarY), titleY = abs(chosen.titleY),
+        usernameY = abs(chosen.usernameY), passwordY = abs(chosen.passwordY),
+        confirmY = abs(chosen.confirmY), buttonY = abs(chosen.buttonY),
+        toggleX = fieldX + fieldWidth - toggleWidth, toggleY = abs(chosen.passwordY) - 1, toggleWidth = toggleWidth,
     }
 end
 
-local function drawScreen(target, UI, version, mode, fields, selected, message, messageColor)
-    local layout = screenLayout(target, mode)
-    local width, height = layout.width, layout.height
+local function drawAvatar(target, UI, centerX, y, initial)
+    local avatarWidth = 7
+    local ax = centerX - math.floor(avatarWidth / 2)
+    UI.fill(target, ax, y, avatarWidth, 3, UI.colors.accent)
+    UI.text(target, centerX, y + 1, initial, UI.colors.textInverse, UI.colors.accent, 1)
+end
+
+local function drawCard(target, UI, version, mode, fields, selected, showPassword, message, messageColor)
+    local L = cardLayout(target, mode)
+    local width, height = L.width, L.height
     target.setBackgroundColor(UI.colors.desktop)
-    target.setTextColor(colors.white)
+    target.setTextColor(UI.colors.text)
     target.clear()
 
-    local brandY = layout.compact and 1 or 3
-    local brand = "Qalcom OS"
-    local brandX = math.max(1, math.floor((width - #brand) / 2) + 1)
-    -- Give the login screen the same identity as the desktop: a bright green Q
-    -- followed by a clean, high-contrast wordmark above the credential fields.
-    UI.text(target, brandX, brandY, "Q", colors.lime, UI.colors.desktop, 1)
-    UI.text(target, brandX + 1, brandY, "alcom OS", colors.white, UI.colors.desktop, #brand - 1)
-    if not layout.compact then
-        UI.center(target, 4, mode == "setup" and "Create your administrator account" or "Welcome back", colors.lightBlue, UI.colors.desktop, width)
-    else
-        UI.center(target, 2, "Secure local sign-in", UI.colors.accentLight, UI.colors.desktop, width)
+    UI.shadow(target, L.cardX, L.cardY, L.cardWidth, L.cardHeight, 1, UI.colors.shadow)
+    UI.panel(target, L.cardX, L.cardY, L.cardWidth, L.cardHeight, UI.colors.surface, UI.colors.borderStrong)
+
+    local centerX = L.cardX + math.floor(L.cardWidth / 2)
+    if L.avatarY then
+        local initial = (fields.username ~= "" and fields.username:sub(1, 1):upper()) or "@"
+        drawAvatar(target, UI, centerX, L.avatarY, initial)
     end
+    local title = mode == "setup" and "Create administrator" or "Sign in"
+    UI.text(target, L.cardX + math.max(0, math.floor((L.cardWidth - #title) / 2)), L.titleY, title, UI.colors.text, UI.colors.surface, #title)
 
-    UI.panel(target, layout.panelX, layout.panelY, layout.panelWidth, layout.panelHeight, colors.white, colors.yellow)
-    UI.fill(target, layout.panelX, layout.panelY, layout.panelWidth, 1, colors.yellow)
-
-    local fieldX = layout.panelX + 3
-    local fieldWidth = layout.panelWidth - 6
-    local usernameY = layout.panelY + layout.firstField
-    local passwordY = usernameY + layout.fieldGap
-    UI.input(target, fieldX, usernameY, fieldWidth, "Username", fields.username, selected == 1, false)
-    UI.input(target, fieldX, passwordY, fieldWidth, "Password", fields.password, selected == 2, true)
+    UI.input(target, L.fieldX, L.usernameY, L.fieldWidth, "Username", fields.username, selected == 1, false)
+    UI.input(target, L.fieldX, L.passwordY, L.fieldWidth, "Password", fields.password, selected == 2, not showPassword)
+    -- Password show/hide toggle on the label row, right-aligned and clickable.
+    UI.text(target, L.toggleX, L.toggleY, showPassword and "hide" or "show", UI.colors.accent, UI.colors.surface, L.toggleWidth)
     if mode == "setup" then
-        UI.input(target, fieldX, passwordY + layout.fieldGap, fieldWidth, "Confirm password", fields.confirm, selected == 3, true)
+        UI.input(target, L.fieldX, L.confirmY, L.fieldWidth, "Confirm password", fields.confirm, selected == 3, not showPassword)
     end
 
-    local buttonY = layout.panelY + layout.buttonOffset
-    UI.button(target, fieldX, buttonY, fieldWidth, mode == "setup" and "Create account" or "Sign in", selected == (mode == "setup" and 3 or 2))
+    local buttonActive = selected == (mode == "setup" and 3 or 2)
+    UI.button(target, L.fieldX, L.buttonY, L.fieldWidth, mode == "setup" and "Create account" or "Sign in", buttonActive, {
+        activeBackground = UI.colors.accent,
+        activeForeground = UI.colors.textInverse,
+        background = UI.colors.button,
+        foreground = UI.colors.buttonText,
+    })
+
     if message and message ~= "" then
-        local messageY = layout.panelY + layout.panelHeight + 1
-        -- Compact setup uses the available height for the third field; avoid
-        -- painting status text back over the card or the footer.
-        if messageY < height - 1 then
-            UI.center(target, messageY, message, messageColor or colors.yellow, UI.colors.desktop, width)
+        local messageY = L.cardY + L.cardHeight + 1
+        if messageY < height then
+            UI.center(target, messageY, message, messageColor or UI.colors.textMuted, UI.colors.desktop, width)
         end
     end
-    UI.center(target, height, "Qalcom OS " .. version .. "  |  Tab switches fields  |  Esc shuts down", colors.gray, UI.colors.desktop, width)
+    UI.center(target, height, "Tab switches fields   -   Enter submits   -   Esc back", UI.colors.textSubtle or UI.colors.muted, UI.colors.desktop, width)
 end
 
 function Auth.login(target, UI, version)
     local mode = Auth.hasAccounts() and "login" or "setup"
     local fields = { username = "", password = "", confirm = "" }
     local selected = 1
+    local showPassword = false
+    -- First boot goes straight to account creation; returning users see the lock
+    -- screen first and reveal the card on any key or click.
+    local phase = mode == "setup" and "form" or "lock"
     local message = mode == "setup" and "Set up a local administrator to begin." or ""
-    local messageColor = colors.lightBlue
+    local messageColor = UI.colors.accentLight or UI.colors.accent
     local failedAttempts = 0
+    local clockTimer = os.startTimer(1)
 
     local function submit()
         if mode == "setup" then
             if fields.password ~= fields.confirm then
-                message, messageColor = "Passwords do not match.", colors.red
+                message, messageColor = "Passwords do not match.", UI.colors.danger
                 return nil
             end
             local ok, err = Auth.create(fields.username, fields.password)
             if not ok then
-                message, messageColor = err, colors.red
+                message, messageColor = err, UI.colors.danger
                 return nil
             end
             mode = "login"
             fields.password, fields.confirm = "", ""
             selected = 2
-            message, messageColor = "Account created. Sign in to continue.", colors.lime
+            message, messageColor = "Account created. Sign in to continue.", UI.colors.success
             return nil
         end
         local ok, accountOrError = Auth.verify(fields.username, fields.password)
         if ok then return accountOrError end
         fields.password = ""
         failedAttempts = failedAttempts + 1
-        message, messageColor = accountOrError, colors.red
+        message, messageColor = accountOrError, UI.colors.danger
         os.sleep(math.min(3, failedAttempts))
         return nil
     end
 
+    local function fieldKey()
+        return selected == 1 and "username" or selected == 2 and "password" or "confirm"
+    end
+
     while true do
-        drawScreen(target, UI, version, mode, fields, selected, message, messageColor)
+        if phase == "lock" then
+            drawLockScreen(target, UI, version)
+        else
+            drawCard(target, UI, version, mode, fields, selected, showPassword, message, messageColor)
+        end
         local event, value, x, y = os.pullEventRaw()
-        if event == "term_resize" then
+        if event == "timer" and value == clockTimer then
+            clockTimer = os.startTimer(1)
+        elseif event == "term_resize" then
             -- Redraw on the next loop with the new terminal dimensions.
+        elseif phase == "lock" then
+            if event == "key" then
+                if value == keys.escape then os.shutdown() else phase = "form" end
+            elseif event == "char" then
+                phase = "form"
+                selected = 1
+                if #fields.username < MAX_INPUT then fields.username = fields.username .. value end
+            elseif event == "mouse_click" then
+                phase = "form"
+            end
         elseif event == "char" then
-            local key = selected == 1 and "username" or selected == 2 and "password" or "confirm"
+            local key = fieldKey()
             if #fields[key] < MAX_INPUT then fields[key] = fields[key] .. value end
         elseif event == "paste" then
-            local key = selected == 1 and "username" or selected == 2 and "password" or "confirm"
+            local key = fieldKey()
             fields[key] = fields[key] .. tostring(value):sub(1, MAX_INPUT - #fields[key])
         elseif event == "key" then
             if value == keys.tab or value == keys.down then
@@ -278,24 +395,21 @@ function Auth.login(target, UI, version)
                     selected = selected + 1
                 end
             elseif value == keys.backspace then
-                local key = selected == 1 and "username" or selected == 2 and "password" or "confirm"
+                local key = fieldKey()
                 fields[key] = fields[key]:sub(1, math.max(0, #fields[key] - 1))
             elseif value == keys.escape then
-                os.shutdown()
+                -- Return to the lock screen (login); shut down only from setup.
+                if mode == "setup" then os.shutdown() else phase = "lock"; selected = 1 end
             end
         elseif event == "mouse_click" then
-            local layout = screenLayout(target, mode)
-            local panelX, panelY = layout.panelX, layout.panelY
-            local fieldX = panelX + 3
-            local fieldWidth = layout.panelWidth - 6
-            local usernameY = panelY + layout.firstField
-            local passwordY = usernameY + layout.fieldGap
-            local buttonY = panelY + layout.buttonOffset
-            if x >= fieldX and x < fieldX + fieldWidth then
-                if y == usernameY then selected = 1
-                elseif y == passwordY then selected = 2
-                elseif mode == "setup" and y == passwordY + layout.fieldGap then selected = 3
-                elseif y == buttonY then
+            local L = cardLayout(target, mode)
+            if x >= L.toggleX and x < L.toggleX + L.toggleWidth and y == L.toggleY then
+                showPassword = not showPassword
+            elseif x >= L.fieldX and x < L.fieldX + L.fieldWidth then
+                if y == L.usernameY then selected = 1
+                elseif y == L.passwordY then selected = 2
+                elseif mode == "setup" and y == L.confirmY then selected = 3
+                elseif y == L.buttonY then
                     local account = submit()
                     if account then return account end
                 end

@@ -368,8 +368,8 @@ return function(ctx)
         local rightX = compact and 2 or leftWidth + 3
         local rightWidth = compact and math.max(1, width - 2) or math.max(1, width - rightX)
         local targetTop = compact and math.max(top + 3, math.min(height - 10, top + 5)) or top
-        UI.sectionHeader(ctx.win, 2, top, leftWidth, "CANNON BATTERY", { background = colors.yellow, foreground = colors.black })
-        UI.sectionHeader(ctx.win, rightX, targetTop, rightWidth, "TARGETING", { background = colors.yellow, foreground = colors.black })
+        UI.text(ctx.win, 2, top, "CANNON BATTERY", UI.colors.accent, UI.colors.surface, leftWidth)
+        UI.text(ctx.win, rightX, targetTop, "TARGETING", UI.colors.accent, UI.colors.surface, rightWidth)
 
         local row = top + 1
         local maxMountRows = compact and 2 or math.huge
@@ -378,10 +378,10 @@ return function(ctx)
             local active = selected[device.name] == true
             local focused = index == cursor
             local button = UI.button(ctx.win, 2, row, leftWidth, (focused and "> " or "  ") .. (active and "[x] " or "[ ] ") .. (device.alias or device.name), focused or isHovered("select-cannon", nil, device.name), {
-                background = active and colors.green or colors.gray,
-                activeBackground = UI.colors.accentLight,
-                foreground = active and colors.white or colors.black,
-                activeForeground = colors.white,
+                background = active and UI.colors.success or UI.colors.button,
+                activeBackground = UI.colors.surfaceSelected,
+                foreground = UI.colors.text,
+                activeForeground = UI.colors.text,
             })
             button.action = "select-cannon"
             button.name = device.name
@@ -392,14 +392,14 @@ return function(ctx)
             UI.text(ctx.win, 3, row, "No verified mounts", UI.colors.muted, UI.colors.surface, leftWidth - 2)
         end
         local navY = math.min(targetTop - 2, row + 1)
-        addButton(2, navY, math.max(3, math.floor(leftWidth / 4)), "UP", "up-cannon", false, { background = colors.gray })
-        addButton(2 + math.max(3, math.floor(leftWidth / 4)) + 1, navY, math.max(3, math.floor(leftWidth / 4)), "DOWN", "down-cannon", false, { background = colors.gray })
-        addButton(2 + (math.max(3, math.floor(leftWidth / 4)) + 1) * 2, navY, math.max(3, leftWidth - (math.max(3, math.floor(leftWidth / 4)) + 1) * 2), "TOGGLE CURRENT", "toggle-current", isHovered("toggle-current"), { background = colors.gray })
+        addButton(2, navY, math.max(3, math.floor(leftWidth / 4)), "UP", "up-cannon", false, { background = UI.colors.button })
+        addButton(2 + math.max(3, math.floor(leftWidth / 4)) + 1, navY, math.max(3, math.floor(leftWidth / 4)), "DOWN", "down-cannon", false, { background = UI.colors.button })
+        addButton(2 + (math.max(3, math.floor(leftWidth / 4)) + 1) * 2, navY, math.max(3, leftWidth - (math.max(3, math.floor(leftWidth / 4)) + 1) * 2), "TOGGLE CURRENT", "toggle-current", isHovered("toggle-current"), { background = UI.colors.button })
 
         local modeWidth = math.max(4, math.floor((rightWidth - 1) / 2))
-        addButton(rightX, targetTop + 1, modeWidth, "COORDS", "coordinates", targetMode == "coordinates", { background = colors.gray })
-        addButton(rightX + modeWidth + 1, targetTop + 1, math.max(1, rightWidth - modeWidth - 1), "RADAR", "radar", targetMode == "radar", { background = colors.gray })
-        addButton(rightX, targetTop + 2, rightWidth, "REFRESH", "refresh", false, { background = colors.gray })
+        addButton(rightX, targetTop + 1, modeWidth, "COORDS", "coordinates", targetMode == "coordinates", { background = UI.colors.button })
+        addButton(rightX + modeWidth + 1, targetTop + 1, math.max(1, rightWidth - modeWidth - 1), "RADAR", "radar", targetMode == "radar", { background = UI.colors.button })
+        addButton(rightX, targetTop + 2, rightWidth, "REFRESH", "refresh", false, { background = UI.colors.button })
 
         local controlsY = targetTop + 4
         if targetMode == "coordinates" then
@@ -416,8 +416,8 @@ return function(ctx)
             UI.text(ctx.win, rightX, controlsY + 3, "Geometric line-of-sight aim; not ballistic", UI.colors.muted, UI.colors.surface, rightWidth)
         else
             local contact = contacts[selectedContact]
-            addButton(rightX, controlsY + 1, 5, "<", "prev-contact", false, { background = colors.gray })
-            addButton(rightX + 6, controlsY + 1, 5, ">", "next-contact", false, { background = colors.gray })
+            addButton(rightX, controlsY + 1, 5, "<", "prev-contact", false, { background = UI.colors.button })
+            addButton(rightX + 6, controlsY + 1, 5, ">", "next-contact", false, { background = UI.colors.button })
             local contactText = contact and (contact.identity .. " / " .. contact.identityStatus) or "No radar contact"
             UI.text(ctx.win, rightX + 12, controlsY + 1, contactText, contact and UI.colors.text or UI.colors.muted, UI.colors.surface, rightWidth - 12)
             local position = contact and contact.position
@@ -426,11 +426,13 @@ return function(ctx)
         end
 
         local actionY = height - 3
+        -- Safety affordances stay unmistakable: AIM is accent-blue, FIRE and STOP
+        -- are danger-red. PLAN is a neutral button.
         local actions = {
-            { label = "PLAN", name = "plan", background = colors.gray, foreground = colors.black },
-            { label = "AIM", name = "aim", background = colors.blue, foreground = colors.white },
-            { label = "FIRE", name = "fire", background = colors.red, foreground = colors.white },
-            { label = "STOP", name = "stop", background = colors.red, foreground = colors.white },
+            { label = "PLAN", name = "plan", background = UI.colors.button, foreground = UI.colors.text },
+            { label = "AIM", name = "aim", background = UI.colors.accentSoft or colors.blue, foreground = colors.white },
+            { label = "FIRE", name = "fire", background = UI.colors.danger, foreground = UI.colors.dangerText or colors.white },
+            { label = "STOP", name = "stop", background = UI.colors.danger, foreground = UI.colors.dangerText or colors.white },
         }
         local actionGap = 1
         if rightWidth >= 23 then

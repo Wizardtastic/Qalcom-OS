@@ -31,8 +31,8 @@ return function(ctx)
         UI.text(ctx.win, 2, row, overview, UI.colors.accent, UI.colors.surface, width - 3)
         row = row + 2
         local split = math.max(20, math.floor(width * 0.48))
-        UI.sectionHeader(ctx.win, 2, row, split - 3, "Assets / sensors", { background = colors.yellow, foreground = colors.black })
-        UI.sectionHeader(ctx.win, split, row, width - split - 1, "Read-only detail", { background = colors.yellow, foreground = colors.black })
+        UI.text(ctx.win, 2, row, "ASSETS / SENSORS", UI.colors.accent, UI.colors.surface, split - 3)
+        UI.text(ctx.win, split, row, "READ-ONLY DETAIL", UI.colors.accent, UI.colors.surface, width - split - 1)
         row = row + 1
         local listStart = row
         local visible = math.max(0, footer - row)
@@ -40,8 +40,8 @@ return function(ctx)
             local record = records[index]
             local active = index == selected
             UI.listRow(ctx.win, 2, row + index - 1, split - 3, (active and "> " or "  ") .. record.alias, record.health, active, {
-                activeBackground = UI.colors.accentLight, activeForeground = colors.white, background = UI.colors.surface,
-                valueColor = record.health == "online" and UI.colors.success or UI.colors.warning,
+                activeBackground = UI.colors.surfaceSelected, activeForeground = UI.colors.text, background = UI.colors.surface,
+                valueColor = active and UI.colors.text or (record.health == "online" and UI.colors.success or UI.colors.warning),
             })
         end
         local record = records[selected]

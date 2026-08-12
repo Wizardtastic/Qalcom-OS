@@ -28,7 +28,13 @@ return function(ctx)
         for row = 1, visible do
             local line = lines[scroll + row - 1]
             if line then
-                local color = line:lower():find("fail", 1, true) and UI.colors.danger or UI.colors.text
+                local lower = line:lower()
+                local color = UI.colors.text
+                if lower:find("fail", 1, true) or lower:find("denied", 1, true) or lower:find("error", 1, true) then
+                    color = UI.colors.danger
+                elseif lower:find("login", 1, true) or lower:find("approval", 1, true) then
+                    color = UI.colors.accent
+                end
                 UI.listRow(ctx.win, 2, contentStart + row, width - 3, line, nil, false, {
                     foreground = color,
                     background = UI.colors.surface,

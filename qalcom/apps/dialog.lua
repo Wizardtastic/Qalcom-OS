@@ -10,10 +10,11 @@ return function(ctx)
         ctx.win.setBackgroundColor(UI.colors.surface)
         ctx.win.setTextColor(UI.colors.text)
         ctx.win.clear()
-        UI.dialog(ctx.win, title, message, UI.colors.warning)
+        UI.dialog(ctx.win, title, message, UI.colors.accent)
         local buttonWidth = math.floor((width - 7) / 2)
-        UI.button(ctx.win, 3, height - 3, buttonWidth, "Yes", selected == 1, { background = colors.gray })
-        UI.button(ctx.win, 5 + buttonWidth, height - 3, buttonWidth, "No", selected == 2, { background = colors.gray })
+        -- Accent primary (Yes) and standard secondary (No), Fluent style.
+        UI.button(ctx.win, 3, height - 3, buttonWidth, "Yes", selected == 1, { variant = "accent" })
+        UI.button(ctx.win, 5 + buttonWidth, height - 3, buttonWidth, "No", selected == 2)
     end
 
     render()

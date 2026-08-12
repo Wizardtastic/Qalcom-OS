@@ -59,8 +59,8 @@ return function(ctx)
         local split = math.max(15, math.floor(width * 0.42))
         local device = selectedDevice()
 
-        UI.sectionHeader(ctx.win, 2, bodyStart, split - 3, "Attached devices", { background = colors.yellow, foreground = colors.black })
-        UI.sectionHeader(ctx.win, split, bodyStart, width - split - 1, "Inspection", { background = colors.yellow, foreground = colors.black })
+        UI.text(ctx.win, 2, bodyStart, "ATTACHED DEVICES", UI.colors.accent, UI.colors.surface, split - 3)
+        UI.text(ctx.win, split, bodyStart, "INSPECTION", UI.colors.accent, UI.colors.surface, width - split - 1)
         local row = bodyStart + 1
         local visible = math.max(0, footer - row)
         local start = math.max(1, math.min(selected - visible + 1, #devices - visible + 1))
@@ -68,13 +68,11 @@ return function(ctx)
             local y = row + index - start
             local item = devices[index]
             local active = index == selected
-            local background = active and UI.colors.accentLight or UI.colors.surface
-            local foreground = active and colors.white or UI.colors.text
             local marker = item.blocked and "B " or (item.trusted and "T " or "  ")
             UI.listRow(ctx.win, 2, y, split - 3, marker .. tostring(item.alias or item.name), nil, active, {
-                activeBackground = UI.colors.accentLight,
-                activeForeground = colors.white,
-                foreground = foreground,
+                activeBackground = UI.colors.surfaceSelected,
+                activeForeground = UI.colors.text,
+                foreground = UI.colors.text,
                 background = UI.colors.surface,
             })
         end

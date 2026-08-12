@@ -72,11 +72,6 @@ local manifests = {
         requested = { "fs.read", "fs.write" },
         unmanaged = { "term", "os.pullEvent" },
     },
-    monitor = {
-        title = "System Monitor", trusted = true,
-        requested = { "peripheral.read", "telemetry.read" },
-        unmanaged = { "term", "os.pullEvent" },
-    },
     settings = {
         title = "Settings", trusted = true,
         requested = { "fs.read", "fs.write", "system.label" },
@@ -127,25 +122,15 @@ local manifests = {
         requested = { "fs.read", "fs.write", "peripheral.read", "telemetry.read" },
         unmanaged = { "os.pullEvent" },
     },
-    infrastructure = {
-        title = "Infrastructure", trusted = true,
-        requested = { "fs.read", "fs.write", "redstone.read", "redstone.control", "infrastructure.control", "infrastructure.emergency" },
-        unmanaged = { "os.pullEvent" },
-    },
-    jobs = {
-        title = "Automation Jobs", trusted = true,
-        requested = { "fs.read", "fs.write", "jobs.manage", "redstone.read", "redstone.control", "infrastructure.control", "infrastructure.emergency" },
-        unmanaged = { "os.pullEvent" },
-    },
     calculator = {
         title = "Calculator", trusted = true,
         requested = {},
         unmanaged = { "os.pullEvent" },
     },
-    jobs_service = {
-        title = "Automation Service", trusted = true,
-        requested = { "fs.read", "fs.write", "jobs.manage", "redstone.read", "redstone.control", "infrastructure.control", "infrastructure.emergency" },
-        unmanaged = { "os.pullEvent" },
+    fluent = {
+        title = "Fluent Desktop", trusted = true,
+        requested = {},
+        unmanaged = { "term", "os.pullEvent" },
     },
     network = {
         title = "Network Manager", trusted = true,
@@ -154,12 +139,7 @@ local manifests = {
     },
     network_service = {
         title = "Encrypted Network Service", trusted = true,
-        requested = { "fs.read", "fs.write", "peripheral.read", "network.send", "network.receive", "network.control", "telemetry.read", "jobs.manage", "redstone.read", "redstone.control", "infrastructure.control", "infrastructure.emergency" },
-        unmanaged = { "os.pullEvent" },
-    },
-    incidents = {
-        title = "Incident Response", trusted = true,
-        requested = { "fs.read", "fs.write", "incident.manage", "telemetry.read", "infrastructure.emergency", "jobs.manage" },
+        requested = { "fs.read", "fs.write", "peripheral.read", "network.send", "network.receive", "telemetry.read" },
         unmanaged = { "os.pullEvent" },
     },
     telemetry = {

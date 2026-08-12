@@ -71,12 +71,11 @@ return function(ctx)
             for index = start, math.min(#accounts, start + visible - 1) do
                 local account = accounts[index]
                 local active = index == selectedAccount
-                local background = active and UI.colors.accentLight or UI.colors.surface
                 UI.listRow(ctx.win, 2, row, width - 3, account.username, account.role, active, {
                     split = math.floor(width * 0.55),
-                    activeBackground = UI.colors.accentLight,
-                    activeForeground = colors.white,
-                    valueColor = active and colors.white or UI.colors.muted,
+                    activeBackground = UI.colors.surfaceSelected,
+                    activeForeground = UI.colors.text,
+                    valueColor = active and UI.colors.text or UI.colors.textMuted,
                     background = UI.colors.surface,
                 })
                 row = row + 1

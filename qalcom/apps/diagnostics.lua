@@ -31,7 +31,8 @@ return function(ctx)
             if line then
                 local heading = line == "Boot stages" or line == "Recent crashes"
                 if heading then
-                    UI.sectionHeader(ctx.win, 2, contentStart + row - 1, width - 3, line, { background = colors.yellow, foreground = colors.black })
+                    UI.fill(ctx.win, 2, contentStart + row - 1, width - 3, 1, UI.colors.surface)
+                    UI.text(ctx.win, 2, contentStart + row - 1, line:upper(), UI.colors.accent, UI.colors.surface, width - 3)
                 else
                     UI.listRow(ctx.win, 2, contentStart + row - 1, width - 3, line, nil, false, { background = UI.colors.surface })
                 end

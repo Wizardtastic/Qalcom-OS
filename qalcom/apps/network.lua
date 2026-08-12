@@ -72,7 +72,7 @@ return function(ctx)
         line("View", tab == "nodes" and "trusted nodes" or "recent audit")
         if row < footer then row = row + 1 end
         if tab == "nodes" then
-            if row < footer then UI.sectionHeader(ctx.win, 2, row, width - 3, "Trusted nodes", { background = colors.yellow, foreground = colors.black }); row = row + 1 end
+            if row < footer then UI.text(ctx.win, 2, row, "TRUSTED NODES", UI.colors.accent, UI.colors.surface, width - 3); row = row + 1 end
             if #nodes.nodes == 0 and row < footer then
                 UI.text(ctx.win, 3, row, "No nodes enrolled; pairing requires an explicit local record.", UI.colors.muted, UI.colors.surface, width - 5)
             else
@@ -81,7 +81,7 @@ return function(ctx)
                     local active = index == selected
                     local label = (active and "> " or "  ") .. node.alias
                     UI.listRow(ctx.win, 2, row, width - 3, label, node.state, active, {
-                        activeBackground = UI.colors.accentLight, activeForeground = colors.white, background = UI.colors.surface,
+                        activeBackground = UI.colors.surfaceSelected, activeForeground = UI.colors.text, background = UI.colors.surface,
                     })
                     row = row + 1
                 end
@@ -95,7 +95,7 @@ return function(ctx)
                 end
             end
         else
-            if row < footer then UI.sectionHeader(ctx.win, 2, row, width - 3, "Recent authenticated request audit", { background = colors.yellow, foreground = colors.black }); row = row + 1 end
+            if row < footer then UI.text(ctx.win, 2, row, "RECENT AUTHENTICATED REQUEST AUDIT", UI.colors.accent, UI.colors.surface, width - 3); row = row + 1 end
             for index = #auditLines, 1, -1 do
                 if row >= footer then break end
                 UI.text(ctx.win, 3, row, auditLines[index], UI.colors.text, UI.colors.surface, width - 5)

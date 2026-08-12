@@ -8,10 +8,14 @@ return function(ctx)
     local selected = 1
     local editingLabel = false
     local labelInput = ""
-    local themes = { "blue", "dark", "green" }
+    local themes = { "win11dark", "win11light", "blue", "dark", "green" }
+    local wallpapers = Config.wallpapers or { "solid", "dots" }
+    local function wallpaperLabel(style)
+        return (tostring(style or "solid"):gsub("^%l", string.upper))
+    end
     local categories = { "Personalization", "Account", "Display", "Startup", "Security", "Storage", "Peripherals", "Network", "Recovery" }
-    local rowOrder = { 1, 2, 3, 4, 5, 6, 7, 8, 9, 11 }
-    local compactRows = { 2, 7, 8, 9, 11 }
+    local rowOrder = { 1, 2, 12, 3, 4, 5, 6, 7, 8, 9, 11 }
+    local compactRows = { 2, 12, 7, 8, 9, 11 }
     local compactOffset = 1
     local config = Config.load()
     Config.apply(UI, config)
@@ -65,24 +69,33 @@ return function(ctx)
             { "Log retention", tostring(config.logLimit) .. " lines" },
             { "Reduced motion", config.reducedMotion and "Enabled" or "Disabled" },
             { "Categories", table.concat(categories, ", ") },
-            { "Restore defaults", "Ocean / Safe Mode off / 200 lines" },
+            { "Restore defaults", "Win11 Dark / Safe Mode off / 200 lines" },
+            [12] = { "Wallpaper", wallpaperLabel(config.wallpaper) },
         }
         for displayIndex, actualIndex in ipairs(visibleRows) do
             local item = rows[actualIndex]
             local y = contentStart + displayIndex - 1
             local active = selected == displayIndex
-            local background = active and UI.colors.accentLight or UI.colors.surface
-            local foreground = active and colors.white or UI.colors.text
-            local value = item[2]
-            if editingLabel and actualIndex == 1 then value = labelInput .. "_" end
-            UI.listRow(ctx.win, 2, y, width - 3, item[1], value, active, {
-                split = math.floor(width * 0.55),
-                activeBackground = UI.colors.accentLight,
-                activeForeground = colors.white,
-                valueColor = foreground,
-                foreground = active and colors.white or UI.colors.muted,
-                background = UI.colors.surface,
-            })
+            local rowBackground = active and UI.colors.surfaceSelected or UI.colors.surface
+            -- Safe Mode (7) and Reduced motion (9) render as Fluent switches.
+            if actualIndex == 7 or actualIndex == 9 then
+                local on = actualIndex == 7 and config.safeMode or config.reducedMotion
+                UI.toggle(ctx.win, 2, y, width - 3, item[1], on == true, {
+                    background = rowBackground,
+                    foreground = active and UI.colors.text or UI.colors.text,
+                })
+            else
+                local value = item[2]
+                if editingLabel and actualIndex == 1 then value = labelInput .. "_" end
+                UI.listRow(ctx.win, 2, y, width - 3, item[1], value, active, {
+                    split = math.floor(width * 0.55),
+                    activeBackground = UI.colors.surfaceSelected,
+                    activeForeground = UI.colors.text,
+                    valueColor = active and UI.colors.text or UI.colors.textMuted,
+                    foreground = active and UI.colors.text or UI.colors.text,
+                    background = UI.colors.surface,
+                })
+            end
         end
 
     end
@@ -98,12 +111,23 @@ return function(ctx)
         ctx:notify("Theme: " .. config.colors.name, UI.colors.accent)
     end
 
+    local function chooseWallpaper(direction)
+        local index = 1
+        for i, style in ipairs(wallpapers) do if style == config.wallpaper then index = i end end
+        index = ((index - 1 + direction) % #wallpapers) + 1
+        config.wallpaper = wallpapers[index]
+        Config.setWallpaper(config.wallpaper)
+        ctx:notify("Wallpaper: " .. wallpaperLabel(config.wallpaper), UI.colors.accent)
+    end
+
     local function applySelected(actualIndex)
         if actualIndex == 1 then
             labelInput = os.getComputerLabel() or ""
             editingLabel = true
         elseif actualIndex == 2 then
             chooseTheme(1)
+        elseif actualIndex == 12 then
+            chooseWallpaper(1)
         elseif actualIndex == 7 then
             Config.setSafeMode(not config.safeMode)
             config = Config.load()
@@ -166,6 +190,12 @@ return function(ctx)
                 render()
             elseif value == keys.enter then
                 applySelected(visibleRows[selected])
+                render()
+            elseif value == keys.left and visibleRows[selected] == 12 then
+                chooseWallpaper(-1)
+                render()
+            elseif value == keys.right and visibleRows[selected] == 12 then
+                chooseWallpaper(1)
                 render()
             elseif value == keys.left and visibleRows[selected] == 2 then
                 chooseTheme(-1)

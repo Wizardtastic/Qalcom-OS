@@ -55,6 +55,10 @@ return function(ctx)
                 end
             end
 
+            if row < footerStart then
+                UI.text(ctx.win, 2, row, "SYSTEM", UI.colors.accent, UI.colors.surface, width - 3)
+                row = row + 1
+            end
             stat("Qalcom", VERSION, UI.colors.accent)
             stat("User", tostring(info.user or "-"))
             stat("Role", tostring(info.role or "-"), UI.colors.accent)
@@ -66,31 +70,15 @@ return function(ctx)
             stat("Modems", tostring(info.modems))
             if row < footerStart then row = row + 1 end
             if row < footerStart then
-                UI.sectionHeader(ctx.win, 2, row, width - 3, "Processes", { background = colors.yellow, foreground = colors.black })
+                UI.text(ctx.win, 2, row, "PROCESSES", UI.colors.accent, UI.colors.surface, width - 3)
                 row = row + 1
             end
         end
 
-        local jobs = info.jobs and info.jobs.summary or {}
-        if row < footerStart then
-            local automation = tostring(jobs.active or 0) .. " active  " .. tostring(jobs.retrying or 0) .. " retrying  " .. tostring(jobs.failed or 0) .. " failed"
-            UI.listRow(ctx.win, 2, row, width - 3, "Automation", automation, false, {
-                split = math.floor(width * 0.5),
-                valueColor = (jobs.failed or 0) > 0 and UI.colors.danger or UI.colors.success,
-                background = UI.colors.surface,
-            })
-            row = row + 1
-        end
-        if (jobs.failed or 0) > 0 and row < footerStart then
-            UI.text(ctx.win, 2, row, tostring(jobs.lastFailure or "Automation failure detected"), UI.colors.danger, UI.colors.surface, width - 3)
-            row = row + 1
-        end
 
         for index, task in ipairs(info.tasks) do
             if row >= footerStart or index > maxVisibleTasks then break end
             local active = index == selected
-            local background = active and UI.colors.accentLight or UI.colors.surface
-            local foreground = active and colors.white or UI.colors.text
             local marker = task.failed and "! " or (task.minimized and "_ " or "> ")
             local label = marker .. tostring(task.pid) .. " " .. task.title
             local detail, detailColor = taskDetail(task)
@@ -98,9 +86,9 @@ return function(ctx)
 
             UI.listRow(ctx.win, 2, row, width - 3, label, detail, active, {
                 split = math.floor(width * 0.65),
-                activeBackground = UI.colors.accentLight,
-                activeForeground = colors.white,
-                valueColor = detailColor,
+                activeBackground = UI.colors.surfaceSelected,
+                activeForeground = UI.colors.text,
+                valueColor = active and UI.colors.text or detailColor,
                 background = UI.colors.surface,
             })
             row = row + 1
@@ -125,9 +113,8 @@ return function(ctx)
                     local restarted, reason = ctx:restartProcess(task.pid)
                     status = restarted and ("Restart requested for " .. task.title) or (reason or "Restart unavailable for " .. task.title)
                 else
-                    status = task and task.restartLocked and "Restart limit reached for " .. task.title or "Automation and process data refreshed"
+                    status = task and task.restartLocked and "Restart limit reached for " .. task.title or "Process data refreshed"
                     refresh()
-                    if ctx.reloadJobs then ctx:reloadJobs() end
                 end
                 render()
             elseif value == keys.escape then

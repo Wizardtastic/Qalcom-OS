@@ -72,16 +72,6 @@ local function loadCrypto()
 end
 
 local Crypto = loadCrypto()
-local function loadIncidents()
-    local candidates = { "qalcom/lib/incidents.lua", "../qalcom/lib/incidents.lua", "/qalcom/lib/incidents.lua" }
-    for _, path in ipairs(candidates) do
-        local ok, module = pcall(dofile, path)
-        if ok and type(module) == "table" then return module end
-    end
-    fail("Unable to load qalcom/lib/incidents.lua")
-end
-
-local Incidents = loadIncidents()
 local function loadPeripherals()
     local candidates = { "qalcom/lib/peripherals.lua", "../qalcom/lib/peripherals.lua", "/qalcom/lib/peripherals.lua" }
     for _, path in ipairs(candidates) do
@@ -112,26 +102,6 @@ local function loadCannon()
 end
 
 local Cannon = loadCannon()
-local function loadInfrastructure()
-    local candidates = { "qalcom/lib/infrastructure.lua", "../qalcom/lib/infrastructure.lua", "/qalcom/lib/infrastructure.lua" }
-    for _, path in ipairs(candidates) do
-        local ok, module = pcall(dofile, path)
-        if ok and type(module) == "table" then return module end
-    end
-    fail("Unable to load qalcom/lib/infrastructure.lua")
-end
-
-local Infrastructure = loadInfrastructure()
-local function loadJobs()
-    local candidates = { "qalcom/lib/jobs.lua", "../qalcom/lib/jobs.lua", "/qalcom/lib/jobs.lua" }
-    for _, path in ipairs(candidates) do
-        local ok, module = pcall(dofile, path)
-        if ok and type(module) == "table" then return module end
-    end
-    fail("Unable to load qalcom/lib/jobs.lua")
-end
-
-local Jobs = loadJobs()
 local function loadCalculator()
     local candidates = { "qalcom/lib/calculator.lua", "../qalcom/lib/calculator.lua", "/qalcom/lib/calculator.lua" }
     for _, path in ipairs(candidates) do
@@ -184,7 +154,6 @@ test("validates roles and policies", function()
     truthy(Roles.allows("Administrator", "system.shutdown"), "administrator shutdown")
     truthy(Roles.allows("Administrator", "account.manage"), "administrator account management")
     truthy(Roles.allows("Administrator", "infrastructure.control"), "administrator infrastructure control")
-    truthy(Capabilities.policy("Operations officer", "infrastructure", "infrastructure.control", false).allowed, "operations infrastructure policy")
     equal(Roles.allows("Observer", "system.shutdown"), false, "observer shutdown")
     truthy(Pure.validateRole("Observer", Roles.names()), "valid role")
     equal(Pure.validateRole("Unknown", Roles.names()), false, "invalid role")
@@ -194,7 +163,7 @@ test("validates roles and policies", function()
     local safe = Capabilities.policy("Administrator", "terminal", "fs.write", true)
     equal(safe.allowed, false, "Safe Mode blocks filesystem writes")
     equal(safe.reason, "Safe Mode blocks sensitive actions", "Safe Mode reason")
-    local readOnly = Capabilities.policy("Observer", "monitor", "peripheral.read", true)
+    local readOnly = Capabilities.policy("Observer", "peripherals", "peripheral.read", true)
     truthy(readOnly.allowed, "Safe Mode preserves read-only inspection")
 end)
 
@@ -251,19 +220,6 @@ test("seals, opens, and rejects tampered payloads", function()
     local bigCipher, bigTag = Crypto.seal("secret", "nonce-4", big, "context")
     equal(Crypto.open("secret", "nonce-4", bigCipher, bigTag, "context"), big, "large payload round trip")
     equal(Crypto.unhex(Crypto.hex(big)), big, "hex round trip")
-end)
-
-test("bounds incidents and previews playbooks", function()
-    local incidents = Incidents.empty()
-    local ok, item = Incidents.add(incidents, { id = "i1", title = "Base alarm", severity = "high", source = "radar" }, 10)
-    truthy(ok, "incident added")
-    truthy(Incidents.setState(incidents, item.id, "acknowledged", "operator", 11), "incident acknowledged")
-    local previewOk, preview = Incidents.preview("lockdown", { ["infrastructure.safe_state"] = true, ["jobs.pause"] = false })
-    truthy(previewOk, "playbook preview")
-    truthy(preview.blocked, "preview policy block")
-    local restored = Incidents.parse(Incidents.serialize(incidents))
-    equal(#restored.incidents, 1, "incident persistence")
-    equal(restored.incidents[1].state, "acknowledged", "incident state persistence")
 end)
 
 test("normalizes peripheral metadata and radar contacts", function()
@@ -372,51 +328,6 @@ test("validates CBC control argument contracts", function()
     peripheral = oldPeripheral
 end)
 
-test("normalizes infrastructure profiles and pulse limits", function()
-    local data = Infrastructure.parse("schema|1\nprofile|alarm|Base Alarm|output|front|false|true|base|3|true|false\nprofile|input|Door Sensor|input|left|false|true|base|0|true|false\n")
-    equal(#data.profiles, 2, "profile count")
-    equal(data.profiles[1].id, "alarm", "profile id")
-    equal(data.profiles[1].maxPulse, 3, "profile pulse limit")
-    equal(data.profiles[1].blocked, false, "profile block marker")
-    truthy(Infrastructure.zoneAllowed(data.profiles[1]), "local zone allowed")
-    truthy(Infrastructure.canPulse(data.profiles[1], 2), "valid pulse")
-    equal(Infrastructure.canPulse(data.profiles[1], 4), false, "profile pulse cap")
-    equal(Infrastructure.canPulse(data.profiles[2], 1), false, "input cannot pulse")
-    local serialized = Infrastructure.serialize(data)
-    truthy(serialized:find("profile|alarm|Base Alarm", 1, true) ~= nil, "profile serialized")
-end)
-
-test("validates structured jobs and bounds execution helpers", function()
-    local data = Jobs.parse("schema|1\njob|door|Door Watch|true|timer|10|infrastructure_toggle|door-a|toggle|5|1|3|false\njob|bad|Bad|true|lua|x|shell|x|toggle|0|99|99|false\n")
-    equal(#data.jobs, 2, "job count")
-    equal(data.jobs[1].trigger, "timer", "timer trigger")
-    equal(data.jobs[2].trigger, "manual", "invalid trigger fallback")
-    equal(data.jobs[2].action, "infrastructure_safe_state", "invalid action fallback")
-    equal(Jobs.timerInterval(data.jobs[1]), 10, "timer interval")
-    local side, value = Jobs.redstoneTrigger(Jobs.normalize({ trigger = "redstone", triggerValue = "front:on" }))
-    equal(side, "front", "redstone side")
-    equal(value, true, "redstone value")
-    local allowed = Jobs.canRun(Jobs.normalize({ cooldown = 5 }), 10, 4)
-    equal(allowed, true, "cooldown elapsed")
-    local blocked = Jobs.canRun(Jobs.normalize({ cooldown = 5 }), 10, 8)
-    equal(blocked, false, "cooldown active")
-    local history = {}
-    for index = 1, 60 do history = Jobs.addHistory(history, { id = "job", outcome = "success", at = index }) end
-    equal(#history, Jobs.maxHistory, "history bound")
-    local serialized = Jobs.serialize(data)
-    truthy(serialized:find("job|door|Door Watch", 1, true) ~= nil, "job serialized")
-    equal(Jobs.retryDelay(1), 1, "first retry delay")
-    equal(Jobs.retryDelay(4), 8, "exponential retry delay")
-    equal(Jobs.retryDelay(99), Jobs.maxRetryDelay, "retry delay cap")
-    local statusText = Jobs.serializeStatus({
-        { id = "door", state = "retrying", source = "timer", attempts = 2, nextAt = 12, lastOutcome = "retrying", lastDetail = "target unavailable", updated = 10 },
-    })
-    local statuses = Jobs.parseStatus(statusText)
-    equal(#statuses, 1, "status count")
-    equal(statuses[1].state, "retrying", "status state")
-    equal(Jobs.statusSummary(statuses).retrying, 1, "retry summary")
-end)
-
 test("hit-tests shared button geometry", function()
     local buttons = {
         { x = 2, y = 3, width = 4, height = 1, label = "A" },
@@ -458,6 +369,24 @@ end)
 test("clamps integer settings", function()
     equal(Pure.clampInteger("999", 50, 1000, 200), 1000, "upper clamp")
     equal(Pure.clampInteger("invalid", 50, 1000, 200), 200, "fallback")
+end)
+
+test("converts palette hex to color channels", function()
+    local function approx(actual, expected, label)
+        if math.abs(actual - expected) > 0.0001 then
+            fail(label .. ": expected " .. tostring(expected) .. ", got " .. tostring(actual))
+        end
+    end
+    local r, g, b = Pure.colorChannels(0xFFFFFF)
+    approx(r, 1, "white r"); approx(g, 1, "white g"); approx(b, 1, "white b")
+    r, g, b = Pure.colorChannels(0x000000)
+    approx(r, 0, "black r"); approx(g, 0, "black g"); approx(b, 0, "black b")
+    r, g, b = Pure.colorChannels(0x4CC2FF)
+    approx(r, 76 / 255, "accent r"); approx(g, 194 / 255, "accent g"); approx(b, 1, "accent b")
+    r = Pure.colorChannels(nil)
+    approx(r, 0, "nil defaults to zero")
+    r, g, b = Pure.colorChannels(0x1FF0000)
+    approx(r, 1, "overflow wraps to 24-bit")
 end)
 
 test("fits windows inside a terminal", function()

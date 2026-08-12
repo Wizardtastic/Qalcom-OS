@@ -42,14 +42,12 @@ return function(ctx)
             local item = entries[index]
             if item then
                 local active = index == selected
-                local bg = active and UI.colors.accentLight or UI.colors.surface
-                local fg = active and colors.white or UI.colors.text
                 local itemY = contentStart + row
-                local icon = item.dir and "▸ " or "· "
+                local icon = item.dir and "> " or ". "
                 UI.listRow(ctx.win, 2, itemY, width - 3, icon .. item.name, nil, active, {
-                    activeBackground = UI.colors.accentLight,
-                    activeForeground = colors.white,
-                    foreground = fg,
+                    activeBackground = UI.colors.surfaceSelected,
+                    activeForeground = UI.colors.text,
+                    foreground = UI.colors.text,
                     background = UI.colors.surface,
                 })
             end

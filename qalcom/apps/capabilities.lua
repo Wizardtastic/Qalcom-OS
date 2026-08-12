@@ -17,20 +17,18 @@ return function(ctx)
         local footer = height + 1
         local split = math.max(12, math.floor(width * 0.43))
         local row = contentStart + 1
-        UI.sectionHeader(ctx.win, 2, row, split - 3, "Applications", { background = colors.yellow, foreground = colors.black })
-        UI.sectionHeader(ctx.win, split, row, width - split - 1, "Requested capabilities", { background = colors.yellow, foreground = colors.black })
+        UI.text(ctx.win, 2, row, "APPLICATIONS", UI.colors.accent, UI.colors.surface, split - 3)
+        UI.text(ctx.win, split, row, "REQUESTED CAPABILITIES", UI.colors.accent, UI.colors.surface, width - split - 1)
         row = row + 1
         local visible = math.max(0, footer - row)
         local start = math.max(1, math.min(selected - math.max(1, visible) + 1, #apps - math.max(1, visible) + 1))
         for index = start, math.min(#apps, start + visible - 1) do
             local y = row + index - start
             local active = index == selected
-            local background = active and UI.colors.accentLight or UI.colors.surface
-            local foreground = active and colors.white or UI.colors.text
             UI.listRow(ctx.win, 2, y, split - 3, Capabilities.manifest(apps[index]).title, nil, active, {
-                activeBackground = UI.colors.accentLight,
-                activeForeground = colors.white,
-                foreground = foreground,
+                activeBackground = UI.colors.surfaceSelected,
+                activeForeground = UI.colors.text,
+                foreground = UI.colors.text,
                 background = UI.colors.surface,
             })
         end

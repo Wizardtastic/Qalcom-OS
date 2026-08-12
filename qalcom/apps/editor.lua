@@ -45,13 +45,17 @@ return function(ctx)
         for row = 1, visible do
             local index = scroll + row - 1
             if lines[index] then
-                local prefix = (index == cursor and "> " or "  ") .. string.format("%03d ", index)
+                local onCursor = index == cursor
+                local prefix = (onCursor and "> " or "  ") .. string.format("%03d ", index)
                 local text = lines[index]
-                if index == cursor then
+                if onCursor then
                     text = text:sub(1, 80)
                     if column <= #text + 1 then text = text:sub(1, column - 1) .. "_" .. text:sub(column) end
                 end
-                UI.text(ctx.win, 2, contentStart + row, prefix .. text, index == cursor and UI.colors.accent or UI.colors.text, UI.colors.surface, width - 3)
+                -- Highlight the current line with an inset background, like a modern editor.
+                local lineBg = onCursor and (UI.colors.surfaceInset or UI.colors.surface) or UI.colors.surface
+                if onCursor then UI.fill(ctx.win, 2, contentStart + row, width - 3, 1, lineBg) end
+                UI.text(ctx.win, 2, contentStart + row, prefix .. text, onCursor and UI.colors.accent or UI.colors.text, lineBg, width - 3)
             end
         end
     end

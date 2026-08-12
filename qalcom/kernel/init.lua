@@ -6,11 +6,13 @@ local System = dofile("/qalcom/lib/system.lua")
 local Capabilities = dofile("/qalcom/lib/capabilities.lua")
 local Roles = dofile("/qalcom/lib/roles.lua")
 local Managed = dofile("/qalcom/lib/managed.lua")
-local Infrastructure = dofile("/qalcom/lib/infrastructure.lua")
-local Jobs = dofile("/qalcom/lib/jobs.lua")
 local Network = dofile("/qalcom/lib/network.lua")
+local Palette = dofile("/qalcom/lib/ui/palette.lua")
 local unpack = table.unpack or unpack
 local config = Config.load()
+-- Capture the host's palette before Qalcom re-skins the 16 base slots so the
+-- exact pre-boot palette can be restored on shutdown, reboot, logout, or exit.
+local nativePalette = Palette.snapshot()
 Config.apply(UI, config)
 
 local function hasMethod(methods, wanted)
@@ -21,7 +23,6 @@ end
 local APP_PATHS = {
     terminal = "/qalcom/apps/terminal.lua",
     explorer = "/qalcom/apps/explorer.lua",
-    monitor = "/qalcom/apps/monitor.lua",
     settings = "/qalcom/apps/settings.lua",
     account = "/qalcom/apps/account.lua",
     editor = "/qalcom/apps/editor.lua",
@@ -32,21 +33,17 @@ local APP_PATHS = {
     diagnostics = "/qalcom/apps/diagnostics.lua",
     capabilities = "/qalcom/apps/capabilities.lua",
     peripherals = "/qalcom/apps/peripherals.lua",
-    infrastructure = "/qalcom/apps/infrastructure.lua",
-    jobs = "/qalcom/apps/jobs.lua",
     calculator = "/qalcom/apps/calculator.lua",
-    jobs_service = "/qalcom/apps/jobs_service.lua",
     network = "/qalcom/apps/network.lua",
     telemetry = "/qalcom/apps/telemetry.lua",
     network_service = "/qalcom/apps/network_service.lua",
-    incidents = "/qalcom/apps/incidents.lua",
     cannon = "/qalcom/apps/cannon.lua",
+    fluent = "/qalcom/apps/fluent.lua",
 }
 
 local APP_META = {
     terminal = { title = "Terminal", icon = ">_", x = 3, y = 3, width = 38, height = 16 },
     explorer = { title = "File Explorer", icon = ">", x = 10, y = 5, width = 42, height = 17 },
-    monitor = { title = "System Monitor", icon = "#", x = 18, y = 4, width = 40, height = 18, service = true },
     settings = { title = "Settings", icon = "*", x = 25, y = 6, width = 38, height = 17 },
     account = { title = "Account", icon = "@", x = 14, y = 5, width = 38, height = 17 },
     editor = { title = "Text Viewer", icon = "[]", x = 6, y = 4, width = 48, height = 19 },
@@ -57,31 +54,30 @@ local APP_META = {
     diagnostics = { title = "Diagnostics", icon = "D", x = 6, y = 3, width = 48, height = 19 },
     capabilities = { title = "Capabilities", icon = "C", x = 8, y = 3, width = 50, height = 20 },
     peripherals = { title = "Peripheral Manager", icon = "P", x = 4, y = 3, width = 54, height = 21 },
-    infrastructure = { title = "Infrastructure", icon = "I", x = 3, y = 3, width = 56, height = 21 },
-    jobs = { title = "Automation Jobs", icon = "J", x = 3, y = 3, width = 56, height = 21 },
     calculator = { title = "Calculator", icon = "=", x = 12, y = 4, width = 38, height = 21 },
-    jobs_service = { title = "Automation Service", icon = "J", x = 3, y = 3, width = 20, height = 8, service = true, hidden = true },
     network = { title = "Network Manager", icon = "N", x = 3, y = 3, width = 56, height = 21 },
     telemetry = { title = "Operations Telemetry", icon = "T", x = 3, y = 3, width = 56, height = 21 },
     network_service = { title = "Network Service", icon = "N", x = 3, y = 3, width = 20, height = 8, service = true, hidden = true },
-    incidents = { title = "Incident Response", icon = "!", x = 3, y = 3, width = 56, height = 21 },
     cannon = { title = "CBC Fire Control", icon = "C", x = 3, y = 3, width = 56, height = 21 },
+    fluent = { title = "Fluent Desktop", icon = "Fl", x = 6, y = 3, width = 42, height = 16 },
 }
 
 local APP_CATEGORIES = {
-    terminal = "System", explorer = "Files", calculator = "Tools", monitor = "System",
-    peripherals = "Operations", telemetry = "Operations", incidents = "Response", cannon = "Defense",
-    network = "Network", infrastructure = "Control", jobs = "Automation", control = "System",
+    terminal = "System", explorer = "Files", calculator = "Tools",
+    peripherals = "Operations", telemetry = "Operations", cannon = "Defense",
+    network = "Network", control = "System",
     capabilities = "Security", settings = "System", recovery = "Recovery", logs = "System", account = "Account",
+    fluent = "Tools",
 }
 
-local NORMAL_LAUNCHER_APPS = { "terminal", "explorer", "calculator", "monitor", "peripherals", "telemetry", "incidents", "cannon", "network", "infrastructure", "jobs", "control", "capabilities", "settings", "recovery", "logs", "account" }
-local SAFE_LAUNCHER_APPS = { "recovery", "logs", "terminal", "calculator", "settings", "peripherals", "telemetry", "network", "infrastructure", "jobs" }
+local NORMAL_LAUNCHER_APPS = { "fluent", "terminal", "explorer", "calculator", "peripherals", "telemetry", "cannon", "network", "control", "capabilities", "settings", "recovery", "logs", "account" }
+local SAFE_LAUNCHER_APPS = { "recovery", "logs", "terminal", "calculator", "settings", "peripherals", "telemetry", "network" }
 local LAUNCHER_APPS = config.safeMode and SAFE_LAUNCHER_APPS or NORMAL_LAUNCHER_APPS
 
 local native = term.native()
 local width, height = native.getSize()
 if width < 30 or height < 14 then
+    Palette.restore(nativePalette)
     term.redirect(native)
     term.clear()
     term.setCursorPos(1, 1)
@@ -103,6 +99,8 @@ local state = {
     launcherSelection = 1,
     launcherSearch = "",
     launcherSearchFocused = true,
+    powerMenu = false,
+    powerSelection = 1,
     recentApps = {},
     notifications = {},
     clockTimer = nil,
@@ -119,6 +117,7 @@ local state = {
     drag = nil,
     mouseX = 1,
     mouseY = 1,
+    captionHover = nil,
     modifiers = { alt = false, ctrl = false, shift = false },
 }
 
@@ -237,11 +236,27 @@ local function removeTask(task)
     state.dirty = true
 end
 
+local function captionHoverFor(task)
+    -- Derive the hovered caption of a window directly from the live pointer, so a
+    -- focus change can never leave a stale hover painted on the wrong window.
+    if not task or task.minimized or task.hidden then return nil end
+    if state.mouseY ~= task.y then return nil end
+    local caps = UI.captionButtons(task.x, task.y, task.width)
+    if not caps then return nil end
+    if caps.close and state.mouseX == caps.close.x then return "close" end
+    if caps.minimize and state.mouseX == caps.minimize.x then return "minimize" end
+    if caps.maximize and state.mouseX == caps.maximize.x then return "maximize" end
+    return nil
+end
+
 local function redrawTitlebar(task)
-    -- The titlebar row belongs to the frame on the native terminal, so it can
-    -- be repainted in place without touching the window's content buffer.
+    -- The titlebar row and one-cell frame belong to the native terminal, so they
+    -- can be repainted in place without touching the window's content buffer.
     if not task or task.minimized or task.hidden then return end
-    UI.titleBar(native, task.x, task.y, task.width, task.meta.title, task.meta.icon, task == state.focused, task.maximized)
+    local focused = task == state.focused
+    local hovered = focused and captionHoverFor(task) or nil
+    UI.titleBar(native, task.x, task.y, task.width, task.meta.title, task.meta.icon, focused, task.maximized, hovered)
+    UI.windowFrame(native, task.x, task.y, task.width, task.height, focused)
 end
 
 local function flushWindow(task)
@@ -251,7 +266,10 @@ local function flushWindow(task)
     local surface = UI.colors.surface or colors.white
     local textColor = UI.colors.text or colors.black
     UI.fill(native, task.x, task.y, task.width, task.height, surface)
-    UI.titleBar(native, task.x, task.y, task.width, task.meta.title, task.meta.icon, task == state.focused, task.maximized)
+    local focused = task == state.focused
+    local hovered = focused and captionHoverFor(task) or nil
+    UI.titleBar(native, task.x, task.y, task.width, task.meta.title, task.meta.icon, focused, task.maximized, hovered)
+    UI.windowFrame(native, task.x, task.y, task.width, task.height, focused)
     if task.failed then
         local failureSurface = UI.colors.surfaceMuted or UI.colors.surfaceAlt or colors.black
         local failureText = UI.colors.textInverse or colors.white
@@ -283,10 +301,11 @@ local function restoreRegion(x, y, width, height)
         end
     end
     -- Re-establish the desktop underneath a chrome layer (notification boxes,
-    -- a just-moved window): paint the desktop color across the region, then
-    -- flush any windows overlapping it from back to front so their buffers
-    -- repaint the correct pixels on top.
-    UI.fill(native, x, y, width, height, UI.colors.desktop)
+    -- a just-moved window): repaint the wallpaper across the region, then flush
+    -- any windows overlapping it from back to front so their buffers repaint the
+    -- correct pixels on top. The wallpaper is a pure function of absolute (x, y),
+    -- so this sub-region redraw matches a full desktop paint exactly.
+    UI.desktopRegion(native, x, y, width, height, config.wallpaper)
     for _, task in ipairs(state.tasks) do
         if not task.minimized and not task.hidden then
             if x < task.x + task.width and x + width > task.x
@@ -643,19 +662,6 @@ local function makeContext(task)
         return Managed.redstoneWrite(self, side, value)
     end
 
-    function context:infrastructureProfiles()
-        local text = self:readFile("/qalcom/data/infrastructure.meta")
-        return Infrastructure.parse(text or "")
-    end
-
-    function context:writeInfrastructureProfiles(data)
-        return self:writeFile("/qalcom/data/infrastructure.meta", Infrastructure.serialize(data))
-    end
-
-    function context:infrastructureState(profile)
-        return Infrastructure.state(self, profile)
-    end
-
     function context:networkConfig()
         local text = self:readFile("/qalcom/data/network.meta")
         return Network.parseConfig(text or "", "computer-" .. tostring(os.getComputerID()))
@@ -678,16 +684,6 @@ local function makeContext(task)
     function context:writeNetworkNodes(data)
         if not self:hasCapability("network.pair") then return false, "Node enrollment denied" end
         return self:writeFile("/qalcom/data/nodes.meta", Network.serializeNodes(data))
-    end
-
-    function context:writeIncidentData(data)
-        if not self:hasCapability("incident.manage") then return false, "Incident management denied" end
-        if not fs.exists("/qalcom/data") then fs.makeDir("/qalcom/data") end
-        local file = fs.open("/qalcom/data/incidents.meta", "w")
-        if not file then return false, "Unable to save incident records" end
-        local ok, reason = pcall(file.write, dofile("/qalcom/lib/incidents.lua").serialize(data))
-        pcall(file.close)
-        return ok, ok and nil or tostring(reason or "Unable to save incident records")
     end
 
     function context:networkModems()
@@ -737,72 +733,6 @@ local function makeContext(task)
         return Telemetry.snapshot(self, devices, os.clock())
     end
 
-    function context:jobDefinitions()
-        local text, reason = self:readFile("/qalcom/data/jobs.meta")
-        local data = Jobs.parse(text or "")
-        if not text and reason then data.error = reason end
-        return data
-    end
-
-    function context:writeJobDefinitions(data)
-        return self:writeFile("/qalcom/data/jobs.meta", Jobs.serialize(data))
-    end
-
-    function context:writeJobServiceFile(path, text)
-        if task.name ~= "jobs_service" then return false, "Automation service persistence is restricted" end
-        if path ~= "/qalcom/data/jobs.history" and path ~= "/qalcom/data/jobs.status" then return false, "Automation service path is restricted" end
-        if not fs.exists("/qalcom/data") then fs.makeDir("/qalcom/data") end
-        local file = fs.open(path, "w")
-        if not file then return false, "Unable to persist automation state" end
-        local ok, reason = pcall(file.write, tostring(text or ""))
-        pcall(file.close)
-        return ok, ok and nil or tostring(reason or "Unable to persist automation state")
-    end
-
-    function context:disableAutomationJobs()
-        local path = "/qalcom/data/jobs.meta"
-        if not fs.exists(path) then return true end
-        local input = fs.open(path, "r")
-        if not input then return false, "Unable to read job definitions" end
-        local text = input.readAll() or ""
-        input.close()
-        local data = Jobs.parse(text)
-        if data.error then return false, data.error end
-        local valid, validation = Jobs.dataValid(data)
-        if not valid then return false, validation end
-        for _, job in ipairs(data.jobs or {}) do job.paused = true end
-        local output = fs.open(path, "w")
-        if not output then return false, "Unable to save paused job definitions" end
-        local ok, reason = pcall(output.write, Jobs.serialize(data))
-        pcall(output.close)
-        if not ok then return false, tostring(reason or "Unable to save paused job definitions") end
-        Capabilities.audit("jobs-emergency-stop", tostring(self.user or "unknown") .. " recovery")
-        os.queueEvent("qalcom_job_reload")
-        return true
-    end
-
-    function context:jobStatus()
-        local text, reason = self:readFile("/qalcom/data/jobs.status")
-        local statuses = Jobs.parseStatus(text or "")
-        return {
-            statuses = statuses,
-            summary = Jobs.statusSummary(statuses),
-            error = (not text and reason) or nil,
-        }
-    end
-
-    function context:reloadJobs()
-        os.queueEvent("qalcom_job_reload")
-    end
-
-    function context:jobInfrastructureProfiles()
-        return self:infrastructureProfiles()
-    end
-
-    function context:jobInfrastructureState(profile)
-        return self:infrastructureState(profile)
-    end
-
     function context:setComputerLabel(label)
         return Managed.setLabel(self, label)
     end
@@ -845,7 +775,6 @@ local function makeContext(task)
 
         info.user = state.user
         info.role = state.role
-        info.jobs = self:jobStatus()
         info.tasks = {}
         for _, candidate in ipairs(state.tasks) do
             info.tasks[#info.tasks + 1] = {
@@ -912,7 +841,7 @@ end
 local function startTask(name, options)
     local meta = APP_META[name]
     local path = APP_PATHS[name]
-    if config.safeMode and name ~= "recovery" and name ~= "logs" and name ~= "terminal" and name ~= "calculator" and name ~= "settings" and name ~= "peripherals" and name ~= "telemetry" and name ~= "incidents" and name ~= "cannon" and name ~= "network" and name ~= "infrastructure" and name ~= "jobs" and name ~= "jobs_service" and name ~= "network_service" then
+    if config.safeMode and name ~= "recovery" and name ~= "logs" and name ~= "terminal" and name ~= "calculator" and name ~= "settings" and name ~= "peripherals" and name ~= "telemetry" and name ~= "cannon" and name ~= "network" and name ~= "network_service" then
         notify("Safe Mode blocked " .. tostring(name), UI.colors.warning)
         return nil
     end
@@ -1062,17 +991,20 @@ local function drawNotifications()
         if state.notifications[index].expires < now then table.remove(state.notifications, index) end
     end
     for index, item in ipairs(state.notifications) do
-        local boxWidth = math.min(width - 4, math.max(18, #item.message + 4))
+        local boxWidth = math.min(width - 4, math.max(18, #item.message + 6))
         local x = math.max(1, math.min(width - boxWidth + 1, width - boxWidth + 1 + math.floor(item.offset or 0)))
         local y = 2 + (index - 1) * 2
-        local marker = item.severity == "danger" and "! " or item.severity == "warning" and "~ " or "i "
-        local background = item.color
-        UI.fill(native, x, y, boxWidth, 1, background)
-        local notificationText = item.severity == "warning" and (UI.colors.warningText or UI.colors.text)
-            or item.severity == "success" and (UI.colors.successText or UI.colors.text)
-            or item.severity == "danger" and (UI.colors.dangerText or UI.colors.textInverse)
-            or (UI.colors.infoText or UI.colors.statusText or UI.colors.textInverse)
-        UI.text(native, x + 1, y, marker .. item.message, notificationText, background, boxWidth - 2)
+        -- Windows 11 toast: a dark surface card with a severity accent stripe and
+        -- glyph on the left, then the message. Kept to one row so the notification
+        -- region-restore model is unchanged.
+        local accentColor = item.color
+        local cardBackground = UI.colors.surfaceStrong or UI.colors.surface
+        local glyph = item.severity == "danger" and "!" or item.severity == "warning" and "~"
+            or item.severity == "success" and "+" or "i"
+        UI.fill(native, x, y, boxWidth, 1, cardBackground)
+        UI.fill(native, x, y, 1, 1, accentColor)
+        UI.text(native, x + 1, y, glyph, accentColor, cardBackground, 1)
+        UI.text(native, x + 3, y, item.message, UI.colors.text, cardBackground, boxWidth - 4)
         state.notificationRects[#state.notificationRects + 1] = { x = x, y = y, w = boxWidth, h = 1 }
         if not state.nextNotificationExpiry or item.expires < state.nextNotificationExpiry then
             state.nextNotificationExpiry = item.expires
@@ -1080,46 +1012,156 @@ local function drawNotifications()
     end
 end
 
-local function drawLauncher()
-    local menuX, menuY, menuWidth, menuHeight, visibleCount, items, start = launcherGeometry()
-    -- Remember the launcher's on-screen extent (plus its one-cell shadow) so
-    -- region restores can escalate to a full repaint instead of erasing it.
-    state.launcherRect = { x = menuX, y = menuY, w = menuWidth + 1, h = menuHeight + 1 }
-    UI.shadow(native, menuX, menuY, menuWidth, menuHeight, 1, UI.colors.shadow)
-    UI.panel(native, menuX, menuY, menuWidth, menuHeight, UI.colors.surface, UI.colors.borderStrong)
-    UI.fill(native, menuX + 1, menuY + 1, menuWidth - 2, 1, UI.colors.accent)
-    UI.text(native, menuX + 2, menuY + 1, "Q  Qalcom", UI.colors.textInverse, UI.colors.accent, menuWidth - 4)
-    UI.text(native, menuX + menuWidth - 11, menuY + 1, tostring(state.user or "-"), UI.colors.textInverse, UI.colors.accent, 9)
+local POWER_ACTIONS = {
+    { id = "logout", label = "Sign out" },
+    { id = "reboot", label = "Reboot" },
+    { id = "shutdown", label = "Shut down" },
+}
 
-    local searchBackground = state.launcherSearchFocused and UI.colors.accentLight or UI.colors.surfaceAlt
-    local searchForeground = state.launcherSearchFocused and UI.colors.textInverse or UI.colors.text
-    UI.fill(native, menuX + 2, menuY + 2, menuWidth - 4, 1, searchBackground)
-    local searchText = state.launcherSearch == "" and "Search programs" or state.launcherSearch
-    if state.launcherSearchFocused and state.launcherSearch ~= "" then searchText = searchText .. "_" end
-    UI.text(native, menuX + 3, menuY + 2, searchText, searchForeground, searchBackground, menuWidth - 6)
-
-    local heading = state.launcherSearch == "" and (#state.recentApps > 0 and "Recent apps" or "All apps") or "Search results"
-    if config.safeMode then heading = heading .. " / Safe Mode" end
-    UI.text(native, menuX + 2, menuY + 3, heading, UI.colors.muted, UI.colors.surface, menuWidth - 4)
-    if #items == 0 then
-        UI.text(native, menuX + 3, menuY + 4, "No matching programs", UI.colors.muted, UI.colors.surface, menuWidth - 6)
-    else
-        for offset = 1, visibleCount do
-            local index = start + offset - 1
-            local name = items[index]
-            if name then
-                local itemY = menuY + 3 + offset
-                local active = index == state.launcherSelection
-                local background = active and UI.colors.accentLight or UI.colors.surface
-                local foreground = active and UI.colors.textInverse or UI.colors.text
-                UI.fill(native, menuX + 2, itemY, menuWidth - 4, 1, background)
-                local available = APP_PATHS[name] and fs.exists(APP_PATHS[name])
-                local category = APP_CATEGORIES[name] or "Apps"
-                local marker = available and "  " or "? "
-                local label = marker .. APP_META[name].icon .. "  " .. APP_META[name].title
-                if menuWidth >= 30 then label = label .. " [" .. category .. "]" end
-                UI.text(native, menuX + 4, itemY, label, foreground, background, menuWidth - 8)
+local function recentLauncherItems()
+    -- Recently used apps that are still available in the current launcher set.
+    local recents = {}
+    local seen = {}
+    for _, name in ipairs(state.recentApps or {}) do
+        if not seen[name] and APP_META[name] then
+            for _, allowed in ipairs(LAUNCHER_APPS) do
+                if name == allowed then seen[name] = true; recents[#recents + 1] = name; break end
             end
+        end
+    end
+    return recents
+end
+
+local function shellRequestPower(action)
+    -- Power actions initiated from the shell (Start menu). The shell is the
+    -- trusted OS rather than a third-party app, so the gate is the signed-in
+    -- user's role plus the Safe Mode block -- the same policy the app-facing
+    -- requestPower uses, minus the per-app manifest declaration. Confirmation
+    -- reuses the existing modal dialog + qalcom_power_confirmed flow.
+    local capability = action == "reboot" and "system.reboot" or action == "shutdown" and "system.shutdown" or nil
+    if not capability then return false end
+    local safeDenied = config.safeMode == true
+    local roleAllowed = Roles.allows(state.role, capability)
+    if safeDenied or not roleAllowed then
+        Capabilities.audit("power-denied", tostring(state.user or "unknown") .. " " .. action .. " safeMode=" .. tostring(config.safeMode == true))
+        notify("Power action denied: " .. action, UI.colors.danger)
+        return false
+    end
+    local task = spawn("dialog", {
+        modal = true,
+        dialogTitle = action == "reboot" and "Confirm reboot" or "Confirm shutdown",
+        dialogMessage = "Close Qalcom and " .. action .. " this computer?",
+    })
+    if not task then return false end
+    task.context.dialogCallback = function()
+        Capabilities.audit("power", tostring(state.user or "unknown") .. " confirmed " .. action)
+        os.queueEvent("qalcom_power_confirmed", action)
+        return true
+    end
+    task.context.dialogCancelCallback = function()
+        Capabilities.audit("power", tostring(state.user or "unknown") .. " cancelled " .. action)
+    end
+    return true
+end
+
+local function powerMenuRects(g)
+    -- A small popup stacked above the Start menu's power button.
+    local menuWidth = math.min(g.panelWidth - 2, 12)
+    local count = #POWER_ACTIONS
+    local mx = math.min(g.powerRect.x, g.panelX + g.panelWidth - menuWidth - 1)
+    mx = math.max(g.panelX + 1, mx)
+    local my = math.max(g.panelY + 1, g.footerY - count)
+    local rects = {}
+    for index, action in ipairs(POWER_ACTIONS) do
+        rects[index] = { x = mx, y = my + index - 1, w = menuWidth, index = index, action = action }
+    end
+    return rects, mx, my, menuWidth, count
+end
+
+local function triggerPowerAction(id)
+    state.powerMenu = false
+    state.launcher = false
+    if id == "logout" then
+        os.queueEvent("qalcom_logout")
+    elseif id == "reboot" or id == "shutdown" then
+        shellRequestPower(id)
+    end
+    state.dirty = true
+end
+
+local function drawLauncher()
+    local g = launcherGeometry()
+    -- Remember the panel's on-screen extent (plus its one-cell shadow) so region
+    -- restores can escalate to a full repaint instead of erasing it.
+    state.launcherRect = { x = g.panelX, y = g.panelY, w = g.panelWidth + 1, h = g.panelHeight + 1 }
+    UI.shadow(native, g.panelX, g.panelY, g.panelWidth, g.panelHeight, 1, UI.colors.shadow)
+    UI.panel(native, g.panelX, g.panelY, g.panelWidth, g.panelHeight, UI.colors.surface, UI.colors.borderStrong)
+
+    -- Search box pinned at the top.
+    UI.fill(native, g.innerX, g.searchY, g.innerWidth, 1, UI.colors.surfaceInset)
+    local searchText = state.launcherSearch == "" and "Search apps" or state.launcherSearch
+    local searchColor = state.launcherSearch == "" and (UI.colors.textMuted or UI.colors.muted) or UI.colors.text
+    if state.launcherSearchFocused and state.launcherSearch ~= "" then searchText = searchText .. "_" end
+    UI.text(native, g.innerX + 1, g.searchY, searchText, searchColor, UI.colors.surfaceInset, g.innerWidth - 2)
+
+    -- Section heading.
+    local heading = state.launcherSearch == "" and "Pinned" or "Search results"
+    if config.safeMode then heading = heading .. "  -  Safe Mode" end
+    UI.text(native, g.innerX, g.headingY, heading, UI.colors.textMuted or UI.colors.muted, UI.colors.surface, g.innerWidth)
+
+    -- Pinned/search results as a tile grid (icon over label).
+    if #g.items == 0 then
+        UI.text(native, g.innerX, g.gridTop, "No matching apps", UI.colors.textMuted or UI.colors.muted, UI.colors.surface, g.innerWidth)
+    else
+        for _, tile in ipairs(g.tiles) do
+            local active = tile.index == state.launcherSelection
+            local background = active and UI.colors.surfaceSelected or UI.colors.surface
+            local foreground = active and UI.colors.textInverse or UI.colors.text
+            UI.fill(native, tile.x, tile.y, tile.w, tile.h, background)
+            local available = APP_PATHS[tile.name] and fs.exists(APP_PATHS[tile.name])
+            local icon = tostring(APP_META[tile.name].icon or "?")
+            local iconColor = active and UI.colors.textInverse or UI.colors.accent
+            if not available then iconColor = UI.colors.danger end
+            local iconX = tile.x + math.max(0, math.floor((tile.w - #icon) / 2))
+            UI.text(native, iconX, tile.y, icon, iconColor, background, tile.w)
+            local title = UI.clampText(tostring(APP_META[tile.name].title or tile.name), tile.w)
+            local titleX = tile.x + math.max(0, math.floor((tile.w - #title) / 2))
+            UI.text(native, titleX, tile.y + 1, title, foreground, background, tile.w)
+        end
+    end
+
+    -- Optional recent row (mouse quick-launch).
+    if g.showRecent then
+        UI.text(native, g.innerX, g.recentLabelY, "Recent", UI.colors.textMuted or UI.colors.muted, UI.colors.surface, g.innerWidth)
+        for _, r in ipairs(g.recentRects) do
+            UI.fill(native, r.x, r.y, r.w, 1, UI.colors.surfaceInset)
+            local icon = tostring(APP_META[r.name].icon or "?")
+            local ix = r.x + math.max(0, math.floor((r.w - #icon) / 2))
+            UI.text(native, ix, r.y, icon, UI.colors.accent, UI.colors.surfaceInset, r.w)
+        end
+    end
+
+    -- Footer: user on the left, power button on the right.
+    UI.fill(native, g.innerX, g.footerY, g.innerWidth, 1, UI.colors.surface)
+    UI.text(native, g.userRect.x, g.footerY, "@ " .. tostring(state.user or "-"), UI.colors.text, UI.colors.surface, g.userRect.w)
+    local powerBg = state.powerMenu and UI.colors.surfaceSelected or UI.colors.surface
+    local powerFg = state.powerMenu and UI.colors.textInverse or UI.colors.text
+    UI.fill(native, g.powerRect.x, g.powerRect.y, g.powerRect.w, 1, powerBg)
+    local powerLabel = UI.clampText(g.powerLabel, g.powerRect.w)
+    local powerLabelX = g.powerRect.x + math.max(0, math.floor((g.powerRect.w - #powerLabel) / 2))
+    UI.text(native, powerLabelX, g.powerRect.y, powerLabel, powerFg, powerBg, g.powerRect.w)
+
+    -- Power submenu popup (drawn last so it sits on top).
+    if state.powerMenu then
+        local rects, mx, my, mw, count = powerMenuRects(g)
+        UI.shadow(native, mx, my, mw, count, 1, UI.colors.shadow)
+        UI.fill(native, mx, my, mw, count, UI.colors.surfaceInset)
+        for _, r in ipairs(rects) do
+            local active = r.index == state.powerSelection
+            local bg = active and UI.colors.surfaceSelected or UI.colors.surfaceInset
+            local fg = active and UI.colors.textInverse or UI.colors.text
+            UI.fill(native, r.x, r.y, r.w, 1, bg)
+            UI.text(native, r.x + 1, r.y, r.action.label, fg, bg, r.w - 2)
         end
     end
 end
@@ -1134,6 +1176,8 @@ local function openLauncher()
     state.launcherSelection = 1
     state.launcherSearch = ""
     state.launcherSearchFocused = true
+    state.powerMenu = false
+    state.powerSelection = 1
     -- The launcher is self-contained chrome; draw it over the desktop and
     -- windows in place and refresh the Q button instead of clearing the
     -- whole terminal.
@@ -1150,6 +1194,7 @@ local function closeLauncher()
     state.launcher = false
     state.launcherSearch = ""
     state.launcherSearchFocused = true
+    state.powerMenu = false
     state.taskbarDirty = true
     -- Restore the panel's area (desktop plus any windows underneath) and
     -- redraw notification boxes the panel was covering.
@@ -1167,7 +1212,7 @@ local function drawDesktop()
     native.setTextColor(colors.white)
     native.clear()
 
-    UI.desktopBackground(native, width, height)
+    UI.desktopBackground(native, width, height, config.wallpaper)
 
     for _, task in ipairs(state.tasks) do
         if not task.minimized and not task.hidden then
@@ -1205,6 +1250,8 @@ local function activeModal()
 end
 
 local function launcherItems()
+    -- The grid shows every launcher app (empty query) or the matching subset.
+    -- Recent apps are surfaced separately in the Start menu's recent row.
     local query = string.lower(tostring(state.launcherSearch or ""))
     local items = {}
     local seen = {}
@@ -1214,57 +1261,149 @@ local function launcherItems()
             items[#items + 1] = name
         end
     end
-    if query == "" then
-        for _, name in ipairs(state.recentApps) do
-            for _, allowed in ipairs(LAUNCHER_APPS) do
-                if name == allowed then add(name) break end
-            end
-        end
-        -- Once an app has been used, keep the Start menu focused on recent
-        -- programs; the search field remains the way to reach every app.
-        if #items == 0 then
-            for _, name in ipairs(LAUNCHER_APPS) do add(name) end
-        end
-    else
-        for _, name in ipairs(LAUNCHER_APPS) do add(name) end
-    end
+    for _, name in ipairs(LAUNCHER_APPS) do add(name) end
     return items
 end
 
 launcherGeometry = function()
     local items = launcherItems()
-    local menuWidth = math.min(38, width - 2)
     local barY = math.max(1, height - 2)
-    local menuHeight = math.min(barY - 1, math.max(7, math.min(#items + 5, height - 2)))
-    local visibleCount = math.max(1, menuHeight - 4)
-    local menuX = 1
-    -- Leave a clean gap between the menu shadow and the three-row taskbar.
-    local menuY = math.max(1, barY - menuHeight - 1)
-    if #items > 0 then
-        state.launcherSelection = math.max(1, math.min(state.launcherSelection, #items))
+    -- Centered floating panel above the taskbar, bounded so it stays on-screen.
+    local panelWidth = math.max(24, math.min(50, width - 4))
+    local panelHeight = math.max(9, math.min(barY - 2, height - 3))
+    local panelX = math.max(1, math.floor((width - panelWidth) / 2) + 1)
+    local panelY = math.max(1, barY - panelHeight - 1)
+
+    local innerX = panelX + 2
+    local innerWidth = math.max(1, panelWidth - 4)
+    local searchY = panelY + 1
+    local headingY = panelY + 2
+    local gridTop = panelY + 3
+    local footerY = panelY + panelHeight - 2
+
+    local recents = recentLauncherItems()
+    local showRecent = state.launcherSearch == "" and #recents > 0 and panelHeight >= 12
+    local recentY, recentLabelY, gridBottom
+    if showRecent then
+        recentY = footerY - 1
+        recentLabelY = footerY - 2
+        gridBottom = recentLabelY - 2
+    else
+        gridBottom = footerY - 2
+    end
+    if gridBottom < gridTop then gridBottom = gridTop end
+
+    -- Tile grid: icon over label, in as many columns as the width affords.
+    local cols = innerWidth >= 42 and 3 or (innerWidth >= 26 and 2 or 1)
+    local tileGap = 1
+    local tileWidth = math.max(6, math.floor((innerWidth - (cols - 1) * tileGap) / cols))
+    local tileHeight = 2
+    local rowStride = tileHeight + 1
+    local gridRows = math.max(1, math.floor((gridBottom - gridTop + 2) / rowStride))
+    local perPage = math.max(1, cols * gridRows)
+
+    local count = #items
+    if count > 0 then
+        state.launcherSelection = math.max(1, math.min(state.launcherSelection, count))
     else
         state.launcherSelection = 1
     end
-    local start = math.max(1, math.min(state.launcherSelection - visibleCount + 1, math.max(1, #items - visibleCount + 1)))
-    return menuX, menuY, menuWidth, menuHeight, visibleCount, items, start
+    local start = math.floor((state.launcherSelection - 1) / perPage) * perPage + 1
+
+    local tiles = {}
+    for slot = 0, perPage - 1 do
+        local index = start + slot
+        local name = items[index]
+        if name then
+            local col = slot % cols
+            local row = math.floor(slot / cols)
+            tiles[#tiles + 1] = {
+                x = innerX + col * (tileWidth + tileGap),
+                y = gridTop + row * rowStride,
+                w = tileWidth,
+                h = tileHeight,
+                index = index,
+                name = name,
+            }
+        end
+    end
+
+    local recentRects = {}
+    if showRecent then
+        local cursor = innerX
+        for _, name in ipairs(recents) do
+            if cursor + 3 - 1 > innerX + innerWidth - 1 then break end
+            recentRects[#recentRects + 1] = { x = cursor, y = recentY, w = 3, name = name }
+            cursor = cursor + 4
+        end
+    end
+
+    local powerLabel = innerWidth >= 18 and "Power" or "Pwr"
+    local powerWidth = math.min(innerWidth, #powerLabel + 2)
+    local powerRect = { x = panelX + panelWidth - 2 - powerWidth + 1, y = footerY, w = powerWidth }
+    local userRect = { x = innerX, y = footerY, w = math.max(1, powerRect.x - innerX - 1) }
+
+    return {
+        panelX = panelX, panelY = panelY, panelWidth = panelWidth, panelHeight = panelHeight,
+        innerX = innerX, innerWidth = innerWidth,
+        searchY = searchY, headingY = headingY, gridTop = gridTop, gridBottom = gridBottom,
+        cols = cols, gridRows = gridRows, perPage = perPage, tileWidth = tileWidth,
+        items = items, start = start, tiles = tiles,
+        showRecent = showRecent, recentY = recentY, recentLabelY = recentLabelY, recentRects = recentRects,
+        footerY = footerY, powerRect = powerRect, userRect = userRect, powerLabel = powerLabel,
+    }
 end
 
 local function handleLauncherClick(x, y)
-    local menuX, menuY, menuWidth, menuHeight, visibleCount, items, start = launcherGeometry()
-    if x < menuX or x >= menuX + menuWidth or y < menuY or y >= menuY + menuHeight then return false end
-    if y == menuY + 2 then
+    local g = launcherGeometry()
+    -- The power submenu, when open, intercepts clicks first.
+    if state.powerMenu then
+        local rects = powerMenuRects(g)
+        for _, r in ipairs(rects) do
+            if y == r.y and x >= r.x and x < r.x + r.w then
+                triggerPowerAction(r.action.id)
+                return true
+            end
+        end
+        state.powerMenu = false
+        state.dirty = true
+        return true
+    end
+    -- Clicks outside the panel are not handled here (the caller dismisses it).
+    if x < g.panelX or x >= g.panelX + g.panelWidth or y < g.panelY or y >= g.panelY + g.panelHeight then
+        return false
+    end
+    if y == g.searchY then
         state.launcherSearchFocused = true
         state.dirty = true
         return true
     end
-    local index = y - (menuY + 3)
-    local actual = start + index - 1
-    if index >= 1 and index <= visibleCount and items[actual] then
-        state.launcherSelection = actual
-        state.launcher = false
-        state.launcherSearch = ""
-        spawn(items[actual], { fromLauncher = true })
+    if y == g.powerRect.y and x >= g.powerRect.x and x < g.powerRect.x + g.powerRect.w then
+        state.powerMenu = true
+        state.powerSelection = 1
+        state.dirty = true
+        return true
     end
+    for _, r in ipairs(g.recentRects) do
+        if y == r.y and x >= r.x and x < r.x + r.w then
+            state.launcher = false
+            state.launcherSearch = ""
+            state.powerMenu = false
+            spawn(r.name, { fromLauncher = true })
+            return true
+        end
+    end
+    for _, tile in ipairs(g.tiles) do
+        if x >= tile.x and x < tile.x + tile.w and y >= tile.y and y < tile.y + tile.h then
+            state.launcherSelection = tile.index
+            state.launcher = false
+            state.launcherSearch = ""
+            state.powerMenu = false
+            spawn(tile.name, { fromLauncher = true })
+            return true
+        end
+    end
+    -- A click inside the panel but not on a control keeps the menu open.
     return true
 end
 
@@ -1336,35 +1475,40 @@ local function handleMouse(button, x, y)
         end
         return
     end
-    if y == task.y and x == task.x + 1 then
-        removeTask(task)
-        return
-    end
-    if y == task.y and x == task.x + 3 then
-        minimizeTask(task)
-        return
-    end
-    if y == task.y and x == task.x + 5 then
-        local newX, newY = task.x, task.y
-        local newWidth, newHeight = task.width, task.height
-        if task.maximized then
-            local restore = task.restoreGeometry
-            if restore then
-                newX, newY = restore.x, restore.y
-                newWidth, newHeight = restore.width, restore.height
-            end
-            task.maximized = false
-            task.restoreGeometry = nil
-        else
-            task.restoreGeometry = { x = task.x, y = task.y, width = task.width, height = task.height }
-            newX, newY = 2, 2
-            newWidth, newHeight = math.max(20, width - 2), math.max(8, height - 4)
-            task.maximized = true
+    if y == task.y then
+        -- Windows-11 caption buttons live on the right; the rest of the title
+        -- row drags. Geometry comes from UI.captionButtons so rendering and
+        -- hit-testing can never disagree.
+        local caps = UI.captionButtons(task.x, task.y, task.width)
+        if caps and caps.close and x == caps.close.x then
+            removeTask(task)
+            return
         end
-        moveWindow(task, newX, newY, newWidth, newHeight)
-        return
-    end
-    if y == task.y and x >= task.x + 7 then
+        if caps and caps.minimize and x == caps.minimize.x then
+            minimizeTask(task)
+            return
+        end
+        if caps and caps.maximize and x == caps.maximize.x then
+            local newX, newY = task.x, task.y
+            local newWidth, newHeight = task.width, task.height
+            if task.maximized then
+                local restore = task.restoreGeometry
+                if restore then
+                    newX, newY = restore.x, restore.y
+                    newWidth, newHeight = restore.width, restore.height
+                end
+                task.maximized = false
+                task.restoreGeometry = nil
+            else
+                task.restoreGeometry = { x = task.x, y = task.y, width = task.width, height = task.height }
+                newX, newY = 2, 2
+                newWidth, newHeight = math.max(20, width - 2), math.max(8, height - 4)
+                task.maximized = true
+            end
+            moveWindow(task, newX, newY, newWidth, newHeight)
+            return
+        end
+        -- Anywhere else on the title row begins a drag.
         state.drag = { task = task, offsetX = x - task.x, offsetY = y - task.y }
         return
     end
@@ -1387,6 +1531,14 @@ local function dispatch(event)
         local inTaskbar = state.mouseY >= height - 2
         if inTaskbar or state.mouseInTaskbar then state.taskbarDirty = true end
         state.mouseInTaskbar = inTaskbar
+        -- Redden the focused window's close button on hover. Only its title row
+        -- is repainted (in place) when the hovered caption changes -- no full
+        -- repaint and no content-buffer touch.
+        local newCaptionHover = captionHoverFor(state.focused)
+        if newCaptionHover ~= state.captionHover then
+            state.captionHover = newCaptionHover
+            if state.focused then redrawTitlebar(state.focused) end
+        end
         if state.focused then
             local task = state.focused
             send(task, { name, nil, event[2] - task.x, event[3] - task.y })
@@ -1449,29 +1601,66 @@ local function dispatch(event)
             if event[2] == keys.leftShift or event[2] == keys.rightShift then state.modifiers.shift = false end
         end
         if state.launcher then
-            if name == "char" and state.launcherSearchFocused then
-                state.launcherSearch = state.launcherSearch .. tostring(event[2] or "")
-                state.launcherSelection = 1
-                state.dirty = true
+            -- The power submenu, when open, captures navigation keys.
+            if state.powerMenu then
+                if name == "key" then
+                    if event[2] == keys.up then
+                        state.powerSelection = math.max(1, state.powerSelection - 1)
+                        state.dirty = true
+                    elseif event[2] == keys.down then
+                        state.powerSelection = math.min(#POWER_ACTIONS, state.powerSelection + 1)
+                        state.dirty = true
+                    elseif event[2] == keys.enter then
+                        triggerPowerAction(POWER_ACTIONS[state.powerSelection].id)
+                    elseif event[2] == keys.escape then
+                        state.powerMenu = false
+                        state.dirty = true
+                    end
+                end
                 return
-            elseif name == "paste" and state.launcherSearchFocused then
+            end
+            if name == "char" or name == "paste" then
+                -- Typing always searches (Windows 11 behavior).
                 state.launcherSearch = state.launcherSearch .. tostring(event[2] or "")
+                state.launcherSearchFocused = true
                 state.launcherSelection = 1
                 state.dirty = true
                 return
             elseif name == "key" then
-                local items = launcherItems()
-                if event[2] == keys.backspace and state.launcherSearchFocused then
+                local g = launcherGeometry()
+                local items = g.items
+                local cols = g.cols
+                local count = #items
+                if event[2] == keys.backspace then
                     state.launcherSearch = state.launcherSearch:sub(1, math.max(0, #state.launcherSearch - 1))
+                    state.launcherSearchFocused = true
                     state.launcherSelection = 1
                     state.dirty = true
                     return
                 elseif event[2] == keys.up then
-                    state.launcherSelection = math.max(1, state.launcherSelection - 1)
+                    if state.launcherSearchFocused then
+                        return
+                    elseif state.launcherSelection <= cols then
+                        -- Top row: hand focus back to the search box.
+                        state.launcherSearchFocused = true
+                    else
+                        state.launcherSelection = math.max(1, state.launcherSelection - cols)
+                    end
                     state.dirty = true
                     return
                 elseif event[2] == keys.down then
-                    state.launcherSelection = math.min(math.max(1, #items), state.launcherSelection + 1)
+                    state.launcherSearchFocused = false
+                    if count > 0 then state.launcherSelection = math.min(count, state.launcherSelection + cols) end
+                    state.dirty = true
+                    return
+                elseif event[2] == keys.left then
+                    state.launcherSearchFocused = false
+                    state.launcherSelection = math.max(1, state.launcherSelection - 1)
+                    state.dirty = true
+                    return
+                elseif event[2] == keys.right then
+                    state.launcherSearchFocused = false
+                    if count > 0 then state.launcherSelection = math.min(count, state.launcherSelection + 1) end
                     state.dirty = true
                     return
                 elseif event[2] == keys.enter then
@@ -1479,6 +1668,7 @@ local function dispatch(event)
                     if selected then
                         state.launcher = false
                         state.launcherSearch = ""
+                        state.powerMenu = false
                         spawn(selected, { fromLauncher = true })
                     end
                     return
@@ -1503,7 +1693,7 @@ local function dispatch(event)
         LAUNCHER_APPS = config.safeMode and SAFE_LAUNCHER_APPS or NORMAL_LAUNCHER_APPS
         if config.safeMode then
             for _, task in ipairs(state.tasks) do
-                if task.name ~= "recovery" and task.name ~= "logs" and task.name ~= "terminal" and task.name ~= "settings" and task.name ~= "peripherals" and task.name ~= "telemetry" and task.name ~= "incidents" and task.name ~= "cannon" and task.name ~= "network" and task.name ~= "infrastructure" and task.name ~= "jobs" and task.name ~= "jobs_service" and task.name ~= "network_service" then
+                if task.name ~= "recovery" and task.name ~= "logs" and task.name ~= "terminal" and task.name ~= "settings" and task.name ~= "peripherals" and task.name ~= "telemetry" and task.name ~= "cannon" and task.name ~= "network" and task.name ~= "network_service" then
                     task.closeRequested = true
                 end
             end
@@ -1519,8 +1709,28 @@ end
 
 recordBootStage("kernel loaded")
 log("boot Qalcom OS " .. VERSION)
+
+local function showSplash()
+    -- A brief branded boot moment on the dark Fluent wallpaper before sign-in.
+    local w, h = native.getSize()
+    native.setBackgroundColor(UI.colors.desktop)
+    native.setTextColor(UI.colors.text)
+    native.clear()
+    UI.desktopBackground(native, w, h, config.wallpaper)
+    local cy = math.max(2, math.floor(h / 2))
+    local brand = "Qalcom OS"
+    local bx = math.max(1, math.floor((w - #brand) / 2) + 1)
+    UI.text(native, bx, cy, "Q", UI.colors.accent, UI.colors.desktop, 1)
+    UI.text(native, bx + 1, cy, "alcom OS", UI.colors.text, UI.colors.desktop, #brand - 1)
+    UI.center(native, cy + 2, "version " .. VERSION, UI.colors.textMuted or UI.colors.muted, UI.colors.desktop, w)
+    UI.center(native, math.max(cy + 3, h - 2), "Starting Qalcom", UI.colors.textMuted or UI.colors.muted, UI.colors.desktop, w)
+    pcall(os.sleep, 0.5)
+end
+showSplash()
+
 local authenticated = Auth.login(native, UI, VERSION)
 if not authenticated then
+    Palette.restore(nativePalette)
     return
 end
 state.session = state.session + 1
@@ -1531,7 +1741,6 @@ log("login success: " .. state.user)
 Capabilities.audit("login", state.user)
 if config.safeMode then notify("Safe Mode enabled", UI.colors.warning) end
 notify("Welcome, " .. state.user, UI.colors.accent)
-spawn("jobs_service", { hidden = true })
 spawn("network_service", { hidden = true })
 state.clockTimer = os.startTimer(1)
 state.uiTimer = os.startTimer(0.1)
@@ -1576,6 +1785,7 @@ while true do
     elseif event[1] == "qalcom_power_confirmed" then
         closeAllTasks()
         recordBootStage("power " .. tostring(event[2]))
+        Palette.restore(nativePalette)
         if event[2] == "reboot" then os.reboot() else os.shutdown() end
     elseif event[1] == "qalcom_logout" then
         closeAllTasks()
@@ -1589,7 +1799,7 @@ while true do
         state.modifiers.shift = false
         Capabilities.audit("boot", VERSION)
     local authenticated = Auth.login(native, UI, VERSION)
-        if not authenticated then return end
+        if not authenticated then Palette.restore(nativePalette); return end
         state.session = state.session + 1
         state.user = authenticated.username
         state.role = Roles.normalize(authenticated.role, true)
@@ -1604,7 +1814,6 @@ while true do
         Capabilities.audit("login", state.user)
         if config.safeMode then notify("Safe Mode enabled", UI.colors.warning) end
         notify("Welcome, " .. state.user, UI.colors.accent)
-        spawn("jobs_service", { hidden = true })
 spawn("network_service", { hidden = true })
         state.clockTimer = os.startTimer(1)
         state.uiTimer = os.startTimer(0.1)

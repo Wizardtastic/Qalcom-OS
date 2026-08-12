@@ -4,7 +4,7 @@ local Config = dofile("/qalcom/lib/config.lua")
 
 return function(ctx)
     local selected = 1
-    local items = { "Clear notifications", "Reset desktop theme", "Safe Mode: toggle", "Disable all automation jobs", "Restore Qalcom defaults", "Open diagnostics", "Open system log", "Return" }
+    local items = { "Clear notifications", "Reset theme to Windows 11 Dark", "Safe Mode: toggle", "Restore Qalcom defaults", "Open diagnostics", "Open system log", "Return" }
     local status = "Local recovery tools"
 
     local function visibleItems(height)
@@ -25,10 +25,9 @@ return function(ctx)
         for displayIndex, actualIndex in ipairs(visible) do
             local y = contentStart + displayIndex
             local active = displayIndex == selected
-            local background = active and UI.colors.accentLight or UI.colors.surface
             UI.listRow(ctx.win, 2, y, width - 3, items[actualIndex], nil, active, {
-                activeBackground = UI.colors.accentLight,
-                activeForeground = colors.white,
+                activeBackground = UI.colors.surfaceSelected,
+                activeForeground = UI.colors.text,
                 background = UI.colors.surface,
             })
         end
@@ -41,45 +40,25 @@ return function(ctx)
             ctx:clearNotifications()
             status = "Notifications cleared"
         elseif actualIndex == 2 then
-            Config.setTheme("blue")
-            status = "Theme reset to Ocean"
-            ctx:notify("Theme reset to Ocean", UI.colors.success)
+            Config.setTheme("win11dark")
+            status = "Theme reset to Windows 11 Dark"
+            ctx:notify("Theme reset to Windows 11 Dark", UI.colors.success)
         elseif actualIndex == 3 then
             local config = Config.load()
             Config.setSafeMode(not config.safeMode)
             status = config.safeMode and "Safe Mode enabled now" or "Safe Mode disabled now"
             ctx:notify(status, UI.colors.warning)
         elseif actualIndex == 4 then
-            local ok, reason
-            if ctx.disableAutomationJobs then
-                ok, reason = ctx:disableAutomationJobs()
-            else
-                local data = ctx.jobDefinitions and ctx:jobDefinitions() or nil
-                if data then
-                    for _, job in ipairs(data.jobs or {}) do job.paused = true end
-                    ok, reason = ctx:writeJobDefinitions(data)
-                else
-                    ok, reason = false, "Automation recovery unavailable"
-                end
-            end
-            if ok then
-                status = "All automation jobs paused"
-            else
-                status = reason or "Unable to disable automation"
-                ctx:notify(status, ok and UI.colors.warning or UI.colors.danger)
-                if ctx.reloadJobs then ctx:reloadJobs() end
-            end
-        elseif actualIndex == 5 then
             Config.resetDefaults()
             status = "Defaults restored; accounts preserved"
             ctx:notify(status, UI.colors.success)
-        elseif actualIndex == 6 then
+        elseif actualIndex == 5 then
             local task = ctx:launch("diagnostics")
             status = task and "Opened diagnostics" or "Unable to open diagnostics"
-        elseif actualIndex == 7 then
+        elseif actualIndex == 6 then
             local task = ctx:launch("logs")
             status = task and "Opened system log" or "Unable to open system log"
-        elseif actualIndex == 8 then
+        elseif actualIndex == 7 then
             ctx:close()
         end
         render()

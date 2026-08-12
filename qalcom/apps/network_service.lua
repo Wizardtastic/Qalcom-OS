@@ -1,7 +1,6 @@
 local Network = dofile("/qalcom/lib/network.lua")
 local Protocol = dofile("/qalcom/lib/protocol.lua")
 local Nodes = dofile("/qalcom/lib/nodes.lua")
-local Roles = dofile("/qalcom/lib/roles.lua")
 local Telemetry = dofile("/qalcom/lib/telemetry.lua")
 local Peripherals = dofile("/qalcom/lib/peripherals.lua")
 local unpack = table.unpack or unpack
@@ -94,26 +93,6 @@ return function(ctx)
         return { records = records, contacts = contacts, summary = Telemetry.summary(records, contacts) }
     end
 
-    local function safeState()
-        local failures, changed = {}, 0
-        local profiles = ctx:infrastructureProfiles()
-        for _, profile in ipairs(profiles.profiles or {}) do
-            if profile.kind == "output" and profile.enabled ~= false then
-                local ok, reason = ctx:redstoneWrite(profile.side, profile.safe == true)
-                if ok then changed = changed + 1 else failures[#failures + 1] = { id = profile.id, reason = tostring(reason or "failed") } end
-            end
-        end
-        return #failures == 0, { changed = changed, failures = failures }
-    end
-
-    local function controlAllowed(node, request)
-        if not node or node.state ~= "paired" or not ctx:hasCapability("network.control") then return false end
-        if request == "infrastructure.safe_state" then
-            return Roles.allows(node.role, "infrastructure.emergency") and Roles.allows(node.role, "network.control") and ctx:hasCapability("infrastructure.emergency")
-        end
-        return Roles.allows(node.role, "network.control") and Roles.allows(node.role, "infrastructure.control") and ctx:hasCapability("jobs.manage")
-    end
-
     local function handle(event)
         local _, side, channel, replyChannel, envelope = unpack(event)
         if type(envelope) ~= "table" or channel ~= config.channel then return end
@@ -136,18 +115,6 @@ return function(ctx)
             elseif payload.request == "radar.contacts" then data = { contacts = telemetry().contacts } end
             audit(envelope, payload, payload.request, "accepted", "read-only", now)
             send(modem, envelope.source, envelope, payload, "success", data or {}, node.secret, now)
-        elseif envelope.kind == "control_request" then
-            if not controlAllowed(node, payload.request) then
-                audit(envelope, payload, payload.request, "denied", "node role lacks control policy", now)
-                send(modem, envelope.source, envelope, payload, "denied", { reason = "control policy denied" }, node.secret, now)
-                return
-            end
-            local ok, data
-            if payload.request == "infrastructure.safe_state" then ok, data = safeState()
-            elseif payload.request == "jobs.pause" then ok, data = ctx:disableAutomationJobs()
-            else ok, data = false, { reason = "Only safe-state and job pause are enabled" } end
-            audit(envelope, payload, payload.request, ok and "success" or "failed", tostring(data and data.reason or "completed"), now)
-            send(modem, envelope.source, envelope, payload, ok and "success" or "failed", data or {}, node.secret, now)
         end
         persist("/qalcom/data/network.state", syncReplayState())
         persist("/qalcom/data/nodes.meta", Network.serializeNodes(nodes))

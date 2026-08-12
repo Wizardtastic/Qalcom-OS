@@ -259,19 +259,40 @@ function UI.card(target, x, y, width, height, title, accent, withShadow)
     end
 end
 
+-- Fluent button variants. The default ("standard") preserves the historic
+-- gray-keycap / accent-when-active behavior, so existing call sites are
+-- unaffected; new call sites can pass options.variant = "accent" | "subtle" |
+-- "ghost" | "danger" and options.disabled = true.
+local function buttonVariant(name)
+    if name == "accent" then
+        return { bg = UI.colors.accent, fg = UI.colors.textInverse, abg = UI.colors.accentStrong or UI.colors.accent, afg = UI.colors.textInverse }
+    elseif name == "danger" then
+        local dfg = UI.colors.dangerText or UI.colors.textInverse
+        return { bg = UI.colors.danger, fg = dfg, abg = UI.colors.danger, afg = dfg }
+    elseif name == "subtle" or name == "ghost" then
+        return { bg = UI.colors.surface, fg = UI.colors.text, abg = UI.colors.surfaceHover or UI.colors.surfaceAlt, afg = UI.colors.text }
+    end
+    return { bg = UI.colors.button, fg = UI.colors.buttonText, abg = UI.colors.buttonActive, afg = UI.colors.textInverse }
+end
+
 function UI.button(target, x, y, width, label, active, options)
     x = math.floor(tonumber(x) or 1)
     y = math.floor(tonumber(y) or 1)
     width = math.max(1, math.floor(tonumber(width) or 1))
     options = options or {}
     local height = math.max(1, math.floor(tonumber(options.height) or 1))
-    -- Use a distinct gray keycap by default. Previously inactive buttons used
-    -- surfaceAlt, which is also the surrounding panel color, making the button
-    -- disappear completely on character-cell displays.
-    local background = active and (options.activeBackground or UI.colors.buttonActive)
-        or (options.background or UI.colors.button)
-    local foreground = active and (options.activeForeground or UI.colors.textInverse)
-        or (options.foreground or UI.colors.buttonText)
+    local variant = buttonVariant(options.variant)
+    local background, foreground
+    if options.disabled then
+        background = options.background or UI.colors.surfaceDisabled or UI.colors.surfaceMuted
+        foreground = UI.colors.textMuted or UI.colors.muted
+    else
+        -- Explicit option colors still win, keeping older call sites pixel-identical.
+        background = active and (options.activeBackground or variant.abg)
+            or (options.background or variant.bg)
+        foreground = active and (options.activeForeground or variant.afg)
+            or (options.foreground or variant.fg)
+    end
     UI.fill(target, x, y, width, height, background)
     local textY = y + math.floor((height - 1) / 2)
     -- Keep the label centered inside the button's own rectangle. UI.center is
@@ -280,7 +301,7 @@ function UI.button(target, x, y, width, label, active, options)
     local labelText = clampText(label, width)
     local labelX = x + math.max(0, math.floor((width - #labelText) / 2))
     UI.text(target, labelX, textY, labelText, foreground, background, #labelText)
-    return { x = x, y = y, width = width, height = height, label = label }
+    return { x = x, y = y, width = width, height = height, label = label, disabled = options.disabled == true }
 end
 
 function UI.inBounds(mouseX, mouseY, x, y, width, height)
@@ -307,6 +328,76 @@ function UI.input(target, x, y, width, label, value, active, secret)
     end
 end
 
+function UI.toggle(target, x, y, width, label, on, options)
+    -- Fluent switch: label on the left, a 3-cell track on the right that turns
+    -- accent with the knob to the right when on. Returns the switch rect so the
+    -- caller can hit-test a click or use the whole row.
+    options = options or {}
+    x = math.floor(tonumber(x) or 1)
+    y = math.floor(tonumber(y) or 1)
+    width = math.max(4, math.floor(tonumber(width) or 4))
+    local trackWidth = 3
+    local switchX = x + width - trackWidth
+    local labelBg = options.background or UI.colors.surface
+    UI.fill(target, x, y, width, 1, labelBg)
+    UI.text(target, x, y, tostring(label or ""), options.foreground or UI.colors.text, labelBg, math.max(1, width - trackWidth - 1))
+    local track = on and UI.colors.accent or (UI.colors.surfaceMuted or UI.colors.surfaceInset)
+    UI.fill(target, switchX, y, trackWidth, 1, track)
+    local knobX = on and (switchX + trackWidth - 1) or switchX
+    UI.fill(target, knobX, y, 1, 1, UI.colors.statusText or UI.colors.textInverse or colors.white)
+    return { x = switchX, y = y, width = trackWidth, height = 1, rowX = x, rowWidth = width, on = on == true }
+end
+
+function UI.checkbox(target, x, y, label, checked, options)
+    -- A compact checkbox: an accent box with a check when set, an inset box when
+    -- clear, followed by the label. Returns the clickable box + row rect.
+    options = options or {}
+    x = math.floor(tonumber(x) or 1)
+    y = math.floor(tonumber(y) or 1)
+    local boxBg = checked and UI.colors.accent or (UI.colors.surfaceInset or UI.colors.surfaceMuted)
+    local boxFg = checked and UI.colors.textInverse or UI.colors.text
+    UI.text(target, x, y, checked and "x" or " ", boxFg, boxBg, 1)
+    local labelText = tostring(label or "")
+    local labelWidth = math.max(0, math.floor(tonumber(options.width) or (#labelText + 2)) - 2)
+    if labelWidth > 0 then
+        UI.text(target, x + 2, y, labelText, options.foreground or UI.colors.text, options.background or UI.colors.surface, labelWidth)
+    end
+    return { x = x, y = y, width = 1, height = 1, checked = checked == true, label = labelText }
+end
+
+function UI.segmented(target, x, y, width, segments, selectedIndex, options)
+    -- A segmented control: a row of touching buttons where the selected segment
+    -- is accented. Returns a list of segment rects for hit-testing.
+    options = options or {}
+    x = math.floor(tonumber(x) or 1)
+    y = math.floor(tonumber(y) or 1)
+    width = math.max(1, math.floor(tonumber(width) or 1))
+    local count = math.max(1, #(segments or {}))
+    local segWidth = math.max(1, math.floor(width / count))
+    local rects = {}
+    local cursor = x
+    for index = 1, count do
+        local label = tostring((segments and segments[index]) or index)
+        local currentWidth = index == count and (x + width - cursor) or segWidth
+        local active = index == (selectedIndex or 1)
+        UI.button(target, cursor, y, currentWidth, label, active, {
+            height = 1,
+            variant = active and "accent" or "subtle",
+            background = active and nil or (UI.colors.surfaceInset or UI.colors.surfaceAlt),
+        })
+        rects[index] = { x = cursor, y = y, width = currentWidth, height = 1, index = index, value = (segments and segments[index]) or index }
+        cursor = cursor + currentWidth
+    end
+    return rects
+end
+
+function UI.progress(target, x, y, width, value, options)
+    -- A rounded-feeling progress track: an inset rail with an accent fill. Shares
+    -- the meter's math but uses the inset surface as the empty track.
+    options = options or {}
+    return UI.meter(target, x, y, width, value, options.color or UI.colors.accent, options.background or UI.colors.surfaceInset or UI.colors.surfaceMuted)
+end
+
 function UI.taskbarTrayWidth(width, requested)
     width = math.max(1, math.floor(tonumber(width) or 1))
     requested = math.max(1, math.floor(tonumber(requested) or 15))
@@ -322,15 +413,22 @@ function UI.taskbarLayout(width, tasks, trayWidth)
     end
     local taskCount = #visibleTasks
     local startWidth = width >= 36 and 5 or 3
-    local firstAppX = startWidth + 1
-    local lastX = math.max(firstAppX, width - trayWidth - 1)
-    local available = math.max(1, lastX - firstAppX + 1)
     local gap = width >= 42 and 1 or 0
     local preferredIconWidth = width >= 64 and 5 or 3
+    -- The Start button and app icons form one cluster that is centered across the
+    -- taskbar (Windows 11 style), with the system tray reserved on the right. The
+    -- cluster may use everything from the left edge up to just before the tray.
+    local maxCluster = math.max(startWidth, width - trayWidth - 1)
+    local available = math.max(0, maxCluster - startWidth - gap)
+
     local iconWidth = preferredIconWidth
     local count = taskCount
     if taskCount > 0 then
         local fitted = math.floor((available + gap) / (iconWidth + gap))
+        if fitted < count then
+            iconWidth = 3
+            fitted = math.floor((available + gap) / (iconWidth + gap))
+        end
         if fitted < count then
             iconWidth = 2
             fitted = math.floor((available + gap) / (iconWidth + gap))
@@ -341,15 +439,32 @@ function UI.taskbarLayout(width, tasks, trayWidth)
             fitted = available
         end
         count = math.min(taskCount, math.max(0, fitted))
-        if count > 0 and count == taskCount then
-            iconWidth = math.max(1, math.min(preferredIconWidth, math.floor((available - math.max(0, count - 1) * gap) / count)))
-        end
     end
-    local items = { { kind = "start", x = 1, width = startWidth, label = "Q", title = "Qalcom" } }
-    -- Keep applications anchored to the left edge like a Windows taskbar:
-    -- the first icon begins immediately after the Q launcher instead of being
-    -- centered across the remaining tray space.
-    local cursor = firstAppX
+    local overflow = count < taskCount
+    -- Reserve room for a 2-wide overflow marker (plus its leading gap) by shrinking
+    -- the icon count until the whole cluster still fits the available region. One
+    -- icon may not free enough cells when icons are a single column wide.
+    local function clusterSpan(c, withMarker)
+        local span = startWidth
+        if c > 0 then span = span + gap + c * iconWidth + math.max(0, c - 1) * gap end
+        if withMarker then span = span + gap + 2 end
+        return span
+    end
+    if overflow then
+        while count > 0 and clusterSpan(count, true) > maxCluster do count = count - 1 end
+        overflow = count < taskCount
+    end
+    local clusterWidth = clusterSpan(count, overflow)
+
+    -- Center the cluster, then clamp so it never runs under the tray or off-screen.
+    local clusterX = math.max(1, math.floor((width - clusterWidth) / 2) + 1)
+    local maxEnd = math.max(startWidth, width - trayWidth - 1)
+    if clusterX + clusterWidth - 1 > maxEnd then
+        clusterX = math.max(1, maxEnd - clusterWidth + 1)
+    end
+
+    local items = { { kind = "start", x = clusterX, width = startWidth, label = "Q", title = "Qalcom" } }
+    local cursor = clusterX + startWidth + (count > 0 and gap or 0)
     for index = 1, count do
         local task = visibleTasks[index]
         items[#items + 1] = {
@@ -362,10 +477,10 @@ function UI.taskbarLayout(width, tasks, trayWidth)
         }
         cursor = cursor + iconWidth + gap
     end
-    if count < taskCount and cursor <= lastX then
-        items[#items + 1] = { kind = "overflow", x = cursor, width = math.min(3, lastX - cursor + 1), label = "..", title = tostring(taskCount - count) .. " more applications" }
+    if overflow then
+        items[#items + 1] = { kind = "overflow", x = cursor, width = 2, label = "..", title = tostring(taskCount - count) .. " more applications" }
     end
-    return items, firstAppX, available
+    return items, clusterX, clusterWidth
 end
 
 function UI.taskHealth(task)
@@ -413,18 +528,34 @@ function UI.taskbar(target, width, y, tasks, focused, launcher, trayWidth, hover
             UI.taskbarIcon(target, item.x, y, item.width, item.label, false, item.hovered, nil)
         end
     end
+    -- Windows 11 system tray, right-aligned: stacked time over date, with a
+    -- status line (computer ID + a service-health glyph) on the top row when
+    -- there is room. Everything is anchored to the right edge of the taskbar.
     local trayX = width - trayWidth
     local taskbarBackground = UI.colors.taskbar or UI.colors.surfaceAlt
-    local serviceMarker = serviceHealth and serviceHealth.glyph or ""
-    local clockText = serviceMarker .. os.date("%H:%M")
-    local idText = width >= 42 and "ID " .. tostring(os.getComputerID()) or tostring(os.getComputerID())
-    local rowY = y + math.max(0, math.floor((height - 1) / 2))
-    local idWidth = math.min(#idText, math.max(0, width - trayX + 1))
-    local idX = width - idWidth + 1
-    local clockWidth = math.min(#clockText, math.max(0, idX - trayX - 1))
-    if clockWidth > 0 then UI.text(target, trayX, rowY, clockText, serviceHealth and serviceHealth.color or UI.colors.text, taskbarBackground, clockWidth) end
-    if idWidth > 0 and idX > trayX + clockWidth then
-        UI.text(target, idX, rowY, idText, UI.colors.muted, taskbarBackground, idWidth)
+    local timeText = os.date("%H:%M")
+    local dateText = os.date("%m/%d")
+    local statusColor = serviceHealth and serviceHealth.color or UI.colors.textMuted or UI.colors.muted
+    local timeColor = UI.colors.statusText or UI.colors.text
+    local dateColor = UI.colors.textMuted or UI.colors.muted
+    if height >= 3 then
+        local statusText = "ID " .. tostring(os.getComputerID())
+        if serviceHealth and serviceHealth.glyph then statusText = serviceHealth.glyph .. " " .. statusText end
+        local statusWidth = math.min(#statusText, math.max(0, width - trayX + 1))
+        if statusWidth > 0 then
+            UI.text(target, width - statusWidth + 1, y, statusText, statusColor, taskbarBackground, statusWidth)
+        end
+        UI.text(target, width - #timeText + 1, y + 1, timeText, timeColor, taskbarBackground, #timeText)
+        UI.text(target, width - #dateText + 1, y + 2, dateText, dateColor, taskbarBackground, #dateText)
+    else
+        -- Compact fallback: a single centered clock line with an optional glyph.
+        local marker = serviceHealth and (serviceHealth.glyph .. " ") or ""
+        local clockText = marker .. timeText
+        local rowY = y + math.max(0, math.floor((height - 1) / 2))
+        local clockWidth = math.min(#clockText, math.max(0, width - trayX + 1))
+        if clockWidth > 0 then
+            UI.text(target, width - clockWidth + 1, rowY, clockText, serviceHealth and serviceHealth.color or timeColor, taskbarBackground, clockWidth)
+        end
     end
     if hovered and hovered.title and hovered.kind ~= "start" then
         local tipWidth = math.min(width - 2, math.max(8, #hovered.title + 2))
@@ -495,31 +626,123 @@ function UI.header(target, title)
     })
 end
 
-function UI.titleBar(target, x, y, width, title, icon, active, maximized)
-    -- Active windows use the strong title token; inactive windows recede while
-    -- retaining visible controls and a clear focus distinction.
-    local color = active and (UI.colors.titleActive or UI.colors.section) or (UI.colors.titleInactive or UI.colors.border)
-    local foreground = active and (UI.colors.titleControl or UI.colors.sectionText) or UI.colors.text
-    local titleForeground = active and foreground or (UI.colors.titleControl or UI.colors.text)
-    UI.fill(target, x, y, width, 1, color)
+function UI.captionButtons(x, y, width)
+    -- Shared geometry for the Windows-11 style right-aligned caption buttons so
+    -- rendering (UI.titleBar) and the kernel's hit-testing agree exactly.
+    x = math.floor(tonumber(x) or 1)
+    y = math.floor(tonumber(y) or 1)
+    width = math.floor(tonumber(width) or 0)
+    if width < 3 then return nil end
     if width < 9 then
-        UI.text(target, x + 1, y, "x-+", foreground, color, math.max(1, width - 2))
-        return
+        -- Too narrow for three captions; expose only a close cell at the edge.
+        return { close = { x = x + width - 1, y = y, width = 1 } }
     end
-    UI.text(target, x + 1, y, "x", foreground, color, 1)
-    UI.text(target, x + 3, y, "-", foreground, color, 1)
-    UI.text(target, x + 5, y, maximized and "=" or "+", foreground, color, 1)
-    local titleText = tostring(icon or "") .. "  " .. tostring(title or "")
-    local titleWidth = math.max(1, width - 8)
-    local titleX = x + 8 + math.max(0, math.floor((titleWidth - #titleText) / 2))
-    UI.text(target, titleX, y, titleText, titleForeground, color, titleWidth)
+    return {
+        minimize = { x = x + width - 6, y = y, width = 1 },
+        maximize = { x = x + width - 4, y = y, width = 1 },
+        close = { x = x + width - 2, y = y, width = 1 },
+    }
 end
 
-function UI.desktopBackground(target, width, height)
-    -- Keep the desktop itself clean and uninterrupted. Window chrome and the
-    -- taskbar provide the visual structure; the old branded strip at the top
-    -- consumed desktop space and made the workspace look like a second bar.
-    UI.fill(target, 1, 1, width, math.max(1, height - 2), UI.colors.desktop)
+function UI.titleBar(target, x, y, width, title, icon, active, maximized, hovered)
+    -- Windows-11 title bar: body-matching surface, left-aligned icon + title,
+    -- right-aligned minimize / maximize-restore / close captions. The close cell
+    -- reddens on hover; the focused window shows a brighter title and an accent
+    -- app icon while inactive windows recede.
+    local color = active and (UI.colors.titleActive or UI.colors.surface) or (UI.colors.titleInactive or UI.colors.surfaceAlt or UI.colors.border)
+    local titleForeground = active and (UI.colors.titleControl or UI.colors.text) or (UI.colors.textMuted or UI.colors.muted)
+    local controlForeground = titleForeground
+    UI.fill(target, x, y, width, 1, color)
+    local caps = UI.captionButtons(x, y, width)
+
+    if width < 9 then
+        UI.text(target, x + 1, y, "-", controlForeground, color, 1)
+        if caps and caps.close then
+            local narrowClose = hovered == "close" and (UI.colors.danger) or color
+            local narrowCloseFg = hovered == "close" and (UI.colors.dangerText or UI.colors.textInverse) or controlForeground
+            UI.text(target, caps.close.x, y, "x", narrowCloseFg, narrowClose, 1)
+        end
+        return
+    end
+
+    -- Icon + left-aligned title, stopping one cell before the first caption.
+    local iconText = tostring(icon or "")
+    local labelX = x + 1
+    if iconText ~= "" then
+        local iconColor = active and (UI.colors.accent or controlForeground) or controlForeground
+        UI.text(target, labelX, y, iconText, iconColor, color, math.max(1, math.min(#iconText, width - 8)))
+        labelX = labelX + #iconText + 1
+    end
+    local titleWidth = math.max(0, (x + width - 6) - labelX)
+    if titleWidth > 0 then
+        UI.text(target, labelX, y, tostring(title or ""), titleForeground, color, titleWidth)
+    end
+
+    -- Right-aligned captions. Minimize and maximize/restore share a subtle hover
+    -- highlight; close uses the danger color on hover per Windows convention.
+    local hoverBg = UI.colors.surfaceHover or color
+    local minBg = hovered == "minimize" and hoverBg or color
+    UI.text(target, caps.minimize.x, y, "-", controlForeground, minBg, 1)
+    local maxBg = hovered == "maximize" and hoverBg or color
+    UI.text(target, caps.maximize.x, y, maximized and "=" or "+", controlForeground, maxBg, 1)
+    local closeBg = hovered == "close" and (UI.colors.danger) or color
+    local closeFg = hovered == "close" and (UI.colors.dangerText or UI.colors.textInverse) or controlForeground
+    UI.text(target, caps.close.x, y, "x", closeFg, closeBg, 1)
+end
+
+function UI.windowFrame(target, x, y, width, height, active)
+    -- A one-cell neutral hairline around a window body for gentle definition on
+    -- the desktop. It is deliberately NOT accent-colored: focus is conveyed by
+    -- the title bar (brighter title + accent icon), not a blue outline. Drawn
+    -- entirely inside the window rectangle so it never extends past the frame the
+    -- kernel already restores, keeping the targeted-repaint / window-move
+    -- invariants intact. (active is accepted for call-site compatibility.)
+    x = math.floor(tonumber(x) or 1)
+    y = math.floor(tonumber(y) or 1)
+    width = math.floor(tonumber(width) or 0)
+    height = math.floor(tonumber(height) or 0)
+    if width < 2 or height < 2 then return end
+    local color = UI.colors.border or UI.colors.divider
+    UI.fill(target, x, y, 1, height, color)                  -- left column
+    UI.fill(target, x + width - 1, y, 1, height, color)      -- right column
+    UI.fill(target, x, y + height - 1, width, 1, color)      -- bottom row
+end
+
+-- Wallpaper styles selectable in Settings. "bloom" (a soft gradient) is a
+-- graphics-mode (Track B) style; in text mode it falls back to the solid base.
+UI.wallpapers = { "solid", "dots" }
+
+function UI.desktopRegion(target, x, y, width, height, style)
+    -- Paint a desktop region with the selected wallpaper. Every style is a pure
+    -- function of the absolute (x, y) cell, so restoring a window-exposed
+    -- sub-region redraws pixel-identically to a full desktop paint -- this is what
+    -- lets the kernel restore moved/closed windows without a full repaint.
+    style = style or "solid"
+    x = math.floor(tonumber(x) or 1)
+    y = math.floor(tonumber(y) or 1)
+    width = math.floor(tonumber(width) or 0)
+    height = math.floor(tonumber(height) or 0)
+    if width < 1 or height < 1 then return end
+    UI.fill(target, x, y, width, height, UI.colors.desktop)
+    if style == "dots" then
+        -- A subtle, evenly spaced dot grid -- a calm modern desktop texture.
+        local dotColor = UI.colors.desktopGlow or UI.colors.divider or UI.colors.desktop
+        for cy = y, y + height - 1 do
+            if cy % 3 == 0 then
+                for cx = x, x + width - 1 do
+                    if cx % 6 == 0 then
+                        UI.text(target, cx, cy, ".", dotColor, UI.colors.desktop, 1)
+                    end
+                end
+            end
+        end
+    end
+end
+
+function UI.desktopBackground(target, width, height, style)
+    -- The desktop occupies everything above the taskbar. Window chrome and the
+    -- taskbar provide the visual structure; the wallpaper stays calm behind them.
+    UI.desktopRegion(target, 1, 1, width, math.max(1, height - 2), style)
 end
 
 function UI.taskButton(target, x, y, width, label, active)
@@ -531,31 +754,52 @@ function UI.taskButton(target, x, y, width, label, active)
 end
 
 function UI.taskbarIcon(target, x, y, width, icon, active, hovered, health)
-    local background = hovered and (UI.colors.taskbarHover or UI.colors.surfaceAlt) or (UI.colors.taskbar or UI.colors.surfaceAlt)
+    -- Focused or hovered apps get a highlighted tile; a colored top rail and glyph
+    -- still expose health without relying on color alone.
+    local highlighted = active or hovered
+    local background = highlighted and (UI.colors.taskbarHover or UI.colors.surfaceAlt) or (UI.colors.taskbar or UI.colors.surfaceAlt)
     local foreground = UI.colors.text
     local height = math.min(3, select(2, target.getSize()) - y + 1)
-    -- Icons stay compact; a colored top rail and optional glyph expose health
-    -- without relying on hover or color alone.
     UI.fill(target, x, y, width, height, background)
     if health then
         UI.fill(target, x, y, width, 1, health.color)
         if width >= 2 then UI.text(target, x + width - 1, y, health.glyph, UI.colors.textInverse, health.color, 1) end
     end
-    local iconWidth = math.max(1, width - 2)
+    local iconWidth = health and math.max(1, width - 2) or math.max(1, width)
     local iconText = tostring(icon or "?")
     local iconX = x + math.max(0, math.floor((width - math.min(#iconText, iconWidth)) / 2))
     local iconY = y + math.floor((height - 1) / 2)
     UI.text(target, iconX, iconY, iconText, foreground, background, iconWidth)
-    if active then UI.fill(target, x, y + height - 1, width, 1, UI.colors.accentLight) end
+    -- Running/focus indicator on the bottom row: a wide accent pill for the
+    -- focused window, a small muted dot for other running apps (Windows 11 style).
+    local bottomRow = y + height - 1
+    if active then
+        local pillWidth = math.max(1, width - 2)
+        local pillX = x + math.floor((width - pillWidth) / 2)
+        UI.fill(target, pillX, bottomRow, pillWidth, 1, UI.colors.accent)
+    else
+        local dotX = x + math.floor((width - 1) / 2)
+        UI.fill(target, dotX, bottomRow, 1, 1, UI.colors.textMuted or UI.colors.muted)
+    end
 end
 
 function UI.taskbarStart(target, x, y, width, active, hovered)
-    local background = hovered and (UI.colors.taskbarHover or UI.colors.success)
-        or UI.colors.success
-    local foreground = UI.colors.successText or UI.colors.textInverse
+    -- Windows-style Start button: no colored fill, an accent "Q" logo, a hover/open
+    -- tile highlight, and an accent indicator when the launcher is open.
+    local background = (active or hovered) and (UI.colors.taskbarHover or UI.colors.surfaceHover or UI.colors.surfaceAlt)
+        or (UI.colors.taskbar or UI.colors.surfaceAlt)
+    local foreground = UI.colors.accent or UI.colors.textInverse
     local height = math.min(3, select(2, target.getSize()) - y + 1)
     UI.fill(target, x, y, width, height, background)
-    UI.center(target, y + math.floor((height - 1) / 2), "Q", foreground, background, width)
+    local label = "Q"
+    local labelX = x + math.max(0, math.floor((width - #label) / 2))
+    local labelY = y + math.floor((height - 1) / 2)
+    UI.text(target, labelX, labelY, label, foreground, background, math.max(1, width))
+    if active then
+        local pillWidth = math.max(1, width - 2)
+        local pillX = x + math.floor((width - pillWidth) / 2)
+        UI.fill(target, pillX, y + height - 1, pillWidth, 1, UI.colors.accent)
+    end
 end
 
 function UI.composite(target, layers)
@@ -604,10 +848,11 @@ function UI.dialog(target, title, message, accent)
     local messageWidth = math.max(1, boxWidth - 4)
     local messageText = tostring(message or "")
     local row = y + 3
-    for line in (messageText .. "\n"):gmatch("(.-)\n") do
-        while #line > 0 and row < y + boxHeight - 2 do
-            UI.text(target, x + 2, row, line, UI.colors.text, UI.colors.surface, messageWidth)
-            line = line:sub(messageWidth + 1)
+    for rawLine in (messageText .. "\n"):gmatch("(.-)\n") do
+        local segment = rawLine
+        while #segment > 0 and row < y + boxHeight - 2 do
+            UI.text(target, x + 2, row, segment, UI.colors.text, UI.colors.surface, messageWidth)
+            segment = segment:sub(messageWidth + 1)
             row = row + 1
         end
         if row >= y + boxHeight - 2 then break end

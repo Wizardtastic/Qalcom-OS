@@ -116,6 +116,19 @@ function Pure.retainLines(lines, limit)
     return retained
 end
 
+function Pure.colorChannels(hex)
+    -- Convert a 24-bit RGB integer (0xRRGGBB) into three 0..1 float channels.
+    -- Kept here, free of CC:T globals, so palette math is unit-testable offline.
+    local number = tonumber(hex) or 0
+    if number < 0 then number = 0 end
+    if number > 0xFFFFFF then number = number % 0x1000000 end
+    number = math.floor(number)
+    local r = math.floor(number / 65536) % 256
+    local g = math.floor(number / 256) % 256
+    local b = number % 256
+    return r / 255, g / 255, b / 255
+end
+
 function Pure.fitWindow(screenWidth, screenHeight, desiredWidth, desiredHeight, minimumWidth, minimumHeight, margin)
     margin = margin or 1
     local availableWidth = math.max(1, screenWidth - margin * 2)
