@@ -76,6 +76,20 @@ local LAUNCHER_APPS = config.safeMode and SAFE_LAUNCHER_APPS or NORMAL_LAUNCHER_
 
 local native = term.native()
 local width, height = native.getSize()
+
+local function shellMetrics()
+    return UI.metricsFor and UI.metricsFor(width, height) or UI.metrics
+end
+
+local function taskbarHeight()
+    local metrics = shellMetrics()
+    return math.max(1, tonumber(metrics.taskbarHeight) or 1)
+end
+
+local function taskbarY()
+    return math.max(1, height - taskbarHeight() + 1)
+end
+
 if width < 30 or height < 14 then
     Palette.restore(nativePalette)
     term.redirect(native)
@@ -101,6 +115,14 @@ local state = {
     launcherSearchFocused = true,
     powerMenu = false,
     powerSelection = 1,
+    contextMenu = false,
+    contextMenuSelection = 1,
+    contextMenuItems = {},
+    contextMenuTarget = nil,
+    contextMenuAnchorX = 1,
+    contextMenuAnchorY = 1,
+    contextMenuRect = nil,
+    fileClipboard = nil,
     recentApps = {},
     notifications = {},
     clockTimer = nil,
@@ -210,6 +232,10 @@ local function closeAllTasks()
     end
     state.focused = nil
     state.drag = nil
+    state.contextMenu = false
+    state.contextMenuTarget = nil
+    state.contextMenuRect = nil
+    state.fileClipboard = nil
 end
 
 local function removeTask(task)
@@ -220,6 +246,11 @@ local function removeTask(task)
             table.remove(state.tasks, index)
             break
         end
+    end
+    if state.contextMenuTarget == task then
+        state.contextMenu = false
+        state.contextMenuTarget = nil
+        state.contextMenuRect = nil
     end
     if state.focused == task then
         state.focused = nil
@@ -296,6 +327,13 @@ local function restoreRegion(x, y, width, height)
     if state.launcher and state.launcherRect then
         local rect = state.launcherRect
         if x < rect.x + rect.w and x + width > rect.x and y < rect.y + rect.h and y + height > rect.y then
+            state.dirty = true
+            return
+        end
+    end
+    if state.contextMenu and state.contextMenuRect then
+        local rect = state.contextMenuRect
+        if x < rect.x + rect.w + 1 and x + width > rect.x and y < rect.y + rect.h + 1 and y + height > rect.y then
             state.dirty = true
             return
         end
@@ -466,6 +504,28 @@ local function makeContext(task)
     function context:clearNotifications()
         state.notifications = {}
         state.notificationsDirty = true
+    end
+
+    function context:getFileClipboard()
+        if not state.fileClipboard then return nil end
+        return {
+            path = state.fileClipboard.path,
+            name = state.fileClipboard.name,
+            directory = state.fileClipboard.directory == true,
+        }
+    end
+
+    function context:setFileClipboard(clipboard)
+        if type(clipboard) ~= "table" or type(clipboard.path) ~= "string" then
+            state.fileClipboard = nil
+            return false
+        end
+        state.fileClipboard = {
+            path = clipboard.path,
+            name = clipboard.name or fs.getName(clipboard.path),
+            directory = clipboard.directory == true,
+        }
+        return true
     end
 
     function context:close()
@@ -852,10 +912,26 @@ local function startTask(name, options)
     end
     Capabilities.audit("launch", name)
 
-    local w = math.min(meta.width, math.max(20, width - 2))
-    local h = math.min(meta.height, math.max(8, height - 4))
+    local metrics = shellMetrics()
+    local desiredWidth = meta.width
+    local desiredHeight = meta.height
+    -- Small metadata windows stay compact, while normal applications make use of
+    -- an advanced 204 x 76 computer instead of remaining postage-stamp sized.
+    -- Modal dialogs and hidden services keep their authored dimensions.
+    if not meta.service and not (options and options.modal) then
+        local widthFactor = metrics.tier == "command" and 0.68 or (metrics.tier == "wide" and 0.58 or (metrics.tier == "standard" and 0.52 or 0))
+        local heightFactor = metrics.tier == "command" and 0.72 or (metrics.tier == "wide" and 0.68 or (metrics.tier == "standard" and 0.62 or 0))
+        if widthFactor > 0 then desiredWidth = math.max(desiredWidth, math.floor(width * widthFactor)) end
+        if heightFactor > 0 then desiredHeight = math.max(desiredHeight, math.floor((height - taskbarHeight()) * heightFactor)) end
+    end
+    local maxWindowWidth = math.max(3, width - math.max(2, metrics.outerPadding * 2))
+    local maxWindowHeight = math.max(3, height - taskbarHeight() - math.max(1, metrics.outerPadding))
+    local w = math.min(desiredWidth, maxWindowWidth)
+    local h = math.min(desiredHeight, maxWindowHeight)
+    w = math.max(3, w)
+    h = math.max(3, h)
     local x = math.max(2, math.min(meta.x, width - w))
-    local y = math.max(2, math.min(meta.y, height - h - 2))
+    local y = math.max(2, math.min(meta.y, height - h - taskbarHeight() + 1))
     local task = {
         pid = state.nextPid,
         name = name,
@@ -974,6 +1050,428 @@ local function send(task, event)
     end
 end
 
+-- The context menu is kernel-owned chrome, like the launcher. It deliberately
+-- uses the Explorer policy profile for filesystem creation so a right-click on
+-- the desktop remains useful without granting every application a write API.
+local CONTEXT_MENU_ITEMS = {
+    { id = "folder", label = "New folder" },
+    { id = "text", label = "New .txt file" },
+    { id = "lua", label = "New .lua file" },
+}
+
+local function contextMenuSelection(target)
+    target = target or state.contextMenuTarget
+    local raw = target and target.context and target.context.contextSelection
+    if type(raw) ~= "table" or raw.parent or type(raw.path) ~= "string" then return nil end
+    local path = fs.combine("/", raw.path)
+    if path:sub(1, 1) ~= "/" then path = "/" .. path end
+    return {
+        path = path == "" and "/" or path,
+        name = tostring(raw.name or fs.getName(path)),
+        dir = raw.dir == true,
+    }
+end
+
+local function contextMenuIsExplorer(target)
+    return target and target.name == "explorer" and target.context ~= nil
+end
+
+local function contextMenuItemsFor(target)
+    local items = {}
+    for _, item in ipairs(CONTEXT_MENU_ITEMS) do items[#items + 1] = item end
+    local selection = contextMenuSelection(target)
+    if contextMenuIsExplorer(target) then
+        if selection then
+            if not selection.dir then items[#items + 1] = { id = "open-editor", label = "Open with Editor" } end
+            items[#items + 1] = { id = "rename", label = "Rename selected" }
+            items[#items + 1] = { id = "delete", label = "Delete selected" }
+            items[#items + 1] = { id = "copy", label = "Copy selected" }
+        end
+        if state.fileClipboard then items[#items + 1] = { id = "paste", label = "Paste here" } end
+    end
+    items[#items + 1] = { id = "refresh", label = "Refresh view" }
+    items[#items + 1] = { id = "cancel", label = "Cancel" }
+    return items
+end
+
+local function contextMenuActor()
+    local actor = { name = "context-menu", role = state.role }
+    function actor:hasCapability(capability)
+        return Capabilities.effective(state.role, "explorer", capability, config.safeMode)
+    end
+    function actor:policy(capability)
+        return Capabilities.policy(state.role, "explorer", capability, config.safeMode)
+    end
+    function actor:audit(action, detail)
+        Capabilities.audit("context-menu." .. tostring(action), detail)
+    end
+    function actor:notify(message, color)
+        notify(message, color)
+    end
+    return actor
+end
+
+local function contextMenuPath()
+    local task = state.contextMenuTarget
+    local path = task and task.context and task.context.contextPath or "/"
+    path = tostring(path or "/"):gsub("[\\r\\n]", " "):sub(1, 120)
+    local normalized = fs.combine("/", path)
+    if normalized:sub(1, 1) ~= "/" then normalized = "/" .. normalized end
+    return normalized == "" and "/" or normalized
+end
+
+local function contextMenuGeometry()
+    local path = contextMenuPath()
+    local menuWidth = math.max(22, #path + 6)
+    for _, item in ipairs(state.contextMenuItems or CONTEXT_MENU_ITEMS) do
+        menuWidth = math.max(menuWidth, #item.label + 4)
+    end
+    menuWidth = math.min(menuWidth, math.max(10, width - 2))
+    local menuHeight = #(state.contextMenuItems or CONTEXT_MENU_ITEMS) + 2
+    local menuX = math.max(1, math.min(width - menuWidth + 1, state.contextMenuAnchorX or 1))
+    local barY = taskbarY()
+    local menuY = (state.contextMenuAnchorY or 1) + 1
+    local highestY = math.max(1, barY - menuHeight)
+    if menuY > highestY then menuY = highestY end
+    menuY = math.max(1, math.min(menuY, math.max(1, height - menuHeight + 1)))
+    state.contextMenuRect = { x = menuX, y = menuY, w = menuWidth, h = menuHeight }
+    return state.contextMenuRect, path
+end
+
+local function drawContextMenu()
+    if not state.contextMenu then return end
+    local rect, path = contextMenuGeometry()
+    local items = state.contextMenuItems or CONTEXT_MENU_ITEMS
+    UI.shadow(native, rect.x, rect.y, rect.w, rect.h, 1, UI.colors.shadow)
+    UI.panel(native, rect.x, rect.y, rect.w, rect.h, UI.colors.surfaceRaised or UI.colors.surface, UI.colors.borderStrong)
+    UI.sectionHeader(native, rect.x + 1, rect.y + 1, math.max(1, rect.w - 2),
+        "Create in " .. UI.clampText(path, math.max(1, rect.w - 6)), {
+            background = UI.colors.surfaceInset,
+            foreground = UI.colors.textSecondary or UI.colors.muted,
+        })
+    for index, item in ipairs(items) do
+        local itemY = rect.y + 1 + index
+        local active = index == state.contextMenuSelection
+        local background = active and (UI.colors.surfaceSelected or UI.colors.accentSoft) or (UI.colors.surfaceRaised or UI.colors.surface)
+        local foreground = active and (UI.colors.textInverse or UI.colors.text) or (UI.colors.textPrimary or UI.colors.text)
+        UI.fill(native, rect.x + 1, itemY, math.max(1, rect.w - 2), 1, background)
+        if active then UI.fill(native, rect.x + 1, itemY, 1, 1, UI.colors.focus or UI.colors.accent) end
+        UI.text(native, rect.x + 2, itemY, item.label, foreground, background, math.max(1, rect.w - 4))
+    end
+end
+
+local function closeContextMenu()
+    if not state.contextMenu then return end
+    state.contextMenu = false
+    state.contextMenuItems = {}
+    state.contextMenuTarget = nil
+    state.contextMenuRect = nil
+    state.dirty = true
+end
+
+local function contextMenuUniquePath(base, stem, extension)
+    extension = extension or ""
+    for suffix = 0, 99 do
+        local suffixText = suffix == 0 and "" or " " .. tostring(suffix)
+        local candidate = fs.combine(base, stem .. suffixText .. extension)
+        if candidate:sub(1, 1) ~= "/" then candidate = "/" .. candidate end
+        if not fs.exists(candidate) then return candidate end
+    end
+    return nil
+end
+
+local function contextMenuRefreshTarget(target)
+    if target and target.name == "explorer" then
+        send(target, { "qalcom_context_refresh" })
+    end
+end
+
+local function createContextEntry(id)
+    local actor = contextMenuActor()
+    local base = contextMenuPath()
+    local path, content
+    if id == "folder" then
+        path = contextMenuUniquePath(base, "New Folder", "")
+    elseif id == "text" then
+        path = contextMenuUniquePath(base, "New Text File", ".txt")
+        content = ""
+    elseif id == "lua" then
+        path = contextMenuUniquePath(base, "New Lua Script", ".lua")
+        content = "-- Qalcom Lua script" .. string.char(10) .. string.char(10)
+    end
+    if not path then
+        actor:notify("Unable to find an unused name", UI.colors.danger)
+        return false
+    end
+    local ok, reason
+    if id == "folder" then
+        ok, reason = Managed.makeDir(actor, path)
+    elseif content ~= nil then
+        ok, reason = Managed.writeFile(actor, path, content)
+    else
+        ok, reason = Managed.touch(actor, path)
+    end
+    if not ok then
+        actor:notify(reason or "Create operation denied", UI.colors.danger)
+        return false
+    end
+    actor:audit("create", tostring(path))
+    actor:notify("Created " .. fs.getName(path), UI.colors.success)
+    local target = state.contextMenuTarget
+    closeContextMenu()
+    contextMenuRefreshTarget(target)
+    return true
+end
+
+local function contextMenuItemInfo(actor, item)
+    if not item or item.parent or type(item.path) ~= "string" then return nil, "No Explorer item selected" end
+    local info, reason = Managed.pathInfo(actor, item.path)
+    if not info or not info.exists then return nil, reason or "Selected item no longer exists" end
+    return info
+end
+
+local function contextMenuOpenEditor()
+    local target = state.contextMenuTarget
+    local item = contextMenuSelection(target)
+    if not item or item.dir then return false end
+    local actor = contextMenuActor()
+    local info, reason = contextMenuItemInfo(actor, item)
+    if not info then actor:notify(reason, UI.colors.danger); return false end
+    closeContextMenu()
+    local task = spawn("editor", { path = item.path, fromContextMenu = true })
+    if not task then
+        actor:notify("Unable to open " .. item.name, UI.colors.danger)
+        return false
+    end
+    actor:audit("open-editor", item.path)
+    return true
+end
+
+local function contextMenuCopy()
+    local target = state.contextMenuTarget
+    local item = contextMenuSelection(target)
+    local actor = contextMenuActor()
+    local info, reason = contextMenuItemInfo(actor, item)
+    if not info then actor:notify(reason, UI.colors.danger); return false end
+    state.fileClipboard = { path = item.path, name = item.name, directory = info.directory == true }
+    actor:audit("copy", item.path)
+    actor:notify("Copied " .. item.name, UI.colors.success)
+    closeContextMenu()
+    return true
+end
+
+local function contextMenuPaste()
+    local target = state.contextMenuTarget
+    if not contextMenuIsExplorer(target) then return false end
+    local clipboard = state.fileClipboard
+    local actor = contextMenuActor()
+    if not clipboard or type(clipboard.path) ~= "string" then
+        actor:notify("Clipboard is empty", UI.colors.warning)
+        closeContextMenu()
+        return false
+    end
+    local sourceInfo, sourceReason = Managed.pathInfo(actor, clipboard.path)
+    if not sourceInfo or not sourceInfo.exists then
+        actor:notify(sourceReason or "Clipboard item no longer exists", UI.colors.danger)
+        closeContextMenu()
+        return false
+    end
+    local base = contextMenuPath()
+    local name = tostring(clipboard.name or fs.getName(clipboard.path)):gsub("[\\r\\n/\\\\]", "")
+    if name == "" or name == "." or name == ".." then
+        actor:notify("Clipboard name is invalid", UI.colors.danger)
+        closeContextMenu()
+        return false
+    end
+    local destination = fs.combine(base, name)
+    local destinationInfo, destinationReason = Managed.pathInfo(actor, destination)
+    if not destinationInfo then
+        actor:notify(destinationReason or "Unable to inspect paste destination", UI.colors.danger)
+        closeContextMenu()
+        return false
+    end
+    if destinationInfo.exists then
+        actor:notify("Already exists: " .. name, UI.colors.warning)
+        closeContextMenu()
+        return false
+    end
+    if sourceInfo.directory and (destination == clipboard.path or destination:sub(1, #clipboard.path + 1) == clipboard.path .. "/") then
+        actor:notify("Cannot paste a folder into itself", UI.colors.danger)
+        closeContextMenu()
+        return false
+    end
+    local ok, reason = Managed.copy(actor, clipboard.path, destination)
+    if not ok then
+        actor:notify(reason or "Paste failed", UI.colors.danger)
+        closeContextMenu()
+        return false
+    end
+    actor:audit("paste", clipboard.path .. " -> " .. destination)
+    actor:notify("Pasted " .. name, UI.colors.success)
+    closeContextMenu()
+    contextMenuRefreshTarget(target)
+    return true
+end
+
+local function contextMenuRename(target, item)
+    local actor = contextMenuActor()
+    local info, reason = contextMenuItemInfo(actor, item)
+    if not info then actor:notify(reason, UI.colors.danger); return false end
+    if info.readOnly then
+        actor:notify("Read-only: " .. item.name, UI.colors.danger)
+        return false
+    end
+    closeContextMenu()
+    local task = spawn("dialog", {
+        modal = true,
+        dialogTitle = "Rename " .. item.name .. "?",
+        dialogMessage = "Choose a new name, then confirm.",
+        dialogInput = true,
+        dialogInputLabel = "New name",
+        dialogInputValue = item.name,
+    })
+    if not task then
+        actor:notify("Unable to open rename dialog", UI.colors.danger)
+        return false
+    end
+    task.context.dialogInputCallback = function(value)
+        local newName = tostring(value or ""):gsub("^%s+", ""):gsub("%s+$", "")
+        if newName == "" then return false, "Name cannot be empty" end
+        if newName == "." or newName == ".." then return false, "Invalid name" end
+        if #newName > 64 then return false, "Name is limited to 64 characters" end
+        if newName:find("/", 1, true) or newName:find("\\", 1, true) then
+            return false, "Name cannot contain path separators or control characters"
+        end
+        for index = 1, #newName do
+            if newName:byte(index) < 32 then
+                return false, "Name cannot contain path separators or control characters"
+            end
+        end
+        if newName == item.name then
+            actor:notify("Name unchanged", UI.colors.info)
+            return true
+        end
+        local destination = fs.combine(fs.getDir(item.path), newName)
+        local destinationInfo, destinationReason = Managed.pathInfo(actor, destination)
+        if not destinationInfo then return false, destinationReason or "Unable to inspect new name" end
+        if destinationInfo.exists then return false, "Already exists: " .. newName end
+        local ok, moveReason = Managed.move(actor, item.path, destination)
+        if not ok then return false, moveReason or "Rename failed" end
+        actor:audit("rename", item.path .. " -> " .. destination)
+        actor:notify("Renamed to " .. newName, UI.colors.success)
+        contextMenuRefreshTarget(target)
+        return true
+    end
+    return true
+end
+
+local function contextMenuDelete(target, item)
+    local actor = contextMenuActor()
+    local info, reason = contextMenuItemInfo(actor, item)
+    if not info then actor:notify(reason, UI.colors.danger); return false end
+    if info.readOnly then
+        actor:notify("Read-only: " .. item.name, UI.colors.danger)
+        return false
+    end
+    closeContextMenu()
+    local task = spawn("dialog", {
+        modal = true,
+        dialogTitle = "Delete " .. item.name .. "?",
+        dialogMessage = info.directory and "Folder contents will also be removed." or "This cannot be undone.",
+    })
+    if not task then
+        actor:notify("Unable to open delete confirmation", UI.colors.danger)
+        return false
+    end
+    task.context.dialogCallback = function()
+        local currentInfo, currentReason = contextMenuItemInfo(actor, item)
+        if not currentInfo then return false, currentReason or "Item no longer exists" end
+        if currentInfo.readOnly then return false, "Read-only path" end
+        local ok, deleteReason = Managed.delete(actor, item.path)
+        if not ok then return false, deleteReason or "Delete failed" end
+        actor:audit("delete", item.path)
+        actor:notify("Deleted " .. item.name, UI.colors.success)
+        contextMenuRefreshTarget(target)
+        return true
+    end
+    return true
+end
+
+local function invokeContextMenu(index)
+    local items = state.contextMenuItems or CONTEXT_MENU_ITEMS
+    local item = items[index]
+    if not item then return end
+    local target = state.contextMenuTarget
+    local selection = contextMenuSelection(target)
+    if item.id == "cancel" then
+        closeContextMenu()
+    elseif item.id == "refresh" then
+        closeContextMenu()
+        contextMenuRefreshTarget(target)
+    elseif item.id == "open-editor" then
+        contextMenuOpenEditor()
+    elseif item.id == "rename" then
+        contextMenuRename(target, selection)
+    elseif item.id == "delete" then
+        contextMenuDelete(target, selection)
+    elseif item.id == "copy" then
+        contextMenuCopy()
+    elseif item.id == "paste" then
+        contextMenuPaste()
+    else
+        createContextEntry(item.id)
+    end
+end
+
+local function contextMenuHover(x, y)
+    local rect = contextMenuGeometry()
+    local index = y - rect.y - 1
+    if x >= rect.x + 1 and x < rect.x + rect.w - 1 and index >= 1 and index <= #(state.contextMenuItems or CONTEXT_MENU_ITEMS) then
+        if state.contextMenuSelection ~= index then
+            state.contextMenuSelection = index
+            state.dirty = true
+        end
+    end
+end
+
+local function handleContextMenuClick(x, y)
+    local rect = contextMenuGeometry()
+    local index = y - rect.y - 1
+    if x >= rect.x + 1 and x < rect.x + rect.w - 1 and index >= 1 and index <= #(state.contextMenuItems or CONTEXT_MENU_ITEMS) then
+        invokeContextMenu(index)
+    else
+        closeContextMenu()
+    end
+end
+
+local function handleContextMenuKey(key)
+    local count = #(state.contextMenuItems or CONTEXT_MENU_ITEMS)
+    if key == keys.up then
+        state.contextMenuSelection = math.max(1, state.contextMenuSelection - 1)
+        state.dirty = true
+    elseif key == keys.down then
+        state.contextMenuSelection = math.min(count, state.contextMenuSelection + 1)
+        state.dirty = true
+    elseif key == keys.enter then
+        invokeContextMenu(state.contextMenuSelection)
+    elseif key == keys.escape then
+        closeContextMenu()
+    end
+end
+
+local function openContextMenu(x, y, target)
+    state.launcher = false
+    state.powerMenu = false
+    state.contextMenu = true
+    state.contextMenuTarget = target
+    state.contextMenuItems = contextMenuItemsFor(state.contextMenuTarget)
+    state.contextMenuSelection = 1
+    state.contextMenuAnchorX = math.floor(tonumber(x) or 1)
+    state.contextMenuAnchorY = math.floor(tonumber(y) or 1)
+    contextMenuGeometry()
+    state.dirty = true
+end
+
 local launcherGeometry
 
 local function drawNotifications()
@@ -998,13 +1496,13 @@ local function drawNotifications()
         -- glyph on the left, then the message. Kept to one row so the notification
         -- region-restore model is unchanged.
         local accentColor = item.color
-        local cardBackground = UI.colors.surfaceStrong or UI.colors.surface
+        local cardBackground = UI.colors.surfaceRaised or UI.colors.surfaceStrong or UI.colors.surface
         local glyph = item.severity == "danger" and "!" or item.severity == "warning" and "~"
             or item.severity == "success" and "+" or "i"
         UI.fill(native, x, y, boxWidth, 1, cardBackground)
         UI.fill(native, x, y, 1, 1, accentColor)
         UI.text(native, x + 1, y, glyph, accentColor, cardBackground, 1)
-        UI.text(native, x + 3, y, item.message, UI.colors.text, cardBackground, boxWidth - 4)
+        UI.text(native, x + 3, y, item.message, UI.colors.textPrimary or UI.colors.text, cardBackground, boxWidth - 4)
         state.notificationRects[#state.notificationRects + 1] = { x = x, y = y, w = boxWidth, h = 1 }
         if not state.nextNotificationExpiry or item.expires < state.nextNotificationExpiry then
             state.nextNotificationExpiry = item.expires
@@ -1095,28 +1593,31 @@ local function drawLauncher()
     -- restores can escalate to a full repaint instead of erasing it.
     state.launcherRect = { x = g.panelX, y = g.panelY, w = g.panelWidth + 1, h = g.panelHeight + 1 }
     UI.shadow(native, g.panelX, g.panelY, g.panelWidth, g.panelHeight, 1, UI.colors.shadow)
-    UI.panel(native, g.panelX, g.panelY, g.panelWidth, g.panelHeight, UI.colors.surface, UI.colors.borderStrong)
+    UI.panel(native, g.panelX, g.panelY, g.panelWidth, g.panelHeight, UI.colors.surfaceRaised or UI.colors.surface, UI.colors.borderStrong)
 
     -- Search box pinned at the top.
     UI.fill(native, g.innerX, g.searchY, g.innerWidth, 1, UI.colors.surfaceInset)
     local searchText = state.launcherSearch == "" and "Search apps" or state.launcherSearch
-    local searchColor = state.launcherSearch == "" and (UI.colors.textMuted or UI.colors.muted) or UI.colors.text
+    local searchColor = state.launcherSearch == "" and (UI.colors.textSecondary or UI.colors.textMuted or UI.colors.muted) or UI.colors.textPrimary or UI.colors.text
     if state.launcherSearchFocused and state.launcherSearch ~= "" then searchText = searchText .. "_" end
     UI.text(native, g.innerX + 1, g.searchY, searchText, searchColor, UI.colors.surfaceInset, g.innerWidth - 2)
 
     -- Section heading.
     local heading = state.launcherSearch == "" and "Pinned" or "Search results"
     if config.safeMode then heading = heading .. "  -  Safe Mode" end
-    UI.text(native, g.innerX, g.headingY, heading, UI.colors.textMuted or UI.colors.muted, UI.colors.surface, g.innerWidth)
+    UI.sectionHeader(native, g.innerX, g.headingY, g.innerWidth, heading, {
+        background = UI.colors.surfaceInset,
+        foreground = UI.colors.textSecondary or UI.colors.textMuted or UI.colors.muted,
+    })
 
     -- Pinned/search results as a tile grid (icon over label).
     if #g.items == 0 then
-        UI.text(native, g.innerX, g.gridTop, "No matching apps", UI.colors.textMuted or UI.colors.muted, UI.colors.surface, g.innerWidth)
+        UI.text(native, g.innerX, g.gridTop, "No matching apps", UI.colors.textSecondary or UI.colors.textMuted or UI.colors.muted, UI.colors.surfaceRaised or UI.colors.surface, g.innerWidth)
     else
         for _, tile in ipairs(g.tiles) do
             local active = tile.index == state.launcherSelection
-            local background = active and UI.colors.surfaceSelected or UI.colors.surface
-            local foreground = active and UI.colors.textInverse or UI.colors.text
+            local background = active and (UI.colors.surfaceSelected or UI.colors.accentSoft) or (UI.colors.surface or UI.colors.surfaceBase)
+            local foreground = active and UI.colors.textInverse or UI.colors.textPrimary or UI.colors.text
             UI.fill(native, tile.x, tile.y, tile.w, tile.h, background)
             local available = APP_PATHS[tile.name] and fs.exists(APP_PATHS[tile.name])
             local icon = tostring(APP_META[tile.name].icon or "?")
@@ -1132,7 +1633,7 @@ local function drawLauncher()
 
     -- Optional recent row (mouse quick-launch).
     if g.showRecent then
-        UI.text(native, g.innerX, g.recentLabelY, "Recent", UI.colors.textMuted or UI.colors.muted, UI.colors.surface, g.innerWidth)
+        UI.text(native, g.innerX, g.recentLabelY, "Recent", UI.colors.textSecondary or UI.colors.textMuted or UI.colors.muted, UI.colors.surfaceRaised or UI.colors.surface, g.innerWidth)
         for _, r in ipairs(g.recentRects) do
             UI.fill(native, r.x, r.y, r.w, 1, UI.colors.surfaceInset)
             local icon = tostring(APP_META[r.name].icon or "?")
@@ -1142,10 +1643,10 @@ local function drawLauncher()
     end
 
     -- Footer: user on the left, power button on the right.
-    UI.fill(native, g.innerX, g.footerY, g.innerWidth, 1, UI.colors.surface)
-    UI.text(native, g.userRect.x, g.footerY, "@ " .. tostring(state.user or "-"), UI.colors.text, UI.colors.surface, g.userRect.w)
-    local powerBg = state.powerMenu and UI.colors.surfaceSelected or UI.colors.surface
-    local powerFg = state.powerMenu and UI.colors.textInverse or UI.colors.text
+    UI.fill(native, g.innerX, g.footerY, g.innerWidth, 1, UI.colors.surfaceRaised or UI.colors.surface)
+    UI.text(native, g.userRect.x, g.footerY, "@ " .. tostring(state.user or "-"), UI.colors.textPrimary or UI.colors.text, UI.colors.surfaceRaised or UI.colors.surface, g.userRect.w)
+    local powerBg = state.powerMenu and UI.colors.surfaceSelected or (UI.colors.surfaceRaised or UI.colors.surface)
+    local powerFg = state.powerMenu and UI.colors.textInverse or UI.colors.textPrimary or UI.colors.text
     UI.fill(native, g.powerRect.x, g.powerRect.y, g.powerRect.w, 1, powerBg)
     local powerLabel = UI.clampText(g.powerLabel, g.powerRect.w)
     local powerLabelX = g.powerRect.x + math.max(0, math.floor((g.powerRect.w - #powerLabel) / 2))
@@ -1167,7 +1668,7 @@ local function drawLauncher()
 end
 
 local function drawTaskbar()
-    local barY = math.max(1, height - 2)
+    local barY = taskbarY()
     UI.taskbar(native, width, barY, state.tasks, state.focused, state.launcher, 15, state.mouseX, state.mouseY)
 end
 
@@ -1209,10 +1710,9 @@ end
 local function drawDesktop()
     width, height = native.getSize()
     native.setBackgroundColor(UI.colors.desktop)
-    native.setTextColor(colors.white)
+    native.setTextColor(UI.colors.textPrimary or UI.colors.text)
     native.clear()
-
-    UI.desktopBackground(native, width, height, config.wallpaper)
+    UI.desktopBackground(native, width, height, config.wallpaper, taskbarHeight())
 
     for _, task in ipairs(state.tasks) do
         if not task.minimized and not task.hidden then
@@ -1231,6 +1731,7 @@ local function drawDesktop()
     drawNotifications()
     if state.launcher then drawLauncher() end
     drawTaskbar()
+    if state.contextMenu then drawContextMenu() end
 end
 
 local function hitTask(x, y)
@@ -1267,9 +1768,11 @@ end
 
 launcherGeometry = function()
     local items = launcherItems()
-    local barY = math.max(1, height - 2)
+    local barY = taskbarY()
+    local metrics = shellMetrics()
     -- Centered floating panel above the taskbar, bounded so it stays on-screen.
-    local panelWidth = math.max(24, math.min(50, width - 4))
+    local commandWidth = metrics.tier == "command" and 72 or (metrics.tier == "wide" and 60 or 50)
+    local panelWidth = math.max(24, math.min(commandWidth, width - math.max(2, metrics.outerPadding * 2)))
     local panelHeight = math.max(9, math.min(barY - 2, height - 3))
     local panelX = math.max(1, math.floor((width - panelWidth) / 2) + 1)
     local panelY = math.max(1, barY - panelHeight - 1)
@@ -1294,7 +1797,7 @@ launcherGeometry = function()
     if gridBottom < gridTop then gridBottom = gridTop end
 
     -- Tile grid: icon over label, in as many columns as the width affords.
-    local cols = innerWidth >= 42 and 3 or (innerWidth >= 26 and 2 or 1)
+    local cols = innerWidth >= 62 and 4 or (innerWidth >= 42 and 3 or (innerWidth >= 26 and 2 or 1))
     local tileGap = 1
     local tileWidth = math.max(6, math.floor((innerWidth - (cols - 1) * tileGap) / cols))
     local tileHeight = 2
@@ -1417,7 +1920,18 @@ local function handleMouse(button, x, y)
         -- while the original click can still focus a taskbar item or window.
         closeLauncher()
     end
-    if y >= height - 2 then
+    if button == 2 then
+        local modal = activeModal()
+        if modal then
+            send(modal, { "mouse_click", button, x - modal.x, y - modal.y })
+        else
+            local target = hitTask(x, y)
+            if target then focusTask(target) end
+            openContextMenu(x, y, target)
+        end
+        return
+    end
+    if y >= taskbarY() then
         if activeModal() then return end
         local items = UI.taskbarLayout(width, state.tasks, 15)
         for _, item in ipairs(items) do
@@ -1502,7 +2016,7 @@ local function handleMouse(button, x, y)
             else
                 task.restoreGeometry = { x = task.x, y = task.y, width = task.width, height = task.height }
                 newX, newY = 2, 2
-                newWidth, newHeight = math.max(20, width - 2), math.max(8, height - 4)
+                newWidth, newHeight = math.max(20, width - 2), math.max(8, height - taskbarHeight() - 1)
                 task.maximized = true
             end
             moveWindow(task, newX, newY, newWidth, newHeight)
@@ -1519,6 +2033,32 @@ end
 
 local function dispatch(event)
     local name = event[1]
+    if state.contextMenu then
+        if name == "mouse_click" then
+            state.mouseX, state.mouseY = event[3], event[4]
+            handleContextMenuClick(event[3], event[4])
+            return
+        elseif name == "mouse_move" then
+            state.mouseX, state.mouseY = event[2], event[3]
+            contextMenuHover(event[2], event[3])
+            return
+        elseif name == "key" then
+            handleContextMenuKey(event[2])
+            return
+        elseif name == "mouse_scroll" then
+            handleContextMenuKey(event[2] < 0 and keys.up or keys.down)
+            return
+        elseif name == "char" or name == "paste" or name == "key_up" then
+            return
+        elseif name == "term_resize" then
+            state.dirty = true
+            return
+        end
+        -- Timers, peripheral events, and configuration events still flow to
+        -- applications while the menu is open; repaint the menu above any app
+        -- content they update.
+        state.dirty = true
+    end
     if name == "mouse_click" then
         state.mouseX, state.mouseY = event[3], event[4]
         handleMouse(event[2], event[3], event[4])
@@ -1528,7 +2068,7 @@ local function dispatch(event)
         -- which never overlaps windows, so repaint just that region instead of
         -- clearing the whole terminal. Applications still receive every
         -- movement for their own hover rendering.
-        local inTaskbar = state.mouseY >= height - 2
+        local inTaskbar = state.mouseY >= taskbarY()
         if inTaskbar or state.mouseInTaskbar then state.taskbarDirty = true end
         state.mouseInTaskbar = inTaskbar
         -- Redden the focused window's close button on hover. Only its title row
@@ -1548,7 +2088,7 @@ local function dispatch(event)
         if state.drag then
             local task = state.drag.task
             local newX = math.max(2, math.min(width - task.width, event[3] - state.drag.offsetX))
-            local newY = math.max(2, math.min(height - task.height - 2, event[4] - state.drag.offsetY))
+            local newY = math.max(2, math.min(height - task.height - taskbarHeight() + 1, event[4] - state.drag.offsetY))
             if newX ~= task.x or newY ~= task.y then
                 -- Pass proposed coordinates without mutating task first;
                 -- moveWindow must capture the old rectangle before updating it.
@@ -1716,7 +2256,7 @@ local function showSplash()
     native.setBackgroundColor(UI.colors.desktop)
     native.setTextColor(UI.colors.text)
     native.clear()
-    UI.desktopBackground(native, w, h, config.wallpaper)
+    UI.desktopBackground(native, w, h, config.wallpaper, UI.taskbarHeight(w, h))
     local cy = math.max(2, math.floor(h / 2))
     local brand = "Qalcom OS"
     local bx = math.max(1, math.floor((w - #brand) / 2) + 1)
@@ -1757,7 +2297,7 @@ while true do
             drawTaskbar()
             state.taskbarDirty = false
         end
-        if state.notificationsDirty and not state.launcher then
+        if state.notificationsDirty and not state.launcher and not state.contextMenu then
             drawNotifications()
             state.notificationsDirty = false
         end
@@ -1831,17 +2371,17 @@ spawn("network_service", { hidden = true })
             width, height = native.getSize()
         end
         for _, task in ipairs(state.tasks) do
-            local minimumWidth = math.max(20, width - 2)
-            local minimumHeight = math.max(8, height - 4)
+            local minimumWidth = math.max(20, width - 2 * math.max(1, shellMetrics().outerPadding or 1))
+            local minimumHeight = math.max(8, height - taskbarHeight() - 1)
             local newWidth = math.min(task.width, minimumWidth)
             local newHeight = math.min(task.height, minimumHeight)
             local newX = math.max(2, math.min(task.x, width - newWidth))
-            local newY = math.max(2, math.min(task.y, height - newHeight - 2))
+            local newY = math.max(2, math.min(task.y, height - newHeight - taskbarHeight() + 1))
             if task.restoreGeometry then
                 task.restoreGeometry.width = math.min(task.restoreGeometry.width, minimumWidth)
                 task.restoreGeometry.height = math.min(task.restoreGeometry.height, minimumHeight)
                 task.restoreGeometry.x = math.max(2, math.min(task.restoreGeometry.x, width - task.restoreGeometry.width))
-                task.restoreGeometry.y = math.max(2, math.min(task.restoreGeometry.y, height - task.restoreGeometry.height - 2))
+                task.restoreGeometry.y = math.max(2, math.min(task.restoreGeometry.y, height - task.restoreGeometry.height - taskbarHeight() + 1))
             end
             -- Resize always schedules the full desktop repaint below, so
             -- update the window mapping through the same helper but skip its

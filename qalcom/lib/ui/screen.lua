@@ -12,7 +12,7 @@ function Screen.begin(target, title, _subtitle, options)
     options = options or {}
     local width, height = target.getSize()
     local UI = options.ui
-    target.setBackgroundColor(options.background or (UI and token(UI, "surfaceAlt", colors.white) or colors.white))
+    target.setBackgroundColor(options.background or (UI and token(UI, "surfaceBase", token(UI, "surface", colors.white)) or colors.white))
     target.setTextColor(options.foreground or (UI and token(UI, "text", colors.black) or colors.black))
     target.clear()
     if options.card ~= false and UI then
@@ -26,31 +26,50 @@ function Screen.begin(target, title, _subtitle, options)
     return width, height, 2
 end
 
--- New standard shell. Existing apps can keep using Screen.begin unchanged and
--- migrate incrementally by switching to Screen.shell when their layouts are
--- ready for the shared header/status/footer contract.
+-- Standard responsive shell. The kernel still owns the outer window title bar;
+-- this shell owns the app surface, status rail, tabs, content bounds, and footer.
+-- Apps should use Screen.app rather than drawing a private top-level layout.
 function Screen.shell(target, title, options)
     options = options or {}
     local UI = options.ui
     local width, height = Screen.begin(target, title, options.subtitle, options)
-    local metrics = UI and UI.metrics or {
+    local metrics = UI and (UI.metricsFor and UI.metricsFor(width, height) or UI.metrics) or {
         outerPadding = 2,
         headerHeight = 2,
         footerHeight = 2,
         sectionGap = 1,
     }
     local headerHeight = math.max(1, math.floor(tonumber(options.headerHeight) or metrics.headerHeight))
-    local footerHeight = math.max(0, math.floor(tonumber(options.footerHeight) or metrics.footerHeight))
+    local footerHeight = math.max(0, math.floor(tonumber(options.footerHeight) or (options.footer and metrics.footerHeight or 0)))
     local bodyY = math.min(height + 1, headerHeight + 1)
     local bodyBottom = math.min(height, math.max(bodyY - 1, height - footerHeight))
     local bodyX = math.max(1, math.floor(tonumber(options.bodyX) or metrics.outerPadding))
     local bodyWidth = math.max(0, width - bodyX * 2 + 1)
     local bodyHeight = bodyY <= bodyBottom and bodyBottom - bodyY + 1 or 0
+    local bodySurface = token(UI, "surfaceBase", token(UI, "surface", colors.white))
+    local bodyText = token(UI, "textPrimary", token(UI, "text", colors.black))
+    local secondary = token(UI, "textSecondary", token(UI, "textMuted", colors.gray))
 
-    if UI and options.subtitle and options.subtitle ~= "" and bodyY <= bodyBottom then
-        UI.text(target, bodyX, bodyY, options.subtitle, token(UI, "textMuted", colors.gray), token(UI, "surfaceAlt", colors.white), bodyWidth)
+    local function consumeRow()
         bodyY = bodyY + 1
         bodyHeight = math.max(0, bodyBottom - bodyY + 1)
+    end
+
+    if UI and options.subtitle and options.subtitle ~= "" and bodyY <= bodyBottom then
+        UI.text(target, bodyX, bodyY, options.subtitle, secondary, bodySurface, bodyWidth)
+        consumeRow()
+    end
+
+    -- Every migrated app gets the same status rail directly below its title:
+    -- quiet for normal state, but still visibly distinct from content and able to
+    -- carry warning/success colors without each app inventing its own chrome.
+    if UI and options.status and options.status ~= "" and bodyY <= bodyBottom then
+        local statusBackground = options.statusBackground or token(UI, "surfaceInset", token(UI, "surfaceAlt", colors.lightGray))
+        local statusColor = options.statusColor or secondary
+        UI.fill(target, bodyX, bodyY, bodyWidth, 1, statusBackground)
+        UI.fill(target, bodyX, bodyY, 1, 1, options.statusAccent or token(UI, "accent", colors.blue))
+        UI.text(target, bodyX + 2, bodyY, options.status, statusColor, statusBackground, math.max(1, bodyWidth - 2))
+        consumeRow()
     end
 
     local tabs = options.tabs
@@ -64,36 +83,72 @@ function Screen.shell(target, title, options)
             local active = index == (options.activeTab or 1)
             UI.button(target, x, bodyY, currentWidth, label, active, {
                 height = 1,
+                variant = active and "accent" or "subtle",
                 activeBackground = token(UI, "accent", colors.blue),
                 activeForeground = token(UI, "textInverse", colors.white),
                 background = token(UI, "surfaceInset", colors.lightGray),
-                foreground = token(UI, "text", colors.black),
+                foreground = bodyText,
             })
             tabRects[index] = { x = x, y = bodyY, width = currentWidth, height = 1, index = index, value = tab }
         end
-        bodyY = bodyY + 2
-        bodyHeight = math.max(0, bodyBottom - bodyY + 1)
-    end
-
-    if UI and options.status and bodyY <= bodyBottom then
-        local statusY = math.max(bodyY, bodyBottom - 1)
-        UI.text(target, bodyX, statusY, options.status, token(UI, "textMuted", colors.gray), token(UI, "surface", colors.white), bodyWidth)
-        bodyBottom = math.max(bodyY - 1, statusY - 1)
-        bodyHeight = bodyY <= bodyBottom and bodyBottom - bodyY + 1 or 0
+        consumeRow()
+        if bodyY <= bodyBottom then consumeRow() end
     end
 
     if UI and type(options.footer) == "table" and height >= 1 then
         local footerText = table.concat(options.footer, "   ")
-        UI.text(target, bodyX, height, footerText, token(UI, "textSubtle", colors.gray), token(UI, "surface", colors.white), bodyWidth)
+        local footerBackground = options.footerBackground or bodySurface
+        UI.fill(target, bodyX, height, bodyWidth, 1, footerBackground)
+        UI.text(target, bodyX, height, footerText, token(UI, "textSubtle", colors.gray), footerBackground, bodyWidth)
     end
 
     return {
         width = width,
         height = height,
+        metrics = metrics,
         body = { x = bodyX, y = bodyY, width = bodyWidth, height = bodyHeight },
         tabs = tabRects,
         footer = { x = bodyX, y = height, width = bodyWidth, height = 1 },
     }
+end
+
+-- Canonical entry point for applications. Keeping this tiny wrapper separate
+-- from Screen.shell makes the migration explicit and gives future apps one
+-- stable contract: shell.body is the only area they should draw into.
+function Screen.app(target, title, options)
+    options = options or {}
+    options.ui = options.ui or dofile("/qalcom/lib/ui.lua")
+    return Screen.shell(target, title, options)
+end
+
+function Screen.bodyRect(shell, padding)
+    local body = shell and shell.body or {}
+    padding = math.max(0, math.floor(tonumber(padding) or 0))
+    return {
+        x = body.x + padding,
+        y = body.y + padding,
+        width = math.max(0, body.width - padding * 2),
+        height = math.max(0, body.height - padding * 2),
+    }
+end
+
+function Screen.splitRect(shell, ratio, gap)
+    local body = shell and shell.body or {}
+    ratio = math.max(0, math.min(1, tonumber(ratio) or 0.5))
+    gap = math.max(0, math.floor(tonumber(gap) or (shell.metrics and shell.metrics.sectionGap or 1)))
+    local available = math.max(0, body.width - gap)
+    local leftWidth = math.floor(available * ratio)
+    return {
+        left = { x = body.x, y = body.y, width = leftWidth, height = body.height },
+        right = { x = body.x + leftWidth + gap, y = body.y, width = math.max(0, body.width - leftWidth - gap), height = body.height },
+    }
+end
+
+function Screen.section(target, UI, rect, label, options)
+    if not rect or rect.width < 1 or rect.height < 1 then return end
+    options = options or {}
+    UI.sectionHeader(target, rect.x, rect.y, rect.width, label, options)
+    return { x = rect.x, y = rect.y + 1, width = rect.width, height = math.max(0, rect.height - 1) }
 end
 
 function Screen.emptyState(target, UI, rect, title, detail, options)
@@ -119,7 +174,7 @@ function Screen.notice(target, UI, rect, message, kind)
 end
 
 function Screen.card(target, UI, x, y, width, height, title)
-    UI.card(target, x, y, width, height, title, token(UI, "accentSoft", UI.colors.surfaceAlt), true)
+    UI.card(target, x, y, width, height, title, token(UI, "accentSoft", token(UI, "surfaceInset", UI.colors.surfaceAlt)), true)
 end
 
 return Screen

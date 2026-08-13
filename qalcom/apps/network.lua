@@ -53,8 +53,12 @@ return function(ctx)
 
     local function render()
         local width, height = ctx.win.getSize()
-        local _, _, start = Screen.begin(ctx.win, "Network Operations", nil, { ui = UI })
-        UI.text(ctx.win, 2, start, editing and ("Edit " .. tostring(editField) .. ": " .. input .. "_") or status, UI.colors.muted, UI.colors.surface, width - 3)
+        local shell = Screen.app(ctx.win, "Network Operations", {
+            ui = UI,
+            status = editing and ("Edit " .. tostring(editField) .. ": " .. input .. "_") or status,
+            statusColor = UI.colors.textSecondary or UI.colors.muted,
+        })
+        local start = shell.body.y
         local row = start + 1
         local footer = height + 1
         local function line(label, value, color)
@@ -72,7 +76,7 @@ return function(ctx)
         line("View", tab == "nodes" and "trusted nodes" or "recent audit")
         if row < footer then row = row + 1 end
         if tab == "nodes" then
-            if row < footer then UI.text(ctx.win, 2, row, "TRUSTED NODES", UI.colors.accent, UI.colors.surface, width - 3); row = row + 1 end
+            if row < footer then UI.sectionHeader(ctx.win, 2, row, width - 3, "TRUSTED NODES", { background = UI.colors.surfaceInset, foreground = UI.colors.accent }); row = row + 1 end
             if #nodes.nodes == 0 and row < footer then
                 UI.text(ctx.win, 3, row, "No nodes enrolled; pairing requires an explicit local record.", UI.colors.muted, UI.colors.surface, width - 5)
             else
@@ -95,7 +99,7 @@ return function(ctx)
                 end
             end
         else
-            if row < footer then UI.text(ctx.win, 2, row, "RECENT AUTHENTICATED REQUEST AUDIT", UI.colors.accent, UI.colors.surface, width - 3); row = row + 1 end
+            if row < footer then UI.sectionHeader(ctx.win, 2, row, width - 3, "RECENT AUTHENTICATED REQUEST AUDIT", { background = UI.colors.surfaceInset, foreground = UI.colors.accent }); row = row + 1 end
             for index = #auditLines, 1, -1 do
                 if row >= footer then break end
                 UI.text(ctx.win, 3, row, auditLines[index], UI.colors.text, UI.colors.surface, width - 5)

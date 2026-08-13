@@ -29,7 +29,8 @@ return function(ctx)
 
     local function render()
         local width, height = ctx.win.getSize()
-        local _, _, contentStart = Screen.begin(ctx.win, "Terminal", nil, { ui = UI })
+        local shell = Screen.app(ctx.win, "Terminal", { ui = UI })
+        local contentStart = shell.body.y
         local usable = math.max(1, height - contentStart)
         local first = math.max(1, #lines - usable + 1)
         for row = 1, usable do

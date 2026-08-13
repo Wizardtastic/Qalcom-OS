@@ -30,8 +30,12 @@ return function(ctx)
     -- mode fails to engage, this message stays visible with an explanation.
     local function renderInfo(lines)
         local width, height = ctx.win.getSize()
-        local _, _, start = Screen.begin(ctx.win, "Fluent Desktop", nil, { ui = UI })
-        UI.text(ctx.win, 2, start, "256-color Windows 11 preview", UI.colors.accent, UI.colors.surface, width - 3)
+        local shell = Screen.app(ctx.win, "Fluent Desktop", {
+            ui = UI,
+            status = "256-color Windows 11 preview",
+            statusColor = UI.colors.accent,
+        })
+        local start = shell.body.y
         local y = start + 2
         for _, line in ipairs(lines) do
             if y < height then

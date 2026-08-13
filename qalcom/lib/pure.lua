@@ -129,6 +129,47 @@ function Pure.colorChannels(hex)
     return r / 255, g / 255, b / 255
 end
 
+local function layoutClamp(value, minimum, maximum)
+    return math.max(minimum, math.min(maximum, value))
+end
+
+function Pure.layoutTier(screenWidth, screenHeight)
+    local width = math.max(0, math.floor(tonumber(screenWidth) or 0))
+    local height = math.max(0, math.floor(tonumber(screenHeight) or 0))
+    if width >= 160 and height >= 60 then return "command" end
+    if width >= 100 and height >= 36 then return "wide" end
+    if width >= 56 and height >= 21 then return "standard" end
+    return "compact"
+end
+
+function Pure.responsiveMetrics(screenWidth, screenHeight)
+    local width = math.max(1, math.floor(tonumber(screenWidth) or 1))
+    local height = math.max(1, math.floor(tonumber(screenHeight) or 1))
+    local short = math.min(width, height)
+    local tier = Pure.layoutTier(width, height)
+    local headerHeight = (tier == "compact" or height < 28) and 1 or 2
+    local footerHeight = tier == "compact" and 1 or (tier == "standard" and 1 or 2)
+    local taskbarHeight = tier == "compact" and 1 or (tier == "command" and 3 or 2)
+    return {
+        tier = tier,
+        width = width,
+        height = height,
+        outerPadding = layoutClamp(math.floor(short / 32), 1, 3),
+        contentPadding = layoutClamp(math.floor(short / 30), 1, 2),
+        sectionGap = layoutClamp(math.floor(short / 28), 1, 2),
+        navigationWidth = layoutClamp(math.floor(width * 0.16), 16, 32),
+        inspectorWidth = layoutClamp(math.floor(width * 0.18), 24, 36),
+        headerHeight = headerHeight,
+        footerHeight = footerHeight,
+        taskbarHeight = taskbarHeight,
+        compactRow = 1,
+        standardRow = tier == "command" and 2 or 1,
+        minButtonWidth = 7,
+        minContentWidth = 4,
+        minContentHeight = 2,
+    }
+end
+
 function Pure.fitWindow(screenWidth, screenHeight, desiredWidth, desiredHeight, minimumWidth, minimumHeight, margin)
     margin = margin or 1
     local availableWidth = math.max(1, screenWidth - margin * 2)

@@ -38,8 +38,12 @@ return function(ctx)
 
     local function render()
         local width, height = ctx.win.getSize()
-        local _, _, contentStart = Screen.begin(ctx.win, UI.safeName(path), nil, { ui = UI })
-        UI.text(ctx.win, 2, contentStart, status .. (dirty and " *" or ""), UI.colors.muted, UI.colors.surface, width - 3)
+        local shell = Screen.app(ctx.win, UI.safeName(path), {
+            ui = UI,
+            status = status .. (dirty and " *" or ""),
+            statusColor = UI.colors.textSecondary or UI.colors.muted,
+        })
+        local contentStart = shell.body.y
         local visible = math.max(1, height - contentStart)
         scroll = math.max(1, math.min(scroll, math.max(1, #lines - visible + 1)))
         for row = 1, visible do

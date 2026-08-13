@@ -8,6 +8,8 @@ Qalcom OS is a self-contained Lua desktop environment for [ComputerCraft:Tweaked
 
 This repository is the source tree copied onto a CC:T computer. It does not use a package manager, build step, or external Lua dependency.
 
+The visual system and staged resolution-independent UI overhaul are specified in [UI_DESIGN.md](UI_DESIGN.md). The primary design surface is a 204 x 76 terminal, while the supported compact floor remains 30 x 14.
+
 ## What is included
 
 - A CraftOS bootloader with a safe recovery prompt.
@@ -15,7 +17,7 @@ This repository is the source tree copied onto a CC:T computer. It does not use 
 - A native UI toolkit that works with CC:T's normal 16-color terminal API and can optionally use CC:Graphics for the visual preview.
 - First-boot account creation, login, account migration, roles, capability decisions, Safe Mode, auditing, and local recovery tools.
 - Managed filesystem, redstone, computer-label, peripheral-inspection, modem, and power helpers.
-- Read-only peripheral discovery and normalized telemetry for supported Aeronautics, Create: Propulsion, Create Radar, Create Aero Radar, and Create: Big Cannons evidence.
+- Read-only peripheral discovery and normalized telemetry for supported Aeronautics, Create: Propulsion, Create Radar, Create Aero Radar, and Create: Big Cannons evidence, with compact single-pane inspection layouts.
 - An opt-in authenticated/encrypted modem transport with paired nodes, counters, replay protection, request allowlists, rate limits, and bounded audit/state files.
 - A guarded CBC Fire Control app that only accepts verified cannon-mount telemetry, requires confirmation for aim/fire, uses geometric line-of-sight angles, and automatically clears fire pulses.
 
@@ -72,7 +74,7 @@ The desktop requires a terminal at least `30 x 14`. Individual applications have
 | --- | --- |
 | Fluent Desktop | Optional CC:Graphics/CraftOS-PC 256-color preview on an Advanced (color) computer. Falls back to a text explanation when graphics mode is unavailable, the terminal is not color-capable, or the extended palette is not accepted. |
 | Terminal | Managed filesystem shell, identity/version information, logout, and confirmed power commands. |
-| File Explorer | Browse, view, create folders, copy, paste, and delete through managed filesystem helpers. |
+| File Explorer | Browse, view, create folders, rename/delete selected items, copy/paste, open files with the Editor, and use the global right-click menu to create collision-safe folders, `.txt` files, and `.lua` files through managed filesystem helpers. |
 | Text Viewer | View and edit text files; `Ctrl+S` saves when the role and Safe Mode policy allow it. |
 | Calculator | Bounded arithmetic calculator with keyboard and mouse input. |
 | Peripheral Manager | Inspect attached peripherals, safe method metadata, adapter status, aliases, trusted markers, and blocklist markers. |
@@ -167,7 +169,7 @@ qalcom/
   apps/                     Built-in application coroutines
   lib/                      Runtime services and pure/helper modules
     ui.lua                  Native drawing primitives and shell chrome
-    ui/                     Screen, animation, palette, hit-testing, graphics helpers
+    ui/                     Screen app-shell, animation, palette, hit-testing, graphics helpers
     auth.lua                Account storage, migration, login UI
     config.lua              Settings, themes, wallpaper, Safe Mode
     roles.lua               Role definitions and capability policy source
@@ -183,6 +185,7 @@ qalcom/
     calculator.lua           Pure calculator state machine
 tests/pure_test.lua         Offline helper regression tests
 TESTING.md                  Manual CC:T checklist and historical regression notes
+UI_DESIGN.md                Visual tokens, responsive layout, and UI overhaul plan
 AGENTS.md                   Maintenance notes for future coding agents
 ```
 

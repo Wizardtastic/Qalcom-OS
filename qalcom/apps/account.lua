@@ -38,8 +38,12 @@ return function(ctx)
 
     local function render()
         local width, height = ctx.win.getSize()
-        local _, _, contentStart = Screen.begin(ctx.win, "Account", nil, { ui = UI })
-        UI.text(ctx.win, 2, contentStart, managing and "Administrator role management" or status, UI.colors.muted, UI.colors.surface, width - 3)
+        local shell = Screen.app(ctx.win, "Account", {
+            ui = UI,
+            status = managing and "Administrator role management" or status,
+            statusColor = UI.colors.textSecondary or UI.colors.muted,
+        })
+        local contentStart = shell.body.y
         contentStart = contentStart + 1
         if not managing then
             local compact = height < 16

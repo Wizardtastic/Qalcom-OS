@@ -5,7 +5,7 @@ return function(ctx)
     local cwd = "/"
     local entries = {}
     local selected = 1
-    local clipboard = nil
+    local clipboard = ctx.getFileClipboard and ctx:getFileClipboard() or nil
     local status = "Ready"
 
     local function absolute(path)
@@ -31,9 +31,21 @@ return function(ctx)
     end
 
     local function render()
+        ctx.contextPath = cwd
+        local selectedEntry = entries[selected]
+        ctx.contextSelection = selectedEntry and {
+            name = selectedEntry.name,
+            path = selectedEntry.path,
+            dir = selectedEntry.dir == true,
+            parent = selectedEntry.parent == true,
+        } or nil
         local width, height = ctx.win.getSize()
-        local _, _, contentStart = Screen.begin(ctx.win, "File Explorer", nil, { ui = UI })
-        UI.text(ctx.win, 2, contentStart, cwd .. "  |  " .. status, UI.colors.muted, UI.colors.surface, width - 3)
+        local shell = Screen.app(ctx.win, "File Explorer", {
+            ui = UI,
+            status = cwd .. "  |  " .. status,
+            statusColor = UI.colors.textSecondary or UI.colors.muted,
+        })
+        local contentStart = shell.body.y
 
         local visible = math.max(1, height - contentStart)
         local start = math.max(1, selected - visible + 1)
@@ -122,24 +134,28 @@ return function(ctx)
     local function copySelected()
         local item = selectedItem()
         if item and not item.parent then
-            clipboard = item.path
+            clipboard = { path = item.path, name = item.name, directory = item.dir == true }
+            if ctx.setFileClipboard then ctx:setFileClipboard(clipboard) end
             status = "Copied " .. item.name
             render()
         end
     end
 
     local function pasteClipboard()
-        local clipboardInfo = clipboard and ctx:readPath(clipboard)
-        if not clipboard or not clipboardInfo or not clipboardInfo.exists then status = "Clipboard is empty"; render(); return end
-        local destination = fs.combine(cwd, fs.getName(clipboard))
+        if ctx.getFileClipboard then clipboard = ctx:getFileClipboard() end
+        local sourcePath = clipboard and clipboard.path
+        local sourceName = clipboard and (clipboard.name or fs.getName(sourcePath))
+        local clipboardInfo = sourcePath and ctx:readPath(sourcePath)
+        if not sourcePath or not clipboardInfo or not clipboardInfo.exists then status = "Clipboard is empty"; render(); return end
+        local destination = fs.combine(cwd, sourceName)
         local destinationInfo = ctx:readPath(destination)
         if destinationInfo and destinationInfo.exists then status = "Already exists: " .. fs.getName(destination); render(); return end
-        if clipboardInfo.directory and (destination == clipboard or destination:sub(1, #clipboard + 1) == clipboard .. "/") then
+        if clipboardInfo.directory and (destination == sourcePath or destination:sub(1, #sourcePath + 1) == sourcePath .. "/") then
             status = "Cannot paste a folder into itself"
             render()
             return
         end
-        local ok, result = ctx:copyPath(clipboard, destination)
+        local ok, result = ctx:copyPath(sourcePath, destination)
         if not ok then
             status = "Paste failed: " .. tostring(result or "filesystem error")
             render()
@@ -165,8 +181,12 @@ return function(ctx)
             elseif value == keys.d then deleteSelected()
             elseif value == keys.c then copySelected()
             elseif value == keys.v then pasteClipboard()
-            elseif value == keys.r then status = "Rename is planned for the next patch"; render()
+            elseif value == keys.r then status = "Right-click an item to rename"; render()
             end
+        elseif event == "qalcom_context_refresh" then
+            refresh()
+            status = "Refreshed"
+            render()
         elseif event == "mouse_click" then
             local row = y - 2
             local visible = math.max(1, select(2, ctx.win.getSize()) - 2)

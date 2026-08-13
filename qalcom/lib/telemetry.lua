@@ -107,6 +107,7 @@ function Telemetry.snapshot(ctx, devices, now)
     for _, device in ipairs(devices or {}) do
         if #records >= Telemetry.maxRecords then break end
         local health, failure = candidateStatus(device)
+        local kind = adapterKind(device)
         local record = {
             id = clean(device.name, 48),
             alias = clean(device.alias or device.name, 48),

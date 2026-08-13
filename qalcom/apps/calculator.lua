@@ -1,4 +1,5 @@
 local UI = dofile("/qalcom/lib/ui.lua")
+local Screen = dofile("/qalcom/lib/ui/screen.lua")
 local Calculator = dofile("/qalcom/lib/calculator.lua")
 
 return function(ctx)
@@ -37,37 +38,42 @@ return function(ctx)
         return ""
     end
 
-    local function layout()
-        local width, height = ctx.win.getSize()
-        local displayRows = height >= 15 and 3 or 2
-        local gridTop = displayRows + 2
+    local function layout(body)
+        local width = body.width
+        local displayRows = body.height >= 15 and 3 or 2
+        local gridTop = body.y + displayRows + 1
         local gapX = width >= 30 and 1 or 0
-        local keyWidth = math.max(3, math.floor((width - 2 - gapX * 3) / 4))
+        local keyWidth = math.max(3, math.floor((width - gapX * 3) / 4))
         local gridWidth = keyWidth * 4 + gapX * 3
-        local startX = math.max(2, math.floor((width - gridWidth) / 2) + 1)
-        local available = math.max(1, height - gridTop + 1)
+        local startX = body.x + math.max(0, math.floor((width - gridWidth) / 2))
+        local available = math.max(1, body.y + body.height - gridTop + 1)
         local rowStride = math.max(1, math.floor(available / 5))
         local keyHeight = math.max(1, rowStride - (rowStride >= 2 and 1 or 0))
-        return width, height, startX, gridTop, keyWidth, keyHeight, gapX, rowStride, displayRows
+        return startX, gridTop, keyWidth, keyHeight, gapX, rowStride, displayRows
     end
 
     local function render()
-        local width, height, startX, gridTop, keyWidth, keyHeight, gapX, rowStride, displayRows = layout()
-        ctx.win.setBackgroundColor(UI.colors.surface)
-        ctx.win.setTextColor(UI.colors.text)
-        ctx.win.clear()
+        local width, height = ctx.win.getSize()
+        local shell = Screen.app(ctx.win, "Calculator", {
+            ui = UI,
+            footer = { "Enter = equals", "Esc = close" },
+        })
+        local body = shell.body
+        local startX, gridTop, keyWidth, keyHeight, gapX, rowStride, displayRows = layout(body)
         buttons = {}
 
         -- Display: a dark inset panel with a muted expression line above the large
         -- right-aligned result.
-        UI.fill(ctx.win, 1, 1, width, displayRows + 1, UI.colors.surfaceInset)
+        UI.fill(ctx.win, body.x, body.y, body.width, math.min(displayRows, body.height), UI.colors.surfaceInset)
         local expr = expression()
         if expr ~= "" then
-            UI.text(ctx.win, width - #expr - 1, 1, expr, UI.colors.textMuted or UI.colors.muted, UI.colors.surfaceInset, #expr + 1)
+            local exprWidth = math.min(#expr + 1, body.width)
+            UI.text(ctx.win, body.x + body.width - exprWidth, body.y, expr, UI.colors.textMuted or UI.colors.muted, UI.colors.surfaceInset, exprWidth)
         end
         local display = Calculator.display(state)
         local resultColor = state.error and UI.colors.danger or UI.colors.text
-        UI.text(ctx.win, width - #display - 1, displayRows, display, resultColor, UI.colors.surfaceInset, #display + 1)
+        local resultWidth = math.min(#display + 1, body.width)
+        UI.text(ctx.win, body.x + body.width - resultWidth, body.y + displayRows - 1, display, resultColor, UI.colors.surfaceInset, resultWidth)
 
         for row = 1, #keyLabels do
             for column = 1, 4 do

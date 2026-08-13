@@ -23,7 +23,8 @@ return function(ctx)
 
     local function render()
         local width, height = ctx.win.getSize()
-        local _, _, contentStart = Screen.begin(ctx.win, "Qalcom Diagnostics", nil, { ui = UI })
+        local shell = Screen.app(ctx.win, "Qalcom Diagnostics", { ui = UI })
+        local contentStart = shell.body.y
         local visible = math.max(1, height - contentStart + 1)
         scroll = math.max(1, math.min(scroll, math.max(1, #lines - visible + 1)))
         for row = 1, visible do
@@ -31,8 +32,10 @@ return function(ctx)
             if line then
                 local heading = line == "Boot stages" or line == "Recent crashes"
                 if heading then
-                    UI.fill(ctx.win, 2, contentStart + row - 1, width - 3, 1, UI.colors.surface)
-                    UI.text(ctx.win, 2, contentStart + row - 1, line:upper(), UI.colors.accent, UI.colors.surface, width - 3)
+                    UI.sectionHeader(ctx.win, 2, contentStart + row - 1, width - 3, line:upper(), {
+                        background = UI.colors.surfaceInset,
+                        foreground = UI.colors.accent,
+                    })
                 else
                     UI.listRow(ctx.win, 2, contentStart + row - 1, width - 3, line, nil, false, { background = UI.colors.surface })
                 end

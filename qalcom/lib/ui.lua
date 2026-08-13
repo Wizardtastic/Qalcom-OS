@@ -1,5 +1,6 @@
 local UI = {}
 UI.version = dofile("/qalcom/version.lua")
+local Pure = dofile("/qalcom/lib/pure.lua")
 
 -- The native UI deliberately owns drawing primitives only. The kernel continues to
 -- own event routing, processes, windows, sessions, and recovery.
@@ -60,22 +61,66 @@ UI.colors = {
     dangerText = colors.white,
     warningText = colors.black,
 
+    -- Canonical design tokens. Legacy names above remain stable for migrated apps.
+    desktopInset = colors.darkBlue,
+    surfaceRaised = colors.white,
+    textPrimary = colors.black,
+    textSecondary = colors.gray,
+    textDisabled = colors.gray,
+    loginBackdrop = colors.blue,
+    loginSurface = colors.white,
+    loginBorder = colors.lightBlue,
+    loginText = colors.black,
+    loginMuted = colors.gray,
+
     -- Compatibility aliases used by older shell code.
     lightBlue = colors.lightBlue,
 }
 
-UI.metrics = {
-    outerPadding = 2,
-    contentPadding = 1,
-    sectionGap = 1,
-    compactRow = 1,
-    standardRow = 2,
-    headerHeight = 2,
-    footerHeight = 2,
-    minButtonWidth = 7,
-    minContentWidth = 4,
-    minContentHeight = 2,
-}
+function UI.syncTokens(source)
+    -- Keep the canonical design vocabulary and the historical application-facing
+    -- names synchronized after every theme change. `source` is normally a theme
+    -- definition, not a screen-specific override.
+    source = source or UI.colors
+    local c = UI.colors
+    local function pick(name, fallback, ...)
+        if source[name] ~= nil then return source[name] end
+        for index = 1, select("#", ...) do
+            local alias = select(index, ...)
+            if source[alias] ~= nil then return source[alias] end
+        end
+        return c[fallback] or c[name]
+    end
+    c.desktopInset = pick("desktopInset", "desktopDark", "desktopDark", "desktop")
+    c.surfaceRaised = pick("surfaceRaised", "surfaceStrong", "surfaceStrong", "surface")
+    c.surfaceBase = pick("surfaceBase", "surface", "surface")
+    c.textPrimary = pick("textPrimary", "text", "text")
+    c.textSecondary = pick("textSecondary", "textMuted", "textMuted", "muted")
+    c.textDisabled = pick("textDisabled", "textMuted", "textMuted", "muted")
+    c.loginBackdrop = pick("loginBackdrop", "blue", "accentStrong", "accent", "desktop")
+    c.loginSurface = source.loginSurface or (source.type == "dark" and colors.white)
+        or pick("loginSurface", "surfaceRaised", "surfaceRaised", "surfaceStrong", "surface")
+    c.loginBorder = pick("loginBorder", "borderStrong", "borderStrong", "focus", "accent")
+    c.loginText = source.loginText or (source.type == "dark" and colors.black)
+        or pick("loginText", "textPrimary", "text", "text")
+    c.loginMuted = pick("loginMuted", "textSecondary", "textMuted", "muted")
+    return c
+end
+
+UI.syncTokens(UI.colors)
+UI.metrics = Pure.responsiveMetrics(30, 14)
+
+function UI.layoutTier(width, height)
+    return Pure.layoutTier(width, height)
+end
+
+function UI.metricsFor(width, height)
+    return Pure.responsiveMetrics(width, height)
+end
+
+function UI.taskbarHeight(width, height)
+    return UI.metricsFor(width, height).taskbarHeight
+end
 
 local Animation = dofile("/qalcom/lib/ui/animation.lua")
 local Hit = dofile("/qalcom/lib/ui/hit.lua")
@@ -108,8 +153,9 @@ end
 function UI.layoutPadded(x, y, width, height, paddingX, paddingY)
     width = math.max(0, math.floor(tonumber(width) or 0))
     height = math.max(0, math.floor(tonumber(height) or 0))
-    paddingX = math.max(0, math.floor(tonumber(paddingX) or UI.metrics.contentPadding))
-    paddingY = math.max(0, math.floor(tonumber(paddingY) or UI.metrics.contentPadding))
+    local metrics = UI.metricsFor(width, height)
+    paddingX = math.max(0, math.floor(tonumber(paddingX) or metrics.contentPadding))
+    paddingY = math.max(0, math.floor(tonumber(paddingY) or metrics.contentPadding))
     local contentWidth = math.max(0, width - paddingX * 2)
     local contentHeight = math.max(0, height - paddingY * 2)
     return x + paddingX, y + paddingY, contentWidth, contentHeight
@@ -119,7 +165,8 @@ function UI.layoutSplit(x, y, width, height, ratio, vertical, gap)
     width = math.max(0, math.floor(tonumber(width) or 0))
     height = math.max(0, math.floor(tonumber(height) or 0))
     ratio = math.max(0, math.min(1, tonumber(ratio) or 0.5))
-    gap = math.max(0, math.floor(tonumber(gap) or UI.metrics.sectionGap))
+    local metrics = UI.metricsFor(width, height)
+    gap = math.max(0, math.floor(tonumber(gap) or metrics.sectionGap))
     local available = math.max(0, (vertical and height or width) - gap)
     gap = math.min(gap, vertical and height or width)
     available = math.max(0, (vertical and height or width) - gap)
@@ -137,10 +184,11 @@ function UI.layoutContent(width, height, options)
     options = options or {}
     width = math.max(0, math.floor(tonumber(width) or 0))
     height = math.max(0, math.floor(tonumber(height) or 0))
-    local left = math.max(1, math.floor(tonumber(options.x) or UI.metrics.outerPadding))
-    local top = math.max(1, math.floor(tonumber(options.y) or UI.metrics.headerHeight + 1))
-    local right = math.min(width, math.max(left, math.floor(tonumber(options.right) or width - UI.metrics.outerPadding)))
-    local bottom = math.min(height, math.max(top, math.floor(tonumber(options.bottom) or height - UI.metrics.footerHeight)))
+    local metrics = options.metrics or UI.metricsFor(width, height)
+    local left = math.max(1, math.floor(tonumber(options.x) or metrics.outerPadding))
+    local top = math.max(1, math.floor(tonumber(options.y) or metrics.headerHeight + 1))
+    local right = math.min(width, math.max(left, math.floor(tonumber(options.right) or width - metrics.outerPadding)))
+    local bottom = math.min(height, math.max(top, math.floor(tonumber(options.bottom) or height - metrics.footerHeight)))
     if left > width or top > height or left > right or top > bottom then
         return left, top, 0, 0
     end
@@ -197,8 +245,8 @@ function UI.center(target, y, value, foreground, background, width)
 end
 
 function UI.clearSurface(target, background)
-    target.setBackgroundColor(background or UI.colors.surface)
-    target.setTextColor(UI.colors.text)
+    target.setBackgroundColor(background or UI.colors.surfaceBase or UI.colors.surface)
+    target.setTextColor(UI.colors.textPrimary or UI.colors.text)
     target.clear()
 end
 
@@ -250,10 +298,18 @@ end
 
 function UI.card(target, x, y, width, height, title, accent, withShadow)
     if withShadow ~= false then UI.shadow(target, x, y, width, height, 1) end
-    UI.panel(target, x, y, width, height, UI.colors.surfaceStrong, UI.colors.border)
-    if title and height >= 3 then
-        local headerBackground = accent or UI.colors.section
-        local headerForeground = headerBackground == UI.colors.section and UI.colors.sectionText or UI.colors.textInverse
+    UI.panel(target, x, y, width, height, UI.colors.surfaceRaised or UI.colors.surfaceStrong, UI.colors.border)
+    if title and height >= 3 and width >= 3 then
+        -- Structural headers are quiet by default. An explicit accent is reserved
+        -- for an active/primary card, keeping warning colors semantic.
+        local headerBackground = accent or UI.colors.surfaceInset or UI.colors.surfaceAlt
+        local strongHeader = accent and (accent == UI.colors.accent or accent == UI.colors.accentSoft
+            or accent == UI.colors.accentStrong or accent == UI.colors.danger or accent == UI.colors.dangerSoft
+            or accent == UI.colors.success or accent == UI.colors.successSoft or accent == UI.colors.warning
+            or accent == UI.colors.warningSoft)
+        local headerForeground = (headerBackground == UI.colors.warning or headerBackground == UI.colors.warningSoft)
+            and (UI.colors.warningText or UI.colors.text)
+            or ((strongHeader and UI.colors.textInverse) or UI.colors.text)
         UI.fill(target, x + 1, y + 1, width - 2, 1, headerBackground)
         UI.text(target, x + 2, y + 1, title, headerForeground, headerBackground, width - 4)
     end
@@ -301,7 +357,12 @@ function UI.button(target, x, y, width, label, active, options)
     local labelText = clampText(label, width)
     local labelX = x + math.max(0, math.floor((width - #labelText) / 2))
     UI.text(target, labelX, textY, labelText, foreground, background, #labelText)
-    return { x = x, y = y, width = width, height = height, label = label, disabled = options.disabled == true }
+    if options.focused then
+        -- The marker is painted last so it remains visible even when the button
+        -- label is centered against a one-cell terminal row.
+        UI.fill(target, x, y, 1, height, UI.colors.focus or UI.colors.accent)
+    end
+    return { x = x, y = y, width = width, height = height, label = label, disabled = options.disabled == true, focused = options.focused == true }
 end
 
 function UI.inBounds(mouseX, mouseY, x, y, width, height)
@@ -312,19 +373,22 @@ function UI.hitButton(buttons, mouseX, mouseY)
     return Hit.button(buttons, mouseX, mouseY)
 end
 
-function UI.input(target, x, y, width, label, value, active, secret)
+function UI.input(target, x, y, width, label, value, active, secret, options)
+    options = options or {}
     x = math.floor(tonumber(x) or 1)
     y = math.floor(tonumber(y) or 1)
     width = math.max(4, math.floor(tonumber(width) or 4))
-    local background = active and UI.colors.surfaceSelected or UI.colors.surfaceInset
-    local foreground = active and UI.colors.textInverse or UI.colors.text
-    UI.text(target, x, y - 1, label, UI.colors.muted, UI.colors.surface)
+    local surface = options.surface or UI.colors.surface
+    local background = active and (options.activeBackground or UI.colors.surfaceSelected or UI.colors.surfaceInset) or (options.background or UI.colors.surfaceInset)
+    local foreground = active and (options.activeForeground or UI.colors.textInverse or UI.colors.text) or (options.foreground or UI.colors.text)
+    UI.text(target, x, y - 1, label, UI.colors.textSecondary or UI.colors.muted, surface)
     UI.fill(target, x, y, width, 1, background)
     local display = secret and string.rep("*", #tostring(value or "")) or tostring(value or "")
     UI.text(target, x + 1, y, display, foreground, background, width - 2)
     if active then
         local cursor = math.min(width - 2, math.max(0, #display))
         UI.text(target, x + 1 + cursor, y, "_", UI.colors.textInverse, background, 1)
+        UI.fill(target, x, y, 1, 1, UI.colors.focus or UI.colors.accent)
     end
 end
 
@@ -571,32 +635,38 @@ end
 
 function UI.sectionHeader(target, x, y, width, label, options)
     options = options or {}
-    local background = options.background or UI.colors.section
-    local foreground = options.foreground or UI.colors.sectionText
+    local background = options.background or UI.colors.section or UI.colors.surfaceInset
+    local foreground = options.foreground or UI.colors.sectionText or UI.colors.text
     UI.fill(target, x, y, width, 1, background)
     UI.text(target, x + 1, y, label, foreground, background, math.max(1, width - 2))
+    if options.focused and width > 1 then UI.fill(target, x, y, 1, 1, UI.colors.focus or UI.colors.accent) end
 end
 
 function UI.listRow(target, x, y, width, label, value, active, options)
     options = options or {}
     local background = active and (options.activeBackground or UI.colors.surfaceSelected)
-        or (options.background or UI.colors.surface)
+        or (options.hovered and (options.hoverBackground or UI.colors.surfaceHover) or (options.background or UI.colors.surface))
     local foreground = active and (options.activeForeground or UI.colors.textInverse)
         or (options.foreground or UI.colors.text)
     UI.fill(target, x, y, width, 1, background)
-    local split = options.split or math.floor(width * 0.58)
+    local split = math.max(1, math.min(width, math.floor(tonumber(options.split) or width * 0.58)))
     UI.text(target, x + 1, y, label, foreground, background, math.max(1, split - 1))
-    if value ~= nil then
+    if value ~= nil and width > split then
         UI.text(target, x + split, y, value, options.valueColor or foreground, background, math.max(1, width - split - 1))
     end
-    return { x = x, y = y, width = width, height = 1 }
+    if options.focused and width > 0 then UI.fill(target, x, y, 1, 1, UI.colors.focus or UI.colors.accent) end
+    return { x = x, y = y, width = width, height = 1, selected = active == true, focused = options.focused == true }
 end
 
 function UI.badge(target, x, y, label, color, width)
     width = math.max(3, math.floor(tonumber(width) or (#tostring(label or "") + 2)))
     color = color or UI.colors.accent
     UI.fill(target, x, y, width, 1, color)
-    UI.text(target, x + 1, y, label, UI.colors.textInverse, color, width - 2)
+    local foreground = UI.colors.textInverse
+    if color == UI.colors.warning or color == UI.colors.warningSoft then foreground = UI.colors.warningText or UI.colors.text end
+    if color == UI.colors.success or color == UI.colors.successSoft then foreground = UI.colors.successText or foreground end
+    if color == UI.colors.info then foreground = UI.colors.infoText or foreground end
+    UI.text(target, x + 1, y, label, foreground, color, width - 2)
     return { x = x, y = y, width = width, height = 1 }
 end
 
@@ -739,10 +809,11 @@ function UI.desktopRegion(target, x, y, width, height, style)
     end
 end
 
-function UI.desktopBackground(target, width, height, style)
-    -- The desktop occupies everything above the taskbar. Window chrome and the
-    -- taskbar provide the visual structure; the wallpaper stays calm behind them.
-    UI.desktopRegion(target, 1, 1, width, math.max(1, height - 2), style)
+function UI.desktopBackground(target, width, height, style, taskbarHeight)
+    -- The desktop occupies everything above the responsive taskbar. Window chrome
+    -- and the taskbar provide the visual structure; the wallpaper stays calm behind them.
+    taskbarHeight = math.max(1, math.floor(tonumber(taskbarHeight) or UI.taskbarHeight(width, height)))
+    UI.desktopRegion(target, 1, 1, width, math.max(1, height - taskbarHeight), style)
 end
 
 function UI.taskButton(target, x, y, width, label, active)
@@ -841,8 +912,14 @@ function UI.dialog(target, title, message, accent)
     local y = math.max(2, math.floor((height - boxHeight) / 2))
     UI.shadow(target, x, y, boxWidth, boxHeight, 1)
     UI.panel(target, x, y, boxWidth, boxHeight, UI.colors.surface, UI.colors.border)
-    local headerBackground = accent or UI.colors.section
-    local headerForeground = headerBackground == UI.colors.section and UI.colors.sectionText or UI.colors.textInverse
+    local headerBackground = accent or UI.colors.surfaceInset or UI.colors.section
+    local strongHeader = accent and (accent == UI.colors.accent or accent == UI.colors.accentSoft
+        or accent == UI.colors.accentStrong or accent == UI.colors.danger or accent == UI.colors.dangerSoft
+        or accent == UI.colors.success or accent == UI.colors.successSoft or accent == UI.colors.warning
+        or accent == UI.colors.warningSoft)
+    local headerForeground = (headerBackground == UI.colors.warning or headerBackground == UI.colors.warningSoft)
+        and (UI.colors.warningText or UI.colors.text)
+        or ((strongHeader and UI.colors.textInverse) or UI.colors.text)
     UI.fill(target, x + 1, y + 1, boxWidth - 2, 1, headerBackground)
     UI.text(target, x + 2, y + 1, title, headerForeground, headerBackground, boxWidth - 4)
     local messageWidth = math.max(1, boxWidth - 4)

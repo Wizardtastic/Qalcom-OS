@@ -27,8 +27,12 @@ return function(ctx)
     local function render()
         local width, height = ctx.win.getSize()
         local compact = height < 18
-        local _, _, contentStart = Screen.begin(ctx.win, "Control Center", nil, { ui = UI })
-        UI.text(ctx.win, 2, contentStart, status, UI.colors.muted, UI.colors.surface, width - 3)
+        local shell = Screen.app(ctx.win, "Control Center", {
+            ui = UI,
+            status = status,
+            statusColor = UI.colors.textSecondary or UI.colors.muted,
+        })
+        local contentStart = shell.body.y
 
         local footerStart = height + 1
         local row
@@ -39,7 +43,7 @@ return function(ctx)
             -- At the minimum terminal size, prioritize process recovery over statistics.
             row = contentStart + 1
             if row < footerStart then
-                UI.text(ctx.win, 2, row, "Processes", UI.colors.accent, UI.colors.surface, width - 3)
+                UI.sectionHeader(ctx.win, 2, row, width - 3, "Processes", { background = UI.colors.surfaceInset, foreground = UI.colors.accent })
                 row = row + 1
             end
         else
@@ -56,7 +60,7 @@ return function(ctx)
             end
 
             if row < footerStart then
-                UI.text(ctx.win, 2, row, "SYSTEM", UI.colors.accent, UI.colors.surface, width - 3)
+                UI.sectionHeader(ctx.win, 2, row, width - 3, "SYSTEM", { background = UI.colors.surfaceInset, foreground = UI.colors.accent })
                 row = row + 1
             end
             stat("Qalcom", VERSION, UI.colors.accent)
@@ -70,7 +74,7 @@ return function(ctx)
             stat("Modems", tostring(info.modems))
             if row < footerStart then row = row + 1 end
             if row < footerStart then
-                UI.text(ctx.win, 2, row, "PROCESSES", UI.colors.accent, UI.colors.surface, width - 3)
+                UI.sectionHeader(ctx.win, 2, row, width - 3, "PROCESSES", { background = UI.colors.surfaceInset, foreground = UI.colors.accent })
                 row = row + 1
             end
         end

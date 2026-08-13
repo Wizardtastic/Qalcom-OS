@@ -56,7 +56,8 @@ return function(ctx)
         local visibleRows = availableRows(height)
         selected = math.min(selected, #visibleRows)
         local compact = height < 10
-        local _, _, contentStart = Screen.begin(ctx.win, "Qalcom Settings", nil, { ui = UI })
+        local shell = Screen.app(ctx.win, "Qalcom Settings", { ui = UI })
+        local contentStart = shell.body.y
 
         local rows = {
             { "Computer label", os.getComputerLabel() or "(none)" },

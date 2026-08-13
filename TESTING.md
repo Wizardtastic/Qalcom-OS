@@ -58,6 +58,15 @@ Run these checks on a fresh copy and again over an existing 0.1.x installation.
 - [ ] Terminal, Explorer, Calculator, Settings, Account, Recovery, System Log, Control Center, System Monitor, and Capabilities launch.
 - [ ] System Monitor does not launch automatically after login.
 - [ ] Windows can be focused, dragged, minimized, restored, and closed.
+- [ ] Right-clicking the desktop, a window, the taskbar, and Explorer opens the kernel-owned context menu without leaking the click to the app.
+- [ ] The context menu stays inside the terminal, supports mouse hover, Up/Down, Enter, and Escape, and has a visible selected row.
+- [ ] New folder, New `.txt` file, and New `.lua` file create collision-safe names in the Explorer context directory and refresh Explorer automatically.
+- [ ] With an Explorer item selected, the context menu offers Open with Editor for files, Rename selected, Delete selected, and Copy selected; directories do not offer the editor action.
+- [ ] Rename opens an editable name prompt, rejects empty/path-separator/control-character names and collisions, and only moves the item after explicit confirmation.
+- [ ] Delete opens an explicit confirmation, warns that folder contents are removed, rechecks the item before deletion, and refreshes Explorer after success.
+- [ ] Paste uses the shared clipboard, refuses missing sources, collisions, and folder self-pastes, and refreshes Explorer after success.
+- [ ] Context-menu copy/paste is shared with Explorer keyboard `C`/`V` and does not bypass managed filesystem policy.
+- [ ] Context-menu filesystem writes are denied and audited in Safe Mode or for a role without `fs.write`.
 - [ ] Alt+Tab and Alt+F4 behave as documented.
 - [ ] An app failure leaves a visible recovery screen and a log entry.
 - [ ] Recovery opens Diagnostics and shows recent boot stages, PIDs, crash reasons, and restart counts.
@@ -108,12 +117,29 @@ Run these checks on a fresh copy and again over an existing 0.1.x installation.
 ### Native UI foundation
 
 - [ ] Shadows, cards, title bars, dialogs, notifications, shared visible buttons, badges, meters, list rows, and section headers remain readable at 30 x 14 and at a normal terminal size.
-- [ ] Shared app headers and footers do not overlap content after resize; monitor meters and status badges remain clipped inside their windows.
+- [ ] Every visible application uses the shared responsive app shell; title/status rails, section headers, panels, rows, buttons, and footers do not overlap content after resize.
 - [ ] Changing themes updates the semantic UI colors without restarting Qalcom.
 - [ ] Reduced motion applies immediately and cancels active animations.
 - [ ] Animation updates do not starve application events or cause repeated timer backlog.
 - [ ] Opening several windows does not produce visible shadow overlap or redraw corruption.
 - [ ] Resize and Safe Mode recovery still work while an animation is active.
+
+### Visual design regression matrix
+
+Use [UI_DESIGN.md](UI_DESIGN.md) as the visual source of truth. These checks are intentionally repeated at multiple terminal sizes because the primary target is an advanced 204 x 76 computer, while the compact floor must remain fully usable.
+
+- [ ] Pure layout tests cover `30 x 14`, `40 x 18`, `80 x 24`, `120 x 40`, and `204 x 76`.
+- [ ] At `30 x 14`, the shell has one-cell taskbar behavior, no overflowing title controls, and no inaccessible essential action.
+- [ ] At `30 x 14` and `40 x 18`, Operations Telemetry and Peripheral Manager use one full-width list with a selected-item summary below it; neither draws a squeezed inspector column.
+- [ ] At `40 x 18`, login, launcher, dialogs, and compact application layouts remain usable without horizontal scrolling.
+- [ ] At `80 x 24`, the standard shell exposes a readable title bar, taskbar, launcher, and single-pane app body.
+- [ ] At `120 x 40`, split panes appear only when their minimum content widths fit; otherwise the inspector collapses.
+- [ ] At `204 x 76`, normal applications use the available workspace instead of remaining fixed at compact metadata dimensions.
+- [ ] At one substantially larger terminal, content expands without producing oversized navigation rails or stretched controls.
+- [ ] At one unusually wide/short terminal, the layout falls back to a valid lower tier without overlap.
+- [ ] Active, inactive, hover, keyboard-focus, selected, pressed, disabled, warning, success, danger, stale, unavailable, and denied states remain distinguishable without color alone.
+- [ ] Text-mode rendering and Fluent rendering preserve the same semantic hierarchy and interaction states.
+- [ ] Window shadows, launcher surfaces, notification cards, and title bars remain inside the kernel's restore/redraw model at every tested size.
 
 ### Logs and recovery
 

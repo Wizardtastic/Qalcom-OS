@@ -52,15 +52,78 @@ return function(ctx)
 
     local function render()
         local width, height = ctx.win.getSize()
-        local _, _, contentStart = Screen.begin(ctx.win, "Peripheral Manager", nil, { ui = UI })
-        UI.text(ctx.win, 2, contentStart, editingAlias and ("Alias: " .. aliasInput .. "_") or status, UI.colors.muted, UI.colors.surface, width - 3)
+        local shell = Screen.app(ctx.win, "Peripheral Manager", {
+            ui = UI,
+            status = editingAlias and ("Alias: " .. aliasInput .. "_") or status,
+            statusColor = UI.colors.textSecondary or UI.colors.muted,
+        })
+        local contentStart = shell.body.y
         local bodyStart = contentStart + 1
         local footer = height + 1
-        local split = math.max(15, math.floor(width * 0.42))
         local device = selectedDevice()
+        local bodyX, bodyWidth = shell.body.x, shell.body.width
+        if shell.metrics.tier == "compact" then
+            UI.sectionHeader(ctx.win, bodyX, bodyStart, bodyWidth, "ATTACHED DEVICES", {
+                background = UI.colors.surfaceInset,
+                foreground = UI.colors.accent,
+            })
+            local listStart = bodyStart + 1
+            local contentBottom = math.max(listStart - 1, height - 1)
+            local detailCount = 0
+            if device then
+                local available = math.max(0, contentBottom - listStart + 1)
+                if available >= 4 then detailCount = math.min(4, available - 2) end
+            end
+            local detailStart = contentBottom - detailCount
+            local visible = math.max(1, detailCount > 0 and detailStart - listStart or contentBottom - listStart + 1)
+            local listEnd = math.max(1, #devices - visible + 1)
+            local start = math.max(1, math.min(selected - visible + 1, listEnd))
+            for index = start, math.min(#devices, start + visible - 1) do
+                local item = devices[index]
+                local active = index == selected
+                local marker = item.blocked and "B " or (item.trusted and "T " or "  ")
+                UI.listRow(ctx.win, bodyX, listStart + index - start, bodyWidth,
+                    marker .. tostring(item.alias or item.name), nil, active, {
+                        activeBackground = UI.colors.surfaceSelected,
+                        activeForeground = UI.colors.text,
+                        foreground = UI.colors.text,
+                        background = UI.colors.surface,
+                    })
+            end
+            if #devices == 0 then
+                UI.text(ctx.win, bodyX + 1, listStart, "No attached peripherals", UI.colors.muted, UI.colors.surface, math.max(1, bodyWidth - 1))
+            elseif detailCount > 0 then
+                UI.sectionHeader(ctx.win, bodyX, detailStart,
+                    bodyWidth, "SELECTED: " .. UI.clampText(device.alias or device.name, math.max(1, bodyWidth - 12)), {
+                        background = UI.colors.surfaceInset,
+                        foreground = UI.colors.accent,
+                    })
+                local detailValues = {
+                    { "Name", device.name },
+                    { "Type", device.type },
+                    { "Status", device.status or device.statusFailure or "not reported" },
+                    { "Markers", (device.blocked and "blocked " or "") .. (device.trusted and "trusted" or "none") },
+                }
+                if editingAlias then detailValues[4] = { "Alias", aliasInput .. "_" } end
+                for index = 1, detailCount do
+                    local item = detailValues[index]
+                    if item then
+                        UI.listRow(ctx.win, bodyX, detailStart + index, bodyWidth, item[1], item[2], false, {
+                            split = math.max(1, math.floor(bodyWidth * 0.42)),
+                            background = UI.colors.surface,
+                            valueColor = item[1] == "Status" and (device.status and UI.colors.success or UI.colors.warning) or UI.colors.text,
+                        })
+                    end
+                end
+            end
+            UI.text(ctx.win, bodyX, height, "Up/Down select  A alias  B block  T trust  S save", UI.colors.muted, UI.colors.surface, bodyWidth)
+            return
+        end
+        local panes = Screen.splitRect(shell, 0.42)
+        local listPane, detailPane = panes.left, panes.right
 
-        UI.text(ctx.win, 2, bodyStart, "ATTACHED DEVICES", UI.colors.accent, UI.colors.surface, split - 3)
-        UI.text(ctx.win, split, bodyStart, "INSPECTION", UI.colors.accent, UI.colors.surface, width - split - 1)
+        UI.sectionHeader(ctx.win, listPane.x, bodyStart, listPane.width, "ATTACHED DEVICES", { background = UI.colors.surfaceInset, foreground = UI.colors.accent })
+        UI.sectionHeader(ctx.win, detailPane.x, bodyStart, detailPane.width, "INSPECTION", { background = UI.colors.surfaceInset, foreground = UI.colors.accent })
         local row = bodyStart + 1
         local visible = math.max(0, footer - row)
         local start = math.max(1, math.min(selected - visible + 1, #devices - visible + 1))
@@ -69,7 +132,7 @@ return function(ctx)
             local item = devices[index]
             local active = index == selected
             local marker = item.blocked and "B " or (item.trusted and "T " or "  ")
-            UI.listRow(ctx.win, 2, y, split - 3, marker .. tostring(item.alias or item.name), nil, active, {
+            UI.listRow(ctx.win, listPane.x, y, listPane.width, marker .. tostring(item.alias or item.name), nil, active, {
                 activeBackground = UI.colors.surfaceSelected,
                 activeForeground = UI.colors.text,
                 foreground = UI.colors.text,
@@ -81,8 +144,9 @@ return function(ctx)
             local detailRow = row
             local function detail(label, value, color)
                 if detailRow >= footer then return end
-                UI.text(ctx.win, split, detailRow, label, UI.colors.muted, UI.colors.surface, 13)
-                UI.text(ctx.win, split + 14, detailRow, tostring(value or "-"), color or UI.colors.text, UI.colors.surface, width - split - 15)
+                local labelWidth = math.min(13, detailPane.width)
+                UI.text(ctx.win, detailPane.x, detailRow, label, UI.colors.muted, UI.colors.surface, labelWidth)
+                UI.text(ctx.win, detailPane.x + math.min(14, detailPane.width), detailRow, tostring(value or "-"), color or UI.colors.text, UI.colors.surface, math.max(1, detailPane.width - 15))
                 detailRow = detailRow + 1
             end
             detail("Name", device.name)
@@ -94,27 +158,28 @@ return function(ctx)
             detail("Markers", (device.blocked and "blocked " or "") .. (device.trusted and "trusted" or "none"))
             if detailRow < footer then detailRow = detailRow + 1 end
             if detailRow < footer then
-                UI.text(ctx.win, split, detailRow, "Adapters", UI.colors.accent, UI.colors.surface, width - split - 1)
+                UI.text(ctx.win, detailPane.x, detailRow, "Adapters", UI.colors.accent, UI.colors.surface, detailPane.width)
                 detailRow = detailRow + 1
                 for _, adapter in ipairs(device.adapters or {}) do
                     if detailRow >= footer then break end
                     local health = adapter.stale and "stale" or (adapter.available and "available" or "failed")
                     local color = adapter.stale and UI.colors.warning or (adapter.available and UI.colors.success or UI.colors.danger)
-                    UI.badge(ctx.win, split, detailRow, health, color, 10)
-                    UI.text(ctx.win, split + 12, detailRow, adapter.title .. " / v" .. tostring(adapter.contractVersion), UI.colors.text, UI.colors.surface, width - split - 13)
+                    local badgeWidth = math.min(10, detailPane.width)
+                    UI.badge(ctx.win, detailPane.x, detailRow, health, color, badgeWidth)
+                    UI.text(ctx.win, detailPane.x + math.min(12, detailPane.width), detailRow, adapter.title .. " / v" .. tostring(adapter.contractVersion), UI.colors.text, UI.colors.surface, math.max(1, detailPane.width - 13))
                     detailRow = detailRow + 1
                 end
             end
             if #device.contacts > 0 and detailRow < footer then
-                UI.text(ctx.win, split, detailRow, "Radar contacts: " .. tostring(#device.contacts), UI.colors.accent, UI.colors.surface, width - split - 1)
+                UI.text(ctx.win, detailPane.x, detailRow, "Radar contacts: " .. tostring(#device.contacts), UI.colors.accent, UI.colors.surface, detailPane.width)
                 detailRow = detailRow + 1
                 local contact = device.contacts[1]
                 if contact and detailRow < footer then
-                    UI.text(ctx.win, split, detailRow, tostring(contact.identityStatus) .. " / " .. tostring(contact.identity), UI.colors.muted, UI.colors.surface, width - split - 1)
+                    UI.text(ctx.win, detailPane.x, detailRow, tostring(contact.identityStatus) .. " / " .. tostring(contact.identity), UI.colors.muted, UI.colors.surface, detailPane.width)
                 end
             end
         elseif row < footer then
-            UI.text(ctx.win, split, row, "No device selected", UI.colors.muted, UI.colors.surface, width - split - 1)
+            UI.text(ctx.win, detailPane.x, row, "No device selected", UI.colors.muted, UI.colors.surface, detailPane.width)
         end
 
     end

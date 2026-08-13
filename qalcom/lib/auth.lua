@@ -197,22 +197,29 @@ end
 
 local function drawLockScreen(target, UI, version)
     local width, height = target.getSize()
-    target.setBackgroundColor(UI.colors.desktop)
-    target.setTextColor(UI.colors.text)
+    local backdrop = UI.colors.loginBackdrop or UI.colors.accentStrong or UI.colors.desktop
+    local primary = UI.colors.textInverse or colors.white
+    local muted = UI.colors.loginMuted or UI.colors.textMuted or UI.colors.muted
+    target.setBackgroundColor(backdrop)
+    target.setTextColor(primary)
     target.clear()
     local clockText = os.date("%H:%M")
     local dateText = width >= 34 and os.date("%A, %B %d") or os.date("%a %d %b")
     local blockTop = math.max(2, math.floor(height / 2) - 3)
-    drawBigText(target, UI, math.floor(width / 2) + 1, blockTop, clockText, UI.colors.text, UI.colors.desktop)
-    UI.center(target, blockTop + 6, dateText, UI.colors.textMuted or UI.colors.muted, UI.colors.desktop, width)
-    UI.center(target, height - 2, "Press any key or click to sign in", UI.colors.textMuted or UI.colors.muted, UI.colors.desktop, width)
-    UI.center(target, height, "Qalcom OS " .. version .. "   -   Esc shuts down", UI.colors.textSubtle or UI.colors.muted, UI.colors.desktop, width)
+    drawBigText(target, UI, math.floor(width / 2) + 1, blockTop, clockText, primary, backdrop)
+    UI.center(target, blockTop + 6, dateText, primary, backdrop, width)
+    if height >= 4 then
+        UI.center(target, height - 2, "Press any key or click to sign in", muted, backdrop, width)
+    end
+    UI.center(target, height, "Qalcom OS " .. version .. "   -   Esc shuts down", muted, backdrop, width)
 end
 
-local function cardLayout(target, mode)
+local function cardLayout(target, UI, mode)
     local width, height = target.getSize()
-    local cardWidth = math.max(24, math.min(42, width - 4))
-    local fieldCount = mode == "setup" and 3 or 2
+    local metrics = UI.metricsFor and UI.metricsFor(width, height) or { tier = "compact", outerPadding = 1 }
+    local proportionalWidth = math.floor(width * (metrics.tier == "command" and 0.34 or 0.48))
+    local maxCardWidth = metrics.tier == "command" and 52 or (metrics.tier == "wide" and 48 or 42)
+    local cardWidth = math.max(24, math.min(maxCardWidth, proportionalWidth, width - (metrics.outerPadding or 1) * 2))
 
     -- Positions are computed as offsets from the card's top border for a given
     -- avatar/field-gap configuration. buttonOffset drives the required height.
@@ -245,7 +252,7 @@ local function cardLayout(target, mode)
 
     local cardHeight = math.min(math.max(9, chosen.requiredHeight), math.max(9, avail))
     local cardX = math.floor((width - cardWidth) / 2) + 1
-    local cardY = math.max(1, math.floor((height - cardHeight) / 2))
+    local cardY = math.max(1, math.floor((height - cardHeight) / 2) + 1)
     local fieldX = cardX + 3
     local fieldWidth = cardWidth - 6
     local toggleWidth = 4
@@ -265,19 +272,24 @@ end
 local function drawAvatar(target, UI, centerX, y, initial)
     local avatarWidth = 7
     local ax = centerX - math.floor(avatarWidth / 2)
-    UI.fill(target, ax, y, avatarWidth, 3, UI.colors.accent)
-    UI.text(target, centerX, y + 1, initial, UI.colors.textInverse, UI.colors.accent, 1)
+    local avatarBackground = UI.colors.accent or UI.colors.accentStrong
+    UI.fill(target, ax, y, avatarWidth, 3, avatarBackground)
+    UI.text(target, centerX, y + 1, initial, UI.colors.textInverse, avatarBackground, 1)
 end
 
 local function drawCard(target, UI, version, mode, fields, selected, showPassword, message, messageColor)
-    local L = cardLayout(target, mode)
+    local L = cardLayout(target, UI, mode)
     local width, height = L.width, L.height
-    target.setBackgroundColor(UI.colors.desktop)
-    target.setTextColor(UI.colors.text)
+    local backdrop = UI.colors.loginBackdrop or UI.colors.accentStrong or UI.colors.desktop
+    local cardSurface = UI.colors.loginSurface or UI.colors.surfaceRaised or UI.colors.surface
+    local cardBorder = UI.colors.loginBorder or UI.colors.borderStrong or UI.colors.border
+    local cardText = UI.colors.loginText or UI.colors.text
+    target.setBackgroundColor(backdrop)
+    target.setTextColor(cardText)
     target.clear()
 
     UI.shadow(target, L.cardX, L.cardY, L.cardWidth, L.cardHeight, 1, UI.colors.shadow)
-    UI.panel(target, L.cardX, L.cardY, L.cardWidth, L.cardHeight, UI.colors.surface, UI.colors.borderStrong)
+    UI.panel(target, L.cardX, L.cardY, L.cardWidth, L.cardHeight, cardSurface, cardBorder)
 
     local centerX = L.cardX + math.floor(L.cardWidth / 2)
     if L.avatarY then
@@ -285,31 +297,29 @@ local function drawCard(target, UI, version, mode, fields, selected, showPasswor
         drawAvatar(target, UI, centerX, L.avatarY, initial)
     end
     local title = mode == "setup" and "Create administrator" or "Sign in"
-    UI.text(target, L.cardX + math.max(0, math.floor((L.cardWidth - #title) / 2)), L.titleY, title, UI.colors.text, UI.colors.surface, #title)
+    UI.text(target, L.cardX + math.max(0, math.floor((L.cardWidth - #title) / 2)), L.titleY, title, cardText, cardSurface, #title)
 
-    UI.input(target, L.fieldX, L.usernameY, L.fieldWidth, "Username", fields.username, selected == 1, false)
-    UI.input(target, L.fieldX, L.passwordY, L.fieldWidth, "Password", fields.password, selected == 2, not showPassword)
+    UI.input(target, L.fieldX, L.usernameY, L.fieldWidth, "Username", fields.username, selected == 1, false, { surface = cardSurface })
+    UI.input(target, L.fieldX, L.passwordY, L.fieldWidth, "Password", fields.password, selected == 2, not showPassword, { surface = cardSurface })
     -- Password show/hide toggle on the label row, right-aligned and clickable.
-    UI.text(target, L.toggleX, L.toggleY, showPassword and "hide" or "show", UI.colors.accent, UI.colors.surface, L.toggleWidth)
+    UI.text(target, L.toggleX, L.toggleY, showPassword and "hide" or "show", UI.colors.accent, cardSurface, L.toggleWidth)
     if mode == "setup" then
-        UI.input(target, L.fieldX, L.confirmY, L.fieldWidth, "Confirm password", fields.confirm, selected == 3, not showPassword)
+        UI.input(target, L.fieldX, L.confirmY, L.fieldWidth, "Confirm password", fields.confirm, selected == 3, not showPassword, { surface = cardSurface })
     end
 
     local buttonActive = selected == (mode == "setup" and 3 or 2)
     UI.button(target, L.fieldX, L.buttonY, L.fieldWidth, mode == "setup" and "Create account" or "Sign in", buttonActive, {
-        activeBackground = UI.colors.accent,
-        activeForeground = UI.colors.textInverse,
-        background = UI.colors.button,
-        foreground = UI.colors.buttonText,
+        variant = "accent",
+        focused = buttonActive,
     })
 
     if message and message ~= "" then
         local messageY = L.cardY + L.cardHeight + 1
         if messageY < height then
-            UI.center(target, messageY, message, messageColor or UI.colors.textMuted, UI.colors.desktop, width)
+            UI.center(target, messageY, message, messageColor or UI.colors.textMuted, backdrop, width)
         end
     end
-    UI.center(target, height, "Tab switches fields   -   Enter submits   -   Esc back", UI.colors.textSubtle or UI.colors.muted, UI.colors.desktop, width)
+    UI.center(target, height, "Tab switches fields   -   Enter submits   -   Esc back", UI.colors.loginMuted or UI.colors.textSubtle or UI.colors.muted, backdrop, width)
 end
 
 function Auth.login(target, UI, version)
@@ -402,7 +412,7 @@ function Auth.login(target, UI, version)
                 if mode == "setup" then os.shutdown() else phase = "lock"; selected = 1 end
             end
         elseif event == "mouse_click" then
-            local L = cardLayout(target, mode)
+            local L = cardLayout(target, UI, mode)
             if x >= L.toggleX and x < L.toggleX + L.toggleWidth and y == L.toggleY then
                 showPassword = not showPassword
             elseif x >= L.fieldX and x < L.fieldX + L.fieldWidth then

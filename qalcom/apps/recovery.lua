@@ -4,7 +4,7 @@ local Config = dofile("/qalcom/lib/config.lua")
 
 return function(ctx)
     local selected = 1
-    local items = { "Clear notifications", "Reset theme to Windows 11 Dark", "Safe Mode: toggle", "Restore Qalcom defaults", "Open diagnostics", "Open system log", "Return" }
+    local items = { "Clear notifications", "Reset theme to Command Dark", "Safe Mode: toggle", "Restore Qalcom defaults", "Open diagnostics", "Open system log", "Return" }
     local status = "Local recovery tools"
 
     local function visibleItems(height)
@@ -20,8 +20,12 @@ return function(ctx)
         local width, height = ctx.win.getSize()
         local visible = visibleItems(height)
         selected = math.min(selected, #visible)
-        local _, _, contentStart = Screen.begin(ctx.win, "Recovery", nil, { ui = UI })
-        UI.text(ctx.win, 2, contentStart, status, UI.colors.muted, UI.colors.surface, width - 3)
+        local shell = Screen.app(ctx.win, "Recovery", {
+            ui = UI,
+            status = status,
+            statusColor = UI.colors.textSecondary or UI.colors.muted,
+        })
+        local contentStart = shell.body.y
         for displayIndex, actualIndex in ipairs(visible) do
             local y = contentStart + displayIndex
             local active = displayIndex == selected
@@ -41,8 +45,8 @@ return function(ctx)
             status = "Notifications cleared"
         elseif actualIndex == 2 then
             Config.setTheme("win11dark")
-            status = "Theme reset to Windows 11 Dark"
-            ctx:notify("Theme reset to Windows 11 Dark", UI.colors.success)
+            status = "Theme reset to Command Dark"
+            ctx:notify("Theme reset to Command Dark", UI.colors.success)
         elseif actualIndex == 3 then
             local config = Config.load()
             Config.setSafeMode(not config.safeMode)

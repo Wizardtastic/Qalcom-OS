@@ -4,19 +4,19 @@ local Palette = dofile("/qalcom/lib/ui/palette.lua")
 
 Config.schemaVersion = 3
 
--- Windows 11 dark/light "Fluent" palettes remap the 16 CC base slots to Win11
--- RGB values. Because apps draw through those slots, applying one of these
--- retextures the whole OS. Slots a theme omits keep their prior RGB, so the
+-- Command dark/light palettes remap the 16 CC base slots to Qalcom's restrained
+-- slate/cobalt RGB values. Because apps draw through those slots, applying one of
+-- these retextures the whole OS. Slots a theme omits keep their prior RGB, so the
 -- Classic themes (which declare no palette) fall back to the CC:T stock palette.
 local WIN11_DARK_PALETTE = {
-    [colors.black] = 0x191919,     -- desktop base / deepest surface
-    [colors.gray] = 0x2C2C2C,      -- primary window/card surface (Mica)
-    [colors.brown] = 0x454545,     -- divider / elevated neutral / hover
-    [colors.lightGray] = 0x9A9A9A, -- muted / secondary text
-    [colors.white] = 0xF5F5F5,     -- primary text
-    [colors.blue] = 0x0067C0,      -- accent, pressed / strong
-    [colors.lightBlue] = 0x4CC2FF, -- accent, default (Win11 dark accent)
-    [colors.cyan] = 0x60CDFF,      -- info / hover glow
+    [colors.black] = 0x101820,     -- desktop base / deepest surface
+    [colors.gray] = 0x222C36,      -- primary window/card surface
+    [colors.brown] = 0x3E4A56,     -- divider / elevated neutral / hover
+    [colors.lightGray] = 0xAAB6C0, -- muted / secondary text
+    [colors.white] = 0xF0F4F7,     -- primary text
+    [colors.blue] = 0x245AB0,      -- accent, pressed / strong
+    [colors.lightBlue] = 0x3F7FDB, -- accent, default (Command dark accent)
+    [colors.cyan] = 0x7DB9FF,      -- focus / info highlight
     [colors.lime] = 0x6CCB5F,      -- success
     [colors.green] = 0x107C10,     -- success, strong
     [colors.yellow] = 0xF5C518,    -- warning
@@ -28,14 +28,14 @@ local WIN11_DARK_PALETTE = {
 }
 
 local WIN11_LIGHT_PALETTE = {
-    [colors.black] = 0x1A1A1A,     -- primary text
-    [colors.gray] = 0x8A8A8A,      -- muted text / border
-    [colors.brown] = 0xD1D1D1,     -- divider / elevated neutral
-    [colors.lightGray] = 0xF3F3F3, -- desktop base / inset surface
-    [colors.white] = 0xFBFBFB,     -- primary surface (Mica)
-    [colors.blue] = 0x005FB8,      -- accent, pressed / strong
-    [colors.lightBlue] = 0x0078D4, -- accent, default (Win11 light accent)
-    [colors.cyan] = 0x005FB8,      -- info
+    [colors.black] = 0x15202A,     -- primary text
+    [colors.gray] = 0x7B8792,      -- muted text / border
+    [colors.brown] = 0xC3CCD4,     -- divider / elevated neutral
+    [colors.lightGray] = 0xD8DEE4, -- desktop base / inset surface
+    [colors.white] = 0xFFFFFF,     -- primary surface
+    [colors.blue] = 0x1E4F9D,      -- accent, pressed / strong
+    [colors.lightBlue] = 0x2F69C9, -- accent, default (Command light accent)
+    [colors.cyan] = 0x155FC5,      -- focus / info highlight
     [colors.lime] = 0x0F7B0F,      -- success
     [colors.green] = 0x107C10,     -- success, strong
     [colors.yellow] = 0xF7B500,    -- warning
@@ -48,7 +48,7 @@ local WIN11_LIGHT_PALETTE = {
 
 Config.themes = {
     win11dark = {
-        name = "Windows 11 Dark",
+        name = "Qalcom Command Dark",
         type = "dark",
         palette = WIN11_DARK_PALETTE,
         desktop = colors.black, desktopDark = colors.black, desktopGlow = colors.brown, desktopElevated = colors.gray,
@@ -61,7 +61,7 @@ Config.themes = {
         shadow = colors.black, button = colors.brown, buttonText = colors.white, buttonActive = colors.lightBlue, section = colors.brown, sectionText = colors.white, taskbar = colors.black, taskbarHover = colors.brown, titleActive = colors.gray, titleInactive = colors.black, titleControl = colors.white, statusText = colors.white, infoText = colors.black, successText = colors.black, dangerText = colors.white, warningText = colors.black,
     },
     win11light = {
-        name = "Windows 11 Light",
+        name = "Qalcom Command Light",
         type = "light",
         palette = WIN11_LIGHT_PALETTE,
         desktop = colors.lightGray, desktopDark = colors.brown, desktopGlow = colors.white, desktopElevated = colors.white,
@@ -83,7 +83,7 @@ Config.themes = {
         text = colors.black, muted = colors.gray, textMuted = colors.gray, textSubtle = colors.gray, textInverse = colors.white,
         accent = colors.blue, accentLight = colors.lightBlue, accentSoft = colors.lightBlue, accentStrong = colors.blue, hover = colors.lightBlue, focus = colors.lightBlue, info = colors.lightBlue,
         success = colors.lime, successSoft = colors.lime, warning = colors.yellow, warningSoft = colors.yellow, danger = colors.red, dangerSoft = colors.red,
-        shadow = colors.gray, button = colors.gray, buttonText = colors.black, buttonActive = colors.blue, section = colors.yellow, sectionText = colors.black, taskbar = colors.lightGray, taskbarHover = colors.gray, titleActive = colors.yellow, titleInactive = colors.gray, titleControl = colors.black, statusText = colors.white, infoText = colors.white, successText = colors.black, dangerText = colors.white, warningText = colors.black,
+        shadow = colors.gray, button = colors.gray, buttonText = colors.black, buttonActive = colors.blue, section = colors.lightGray, sectionText = colors.black, taskbar = colors.lightGray, taskbarHover = colors.gray, titleActive = colors.lightGray, titleInactive = colors.gray, titleControl = colors.black, statusText = colors.white, infoText = colors.white, successText = colors.black, dangerText = colors.white, warningText = colors.black,
     },
     dark = {
         name = "Classic Midnight",
@@ -95,7 +95,7 @@ Config.themes = {
         text = colors.white, muted = colors.lightGray, textMuted = colors.lightGray, textSubtle = colors.gray, textInverse = colors.black,
         accent = colors.purple, accentLight = colors.magenta, accentSoft = colors.purple, accentStrong = colors.magenta, hover = colors.magenta, focus = colors.magenta, info = colors.cyan,
         success = colors.lime, successSoft = colors.lime, warning = colors.yellow, warningSoft = colors.yellow, danger = colors.red, dangerSoft = colors.red,
-        shadow = colors.black, button = colors.gray, buttonText = colors.black, buttonActive = colors.purple, section = colors.purple, sectionText = colors.white, taskbar = colors.black, taskbarHover = colors.gray, titleActive = colors.purple, titleInactive = colors.gray, titleControl = colors.white, statusText = colors.white, infoText = colors.white, successText = colors.black, dangerText = colors.white, warningText = colors.black,
+        shadow = colors.black, button = colors.gray, buttonText = colors.black, buttonActive = colors.purple, section = colors.gray, sectionText = colors.white, taskbar = colors.black, taskbarHover = colors.gray, titleActive = colors.gray, titleInactive = colors.black, titleControl = colors.white, statusText = colors.white, infoText = colors.white, successText = colors.black, dangerText = colors.white, warningText = colors.black,
     },
     green = {
         name = "Classic Terminal",
@@ -107,7 +107,7 @@ Config.themes = {
         text = colors.white, muted = colors.lightGray, textMuted = colors.lightGray, textSubtle = colors.gray, textInverse = colors.black,
         accent = colors.lime, accentLight = colors.lime, accentSoft = colors.green, accentStrong = colors.lime, hover = colors.lime, focus = colors.lime, info = colors.lime,
         success = colors.lime, successSoft = colors.green, warning = colors.yellow, warningSoft = colors.yellow, danger = colors.red, dangerSoft = colors.red,
-        shadow = colors.black, button = colors.gray, buttonText = colors.black, buttonActive = colors.green, section = colors.green, sectionText = colors.white, taskbar = colors.black, taskbarHover = colors.gray, titleActive = colors.green, titleInactive = colors.gray, titleControl = colors.white, statusText = colors.white, infoText = colors.black, successText = colors.black, dangerText = colors.white, warningText = colors.black,
+        shadow = colors.black, button = colors.gray, buttonText = colors.black, buttonActive = colors.green, section = colors.gray, sectionText = colors.black, taskbar = colors.black, taskbarHover = colors.gray, titleActive = colors.gray, titleInactive = colors.black, titleControl = colors.white, statusText = colors.white, infoText = colors.black, successText = colors.black, dangerText = colors.white, warningText = colors.black,
     },
 }
 
@@ -196,7 +196,7 @@ local function migrate()
     local storedSchema = tonumber(settings.get("qalcom.schema")) or 0
     local theme = readSetting("qalcom.theme", "qalcom.desktop_theme", Config.defaults.theme)
     -- Move installs still sitting on the previous default ("blue"/Classic Ocean)
-    -- onto the new Windows 11 Dark default when upgrading to schema 3. Anyone who
+    -- onto the new Command Dark default when upgrading to schema 3. Anyone who
     -- deliberately picked another theme keeps their choice.
     if storedSchema < 3 and theme == "blue" then theme = Config.defaults.theme end
     local safeMode = readSetting("qalcom.safe_mode", "qalcom.safeMode", Config.defaults.safeMode)
@@ -299,7 +299,7 @@ function Config.apply(UI, config)
     for key, value in pairs(theme) do
         if key ~= "name" and key ~= "type" and key ~= "palette" then UI.colors[key] = value end
     end
-    -- Re-skin the 16 CC base slots for Fluent themes; reset to the stock palette
+    -- Re-skin the 16 CC base slots for Command/Fluent themes; reset to the stock palette
     -- for Classic themes so they render exactly as originally designed. Both are
     -- no-ops when the palette API is unavailable, keeping plain hosts legible.
     if theme.palette then
@@ -328,6 +328,7 @@ function Config.apply(UI, config)
     UI.colors.warning = theme.warning or UI.colors.warning
     UI.colors.danger = theme.danger or UI.colors.danger
     UI.colors.shadow = theme.shadow or UI.colors.shadow
+    if UI.syncTokens then UI.syncTokens(theme) end
     if UI.setReducedMotion then UI.setReducedMotion(config.reducedMotion == true) end
 end
 

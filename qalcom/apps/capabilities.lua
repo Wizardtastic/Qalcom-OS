@@ -10,15 +10,19 @@ return function(ctx)
 
     local function render()
         local width, height = ctx.win.getSize()
-        local _, _, contentStart = Screen.begin(ctx.win, "Capabilities", nil, { ui = UI })
-        UI.text(ctx.win, 2, contentStart, status, UI.colors.muted, UI.colors.surface, width - 3)
+        local shell = Screen.app(ctx.win, "Capabilities", {
+            ui = UI,
+            status = status,
+            statusColor = UI.colors.textSecondary or UI.colors.muted,
+        })
+        local contentStart = shell.body.y
         local manifest = Capabilities.manifest(apps[selected])
         local role = Roles.definition(ctx.role)
         local footer = height + 1
         local split = math.max(12, math.floor(width * 0.43))
         local row = contentStart + 1
-        UI.text(ctx.win, 2, row, "APPLICATIONS", UI.colors.accent, UI.colors.surface, split - 3)
-        UI.text(ctx.win, split, row, "REQUESTED CAPABILITIES", UI.colors.accent, UI.colors.surface, width - split - 1)
+        UI.sectionHeader(ctx.win, 2, row, split - 3, "APPLICATIONS", { background = UI.colors.surfaceInset, foreground = UI.colors.accent })
+        UI.sectionHeader(ctx.win, split, row, width - split - 1, "REQUESTED CAPABILITIES", { background = UI.colors.surfaceInset, foreground = UI.colors.accent })
         row = row + 1
         local visible = math.max(0, footer - row)
         local start = math.max(1, math.min(selected - math.max(1, visible) + 1, #apps - math.max(1, visible) + 1))

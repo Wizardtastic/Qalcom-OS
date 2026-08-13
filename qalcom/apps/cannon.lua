@@ -355,9 +355,13 @@ return function(ctx)
 
     render = function()
         local width, height = ctx.win.getSize()
-        local _, _, body = Screen.begin(ctx.win, "CBC Fire Control", nil, { ui = UI })
+        local shell = Screen.app(ctx.win, "CBC Fire Control", {
+            ui = UI,
+            status = status,
+            statusColor = UI.colors.textSecondary or UI.colors.muted,
+        })
+        local body = shell.body.y
         hitTargets = {}
-        UI.text(ctx.win, 2, body, status, UI.colors.muted, UI.colors.surface, width - 3)
         local top = body + 1
         local compact = width < 50
         if height < 16 then
@@ -368,8 +372,8 @@ return function(ctx)
         local rightX = compact and 2 or leftWidth + 3
         local rightWidth = compact and math.max(1, width - 2) or math.max(1, width - rightX)
         local targetTop = compact and math.max(top + 3, math.min(height - 10, top + 5)) or top
-        UI.text(ctx.win, 2, top, "CANNON BATTERY", UI.colors.accent, UI.colors.surface, leftWidth)
-        UI.text(ctx.win, rightX, targetTop, "TARGETING", UI.colors.accent, UI.colors.surface, rightWidth)
+        UI.sectionHeader(ctx.win, 2, top, leftWidth, "CANNON BATTERY", { background = UI.colors.surfaceInset, foreground = UI.colors.accent })
+        UI.sectionHeader(ctx.win, rightX, targetTop, rightWidth, "TARGETING", { background = UI.colors.surfaceInset, foreground = UI.colors.accent })
 
         local row = top + 1
         local maxMountRows = compact and 2 or math.huge
