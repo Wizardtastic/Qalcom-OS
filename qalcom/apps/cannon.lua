@@ -417,7 +417,6 @@ return function(ctx)
                 local hit = { x = fieldsX[index], y = controlsY + 1, width = fieldWidth, height = 1, action = "edit-field", field = name }
                 hitTargets[#hitTargets + 1] = hit
             end
-            UI.text(ctx.win, rightX, controlsY + 3, "Geometric line-of-sight aim; not ballistic", UI.colors.muted, UI.colors.surface, rightWidth)
         else
             local contact = contacts[selectedContact]
             addButton(rightX, controlsY + 1, 5, "<", "prev-contact", false, { background = UI.colors.button })

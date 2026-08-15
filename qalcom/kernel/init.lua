@@ -363,6 +363,35 @@ local function notificationsOverlap(x, y, width, height)
     return false
 end
 
+local function recompositeAbove(task)
+    -- CC:T windows share one native terminal with no z-order clipping: a visible
+    -- window's live draws flush straight to the screen, so a background app that
+    -- redraws (e.g. on a broadcast tick) paints over whatever sits above it. The
+    -- kernel owns the true z-order in state.tasks (back to front), so repair by
+    -- reflushing every higher window that overlaps this one, plus any chrome it
+    -- may have covered. For the top-most window this is a no-op.
+    if not task or task.minimized or task.hidden then return end
+    local above = false
+    for _, other in ipairs(state.tasks) do
+        if other == task then
+            above = true
+        elseif above and not other.minimized and not other.hidden
+            and task.x < other.x + other.width and task.x + task.width > other.x
+            and task.y < other.y + other.height and task.y + task.height > other.y then
+            flushWindow(other)
+        end
+    end
+    if notificationsOverlap(task.x, task.y, task.width, task.height) then
+        state.notificationsDirty = true
+    end
+    -- Kernel chrome (launcher, context menu, power menu) is drawn above all
+    -- windows; if a background draw could have touched it, escalate to a full
+    -- repaint so the chrome is restored on top.
+    if state.launcher or state.contextMenu or state.powerMenu then
+        state.dirty = true
+    end
+end
+
 local function moveWindow(task, newX, newY, newWidth, newHeight, repaint)
     if not task or not task.window then return false end
     local oldX, oldY = task.x, task.y
@@ -1047,6 +1076,18 @@ local function send(task, event)
         task.closeRequested = true
     else
         task.state = "running"
+    end
+end
+
+local function broadcast(event)
+    -- Deliver an event to every task, then repair the display: because any
+    -- unfocused window may have drawn in response, reclaim the cells owned by the
+    -- windows stacked above it. Sending in z-order (back to front) means the
+    -- front-most window always draws or is reflushed last, so the final image is
+    -- correct without a full-screen repaint.
+    for _, task in ipairs(state.tasks) do
+        send(task, event)
+        recompositeAbove(task)
     end
 end
 
@@ -2221,9 +2262,9 @@ local function dispatch(event)
         end
         if state.focused then send(state.focused, event) end
     elseif name == "timer" or name == "alarm" or name == "redstone" or name == "term_resize" or name == "peripheral" or name == "peripheral_detach" or name == "disk" or name == "disk_eject" or name == "rednet_message" or name == "modem_message" then
-        for _, task in ipairs(state.tasks) do send(task, event) end
+        broadcast(event)
     elseif name == "qalcom_network_reload" then
-        for _, task in ipairs(state.tasks) do send(task, event) end
+        broadcast(event)
     elseif name == "qalcom_config_changed" then
         config = Config.load()
         Config.apply(UI, config)
@@ -2241,9 +2282,7 @@ local function dispatch(event)
         state.dirty = true
         for _, task in ipairs(state.tasks) do send(task, event) end
     elseif name == "qalcom_tick" then
-        for _, task in ipairs(state.tasks) do
-            send(task, event)
-        end
+        broadcast(event)
     end
 end
 
