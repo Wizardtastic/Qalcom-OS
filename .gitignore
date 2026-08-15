@@ -1,0 +1,9 @@
+.freebuff/desktop-v2.db
+.freebuff/desktop-v2.db-shm
+.freebuff/desktop-v2.db-wal
+AGENTS.md
+build-qalcom.ps1
+build.bat
+TESTING.md
+tests/pure_test.lua
+UI_DESIGN.md
