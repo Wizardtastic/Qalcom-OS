@@ -6,7 +6,7 @@ local System = dofile("/qalcom/lib/system.lua")
 local Capabilities = dofile("/qalcom/lib/capabilities.lua")
 local Roles = dofile("/qalcom/lib/roles.lua")
 local Managed = dofile("/qalcom/lib/managed.lua")
-local Network = dofile("/qalcom/lib/network.lua")
+local Network = fs.exists("/qalcom/lib/network.lua") and dofile("/qalcom/lib/network.lua") or nil
 local Palette = dofile("/qalcom/lib/ui/palette.lua")
 local unpack = table.unpack or unpack
 local config = Config.load()
@@ -65,6 +65,17 @@ fluent = "Tools",
 }
 local NORMAL_LAUNCHER_APPS = { "fluent", "terminal", "explorer", "calculator", "peripherals", "telemetry", "cannon", "network", "control", "capabilities", "settings", "recovery", "logs", "account" }
 local SAFE_LAUNCHER_APPS = { "recovery", "logs", "terminal", "calculator", "settings", "peripherals", "telemetry", "network" }
+local function installedLauncherApps(list)
+local filtered = {}
+for _, appName in ipairs(list) do
+if APP_PATHS[appName] and fs.exists(APP_PATHS[appName]) then
+filtered[#filtered + 1] = appName
+end
+end
+return filtered
+end
+NORMAL_LAUNCHER_APPS = installedLauncherApps(NORMAL_LAUNCHER_APPS)
+SAFE_LAUNCHER_APPS = installedLauncherApps(SAFE_LAUNCHER_APPS)
 local LAUNCHER_APPS = config.safeMode and SAFE_LAUNCHER_APPS or NORMAL_LAUNCHER_APPS
 local native = term.native()
 local width, height = native.getSize()
@@ -2026,7 +2037,7 @@ log("login success: " .. state.user)
 Capabilities.audit("login", state.user)
 if config.safeMode then notify("Safe Mode enabled", UI.colors.warning) end
 notify("Welcome, " .. state.user, UI.colors.accent)
-spawn("network_service", { hidden = true })
+if fs.exists(APP_PATHS.network_service) then spawn("network_service", { hidden = true }) end
 state.clockTimer = os.startTimer(1)
 state.uiTimer = os.startTimer(0.1)
 drawDesktop()
@@ -2094,7 +2105,7 @@ log("login success: " .. state.user)
 Capabilities.audit("login", state.user)
 if config.safeMode then notify("Safe Mode enabled", UI.colors.warning) end
 notify("Welcome, " .. state.user, UI.colors.accent)
-spawn("network_service", { hidden = true })
+if fs.exists(APP_PATHS.network_service) then spawn("network_service", { hidden = true }) end
 state.clockTimer = os.startTimer(1)
 state.uiTimer = os.startTimer(0.1)
 state.dirty = true
