@@ -32,6 +32,7 @@ Capabilities.names = {
 "system.label",
 "system.reboot",
 "system.shutdown",
+"content.fetch",
 }
 Capabilities.descriptions = {
 ["fs.read"] = "Read files and directories",
@@ -55,6 +56,7 @@ Capabilities.descriptions = {
 ["system.label"] = "Change the computer label",
 ["system.reboot"] = "Request a computer reboot",
 ["system.shutdown"] = "Request a computer shutdown",
+["content.fetch"] = "Download package content over HTTP",
 }
 local manifests = {
 terminal = {
@@ -147,6 +149,11 @@ title = "CBC Fire Control", trusted = true,
 requested = { "fs.read", "peripheral.read", "cannon.control", "telemetry.read", "incident.manage" },
 unmanaged = { "os.pullEvent" },
 },
+store = {
+title = "Software Center", trusted = true,
+requested = { "fs.read", "fs.write", "content.fetch", "system.reboot" },
+unmanaged = { "http", "os.pullEvent" },
+},
 }
 local function contains(list, value)
 for _, item in ipairs(list or {}) do
@@ -173,6 +180,20 @@ requested = copyList(source.requested),
 unmanaged = copyList(source.unmanaged),
 }
 end
+function Capabilities.register(name, manifest)
+if type(name) ~= "string" or name == "" then return false end
+local requested = {}
+for _, capability in ipairs(manifest and manifest.requested or {}) do
+if Capabilities.descriptions[capability] then requested[#requested + 1] = capability end
+end
+manifests[name] = {
+title = manifest and manifest.title or name,
+trusted = false,
+requested = requested,
+unmanaged = copyList(manifest and manifest.unmanaged),
+}
+return true
+end
 function Capabilities.namesFor(name)
 local manifest = Capabilities.manifest(name)
 return manifest and manifest.requested or {}
@@ -189,6 +210,7 @@ or capability == "redstone.control" or capability == "infrastructure.control"
 or capability == "infrastructure.emergency" or capability == "jobs.manage" or capability == "network.send" or capability == "network.receive" or capability == "network.configure" or capability == "network.pair" or capability == "network.control" or capability == "system.label"
 or capability == "cannon.control"
 or capability == "system.reboot" or capability == "system.shutdown"
+or capability == "content.fetch"
 end
 function Capabilities.effective(role, appName, capability, safeMode)
 return not (safeMode == true and safeModeBlocks(capability))

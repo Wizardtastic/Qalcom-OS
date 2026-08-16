@@ -12,7 +12,7 @@ local definitions = {
             "fs.read", "fs.write", "system.label", "peripheral.read", "peripheral.control", "account.manage",
             "redstone.read", "redstone.control", "infrastructure.control", "infrastructure.emergency", "jobs.manage",
             "network.send", "network.receive", "network.configure", "network.pair", "network.control", "telemetry.read", "incident.manage", "cannon.control",
-            "system.reboot", "system.shutdown",
+            "system.reboot", "system.shutdown", "content.fetch",
         },
     },
     Commander = {
@@ -28,7 +28,7 @@ local definitions = {
         description = "Base operations and approved infrastructure response",
         capabilities = {
             "fs.read", "fs.write", "peripheral.read", "redstone.read", "redstone.control", "infrastructure.control", "jobs.manage",
-            "network.send", "network.receive", "network.configure", "network.pair", "network.control", "telemetry.read", "incident.manage", "cannon.control",
+            "network.send", "network.receive", "network.configure", "network.pair", "network.control", "telemetry.read", "incident.manage", "cannon.control", "content.fetch",
         },
     },
     ["Artillery officer"] = {
@@ -65,7 +65,7 @@ local definitions = {
         description = "Bounded service identity for structured local jobs",
         capabilities = {
             "fs.read", "fs.write", "peripheral.read", "redstone.read", "redstone.control", "infrastructure.control", "jobs.manage",
-            "network.send", "network.receive", "network.configure", "network.pair", "network.control", "telemetry.read", "incident.manage", "cannon.control",
+            "network.send", "network.receive", "network.configure", "network.pair", "network.control", "telemetry.read", "incident.manage", "cannon.control", "content.fetch",
         },
     },
     ["Restricted guest"] = {

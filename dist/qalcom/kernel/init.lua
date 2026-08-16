@@ -7,6 +7,7 @@ local Capabilities = dofile("/qalcom/lib/capabilities.lua")
 local Roles = dofile("/qalcom/lib/roles.lua")
 local Managed = dofile("/qalcom/lib/managed.lua")
 local Network = fs.exists("/qalcom/lib/network.lua") and dofile("/qalcom/lib/network.lua") or nil
+local Store = fs.exists("/qalcom/lib/store.lua") and dofile("/qalcom/lib/store.lua") or nil
 local Palette = dofile("/qalcom/lib/ui/palette.lua")
 local unpack = table.unpack or unpack
 local config = Config.load()
@@ -35,6 +36,7 @@ telemetry = "/qalcom/apps/telemetry.lua",
 network_service = "/qalcom/apps/network_service.lua",
 cannon = "/qalcom/apps/cannon.lua",
 fluent = "/qalcom/apps/fluent.lua",
+store = "/qalcom/apps/store.lua",
 }
 local APP_META = {
 terminal = { title = "Terminal", icon = ">_", x = 3, y = 3, width = 38, height = 16 },
@@ -55,15 +57,16 @@ telemetry = { title = "Operations Telemetry", icon = "T", x = 3, y = 3, width = 
 network_service = { title = "Network Service", icon = "N", x = 3, y = 3, width = 20, height = 8, service = true, hidden = true },
 cannon = { title = "CBC Fire Control", icon = "C", x = 3, y = 3, width = 56, height = 21 },
 fluent = { title = "Fluent Desktop", icon = "Fl", x = 6, y = 3, width = 42, height = 16 },
+store = { title = "Software Center", icon = "St", x = 6, y = 3, width = 54, height = 22 },
 }
 local APP_CATEGORIES = {
 terminal = "System", explorer = "Files", calculator = "Tools",
 peripherals = "Operations", telemetry = "Operations", cannon = "Defense",
 network = "Network", control = "System",
 capabilities = "Security", settings = "System", recovery = "Recovery", logs = "System", account = "Account",
-fluent = "Tools",
+fluent = "Tools", store = "System",
 }
-local NORMAL_LAUNCHER_APPS = { "fluent", "terminal", "explorer", "calculator", "peripherals", "telemetry", "cannon", "network", "control", "capabilities", "settings", "recovery", "logs", "account" }
+local NORMAL_LAUNCHER_APPS = { "fluent", "terminal", "explorer", "store", "calculator", "peripherals", "telemetry", "cannon", "network", "control", "capabilities", "settings", "recovery", "logs", "account" }
 local SAFE_LAUNCHER_APPS = { "recovery", "logs", "terminal", "calculator", "settings", "peripherals", "telemetry", "network" }
 local function installedLauncherApps(list)
 local filtered = {}
@@ -74,6 +77,45 @@ end
 end
 return filtered
 end
+local function mergeInstalledPackages()
+if not Store or not Store.parseRegistry or not Store.launcherEntries then return end
+local metaPath = "/qalcom/data/packages.meta"
+if not fs.exists(metaPath) then return end
+local handle = fs.open(metaPath, "r")
+if not handle then return end
+local text = handle.readAll()
+handle.close()
+local registry = Store.parseRegistry(text or "")
+if type(registry) ~= "table" or registry.error then return end
+local entries = Store.launcherEntries(registry)
+if type(entries) ~= "table" then return end
+for _, entry in ipairs(entries) do
+local name = entry.name
+if type(name) == "string" and name ~= "" and not APP_PATHS[name]
+and type(entry.path) == "string" and fs.exists(entry.path) then
+APP_PATHS[name] = entry.path
+APP_META[name] = {
+title = entry.meta.title or name,
+icon = entry.meta.icon or "?",
+x = 6, y = 3,
+width = math.max(20, math.floor(tonumber(entry.meta.width) or 40)),
+height = math.max(8, math.floor(tonumber(entry.meta.height) or 18)),
+}
+APP_CATEGORIES[name] = entry.category or "Apps"
+if Capabilities.register then
+Capabilities.register(name, {
+title = entry.meta.title or name,
+trusted = false,
+requested = entry.capabilities,
+})
+end
+if entry.launcher ~= false then
+NORMAL_LAUNCHER_APPS[#NORMAL_LAUNCHER_APPS + 1] = name
+end
+end
+end
+end
+pcall(mergeInstalledPackages)
 NORMAL_LAUNCHER_APPS = installedLauncherApps(NORMAL_LAUNCHER_APPS)
 SAFE_LAUNCHER_APPS = installedLauncherApps(SAFE_LAUNCHER_APPS)
 local LAUNCHER_APPS = config.safeMode and SAFE_LAUNCHER_APPS or NORMAL_LAUNCHER_APPS

@@ -34,10 +34,12 @@ local CORE = {
     "qalcom/apps/control.lua", "qalcom/apps/diagnostics.lua", "qalcom/apps/dialog.lua",
     "qalcom/apps/editor.lua", "qalcom/apps/explorer.lua", "qalcom/apps/fluent.lua",
     "qalcom/apps/logs.lua", "qalcom/apps/peripherals.lua", "qalcom/apps/recovery.lua",
-    "qalcom/apps/settings.lua", "qalcom/apps/telemetry.lua", "qalcom/apps/terminal.lua",
+    "qalcom/apps/settings.lua", "qalcom/apps/store.lua", "qalcom/apps/telemetry.lua",
+    "qalcom/apps/terminal.lua",
     "qalcom/lib/auth.lua", "qalcom/lib/calculator.lua", "qalcom/lib/capabilities.lua",
-    "qalcom/lib/config.lua", "qalcom/lib/managed.lua", "qalcom/lib/peripherals.lua",
-    "qalcom/lib/pure.lua", "qalcom/lib/roles.lua", "qalcom/lib/system.lua",
+    "qalcom/lib/config.lua", "qalcom/lib/crypto.lua", "qalcom/lib/managed.lua",
+    "qalcom/lib/peripherals.lua", "qalcom/lib/pure.lua", "qalcom/lib/roles.lua",
+    "qalcom/lib/store.lua", "qalcom/lib/system.lua",
     "qalcom/lib/telemetry.lua", "qalcom/lib/ui.lua",
     "qalcom/lib/ui/animation.lua", "qalcom/lib/ui/canvas.lua", "qalcom/lib/ui/display.lua",
     "qalcom/lib/ui/hit.lua", "qalcom/lib/ui/palette.lua", "qalcom/lib/ui/pixel_palette.lua",
@@ -46,7 +48,7 @@ local CORE = {
 local NETWORK = {
     "qalcom/apps/network.lua", "qalcom/apps/network_service.lua",
     "qalcom/lib/network.lua", "qalcom/lib/protocol.lua",
-    "qalcom/lib/nodes.lua", "qalcom/lib/crypto.lua",
+    "qalcom/lib/nodes.lua",
 }
 local WAR = {
     "qalcom/apps/cannon.lua", "qalcom/lib/cannon.lua",

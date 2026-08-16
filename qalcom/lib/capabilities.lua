@@ -33,6 +33,7 @@ Capabilities.names = {
     "system.label",
     "system.reboot",
     "system.shutdown",
+    "content.fetch",
 }
 
 Capabilities.descriptions = {
@@ -57,6 +58,7 @@ Capabilities.descriptions = {
     ["system.label"] = "Change the computer label",
     ["system.reboot"] = "Request a computer reboot",
     ["system.shutdown"] = "Request a computer shutdown",
+    ["content.fetch"] = "Download package content over HTTP",
 }
 
 -- 0.2.0 describes policy; it does not sandbox trusted Lua globals. Requested
@@ -152,6 +154,11 @@ local manifests = {
         requested = { "fs.read", "peripheral.read", "cannon.control", "telemetry.read", "incident.manage" },
         unmanaged = { "os.pullEvent" },
     },
+    store = {
+        title = "Software Center", trusted = true,
+        requested = { "fs.read", "fs.write", "content.fetch", "system.reboot" },
+        unmanaged = { "http", "os.pullEvent" },
+    },
 }
 
 local function contains(list, value)
@@ -183,6 +190,25 @@ function Capabilities.manifest(name)
     }
 end
 
+-- Register a manifest for an app discovered at runtime (installed via the
+-- Software Center). Only capabilities in the known catalog are kept, and
+-- installed apps are never marked trusted. Role and Safe Mode policy still
+-- gate every capability at call time.
+function Capabilities.register(name, manifest)
+    if type(name) ~= "string" or name == "" then return false end
+    local requested = {}
+    for _, capability in ipairs(manifest and manifest.requested or {}) do
+        if Capabilities.descriptions[capability] then requested[#requested + 1] = capability end
+    end
+    manifests[name] = {
+        title = manifest and manifest.title or name,
+        trusted = false,
+        requested = requested,
+        unmanaged = copyList(manifest and manifest.unmanaged),
+    }
+    return true
+end
+
 function Capabilities.namesFor(name)
     local manifest = Capabilities.manifest(name)
     return manifest and manifest.requested or {}
@@ -202,6 +228,7 @@ local function safeModeBlocks(capability)
         or capability == "infrastructure.emergency" or capability == "jobs.manage" or capability == "network.send" or capability == "network.receive" or capability == "network.configure" or capability == "network.pair" or capability == "network.control" or capability == "system.label"
         or capability == "cannon.control"
         or capability == "system.reboot" or capability == "system.shutdown"
+        or capability == "content.fetch"
 end
 
 function Capabilities.effective(role, appName, capability, safeMode)

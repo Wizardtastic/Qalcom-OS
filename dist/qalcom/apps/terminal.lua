@@ -71,6 +71,7 @@ local name = args[1]
 if name == "help" then
 append("help clear ls cd cat mkdir rm cp mv touch view")
 append("pwd id label time whoami version logout about")
+append("store [code]  get <code>  - open the Software Center")
 elseif name == "clear" then lines = {}
 elseif name == "pwd" then append(cwd)
 elseif name == "id" then append("Computer ID: " .. tostring(os.getComputerID()))
@@ -136,6 +137,12 @@ append(ok and "Reboot requested; confirm through the desktop if prompted." or (r
 elseif name == "shutdown" then
 local ok, reason = ctx:managedPower("shutdown")
 append(ok and "Shutdown requested; confirm through the desktop if prompted." or (reason or "Shutdown denied"))
+elseif name == "store" or name == "get" then
+if name == "get" and not args[2] then append("Usage: get <pastebin code>")
+else
+ctx:launch("store", args[2] and { code = args[2] } or nil)
+append(args[2] and ("Opening Software Center for " .. args[2] .. "...") or "Opening Software Center...")
+end
 else append("Command not found: " .. tostring(name)) end
 end
 render()
