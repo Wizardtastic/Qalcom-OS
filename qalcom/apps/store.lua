@@ -214,8 +214,13 @@ return function(ctx)
             y = y + 1
         end
 
-        UI.text(ctx.win, body.x, body.y + body.height - 4, "Capabilities: " .. table.concat(descriptor.capabilities, ", "), UI.colors.textMuted, UI.colors.surface, body.width)
-        UI.text(ctx.win, body.x, body.y + body.height - 3, "Integrity: sha256:" .. tostring(descriptor.checksum):sub(1, 16), UI.colors.textMuted, UI.colors.surface, body.width)
+        -- Honest trust notice: the checksum proves the download was not altered
+        -- in transit, not that the publisher is benign. Installed code runs with
+        -- the same access as built-in apps, so this is a trust-the-source moment.
+        UI.text(ctx.win, body.x, body.y + body.height - 6, "! Runs code from the internet. Only install from", UI.colors.warning, UI.colors.surface, body.width)
+        UI.text(ctx.win, body.x, body.y + body.height - 5, "  publishers you trust; the checksum verifies the", UI.colors.warning, UI.colors.surface, body.width)
+        UI.text(ctx.win, body.x, body.y + body.height - 4, "  download, not the author's intent.", UI.colors.warning, UI.colors.surface, body.width)
+        UI.text(ctx.win, body.x, body.y + body.height - 3, "Integrity sha256:" .. tostring(descriptor.checksum):sub(1, 12) .. "  Caps: " .. table.concat(descriptor.capabilities, ", "), UI.colors.textMuted, UI.colors.surface, body.width)
 
         addButton(UI.button(ctx.win, body.x, body.y + body.height - 1, 14, "Install now", false, { variant = "accent" }), "do-install", "install")
         addButton(UI.button(ctx.win, body.x + 15, body.y + body.height - 1, 10, "Cancel", false, { variant = "subtle" }), "cancel", "back-detail")

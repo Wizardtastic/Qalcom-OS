@@ -190,15 +190,26 @@ function Capabilities.manifest(name)
     }
 end
 
+-- Capabilities an untrusted, runtime-registered app may ever hold, regardless of
+-- what its manifest claims. A defence-in-depth backstop: even if a caller passes
+-- an unfiltered list, an installed app can never be granted the ability to fire
+-- cannons, reboot, manage accounts, or reach the network transport here.
+Capabilities.untrustedCapabilities = {
+    ["fs.read"] = true,
+    ["fs.write"] = true,
+    ["telemetry.read"] = true,
+    ["peripheral.read"] = true,
+}
+
 -- Register a manifest for an app discovered at runtime (installed via the
--- Software Center). Only capabilities in the known catalog are kept, and
--- installed apps are never marked trusted. Role and Safe Mode policy still
--- gate every capability at call time.
+-- Software Center). Only capabilities in the untrusted allow-list are kept, and
+-- installed apps are never marked trusted. Role and Safe Mode policy still gate
+-- every capability at call time.
 function Capabilities.register(name, manifest)
     if type(name) ~= "string" or name == "" then return false end
     local requested = {}
     for _, capability in ipairs(manifest and manifest.requested or {}) do
-        if Capabilities.descriptions[capability] then requested[#requested + 1] = capability end
+        if Capabilities.untrustedCapabilities[capability] then requested[#requested + 1] = capability end
     end
     manifests[name] = {
         title = manifest and manifest.title or name,

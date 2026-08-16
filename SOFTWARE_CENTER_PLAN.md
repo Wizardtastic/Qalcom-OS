@@ -50,12 +50,12 @@ A `.qpkg` is a single serialized Lua table (via `textutils.serialize`), hosted a
 
   install = {
     root = "/",                      -- allowlisted base; all paths must resolve under it
-    files = {                        -- declared target paths (for the confirm screen)
-      { path = "qalcom/apps/notes.lua" },
-      { path = "qalcom/lib/notes.lua"  },
+    files = {                        -- declared target paths (for the confirm screen).
+      { path = "qalcom/pkg/notes/main.lua" },   -- app kinds are quarantined under
+      { path = "qalcom/pkg/notes/data.lua" },   -- /qalcom/pkg/<app>/ ; entry is main.lua
     },
     register = {                     -- how to wire the app into the desktop
-      app = "notes",
+      app = "notes",                 -- entry point is /qalcom/pkg/notes/main.lua
       meta = { title = "Notes", icon = "N", width = 40, height = 18 },
       category = "Tools",
       launcher = true,
@@ -63,8 +63,8 @@ A `.qpkg` is a single serialized Lua table (via `textutils.serialize`), hosted a
   },
 
   payload = {                        -- embedded file contents: target path -> source text
-    ["qalcom/apps/notes.lua"] = "....lua source....",
-    ["qalcom/lib/notes.lua"]  = "....lua source....",
+    ["qalcom/pkg/notes/main.lua"] = "....lua source....",
+    ["qalcom/pkg/notes/data.lua"] = "....lua source....",
   },
 
   integrity = {
@@ -109,7 +109,9 @@ Reuse `install.lua`'s `http.get` helper. Raw URL: `https://pastebin.com/raw/<cod
 
 1. **Payload is data, never executed at browse time.** The store never `load()`s the payload; it only writes strings to disk. Installed apps run later at the same trust level as any Qalcom app — the README is explicit that built-in apps are trusted, not sandboxed — and the confirm screen says so plainly.
 2. **Checksum verification.** Recompute the canonical SHA-256, display it, and compare to `integrity.payload`. Mismatch blocks the install with a tamper warning.
-3. **Path allowlisting.** Reject any file path that escapes `install.root`, contains `..`, is absolute outside allowed roots, or targets protected system files (`/startup.lua`, `/qalcom/kernel/`, `/qalcom/data/`, `/qalcom/logs/`) — unless `kind == "os-update"` *and* the user clears an extra "system update" warning. User data directories are preserved exactly as `install.lua` preserves them.
+3. **Path allowlisting and quarantine.** App/pack packages may write *only* under `/qalcom/pkg/<app>/`; any path outside it, one that contains `..`, is absolute, or targets a protected tree (`/startup.lua`, `/qalcom/kernel`, `/qalcom/lib`, `/qalcom/apps`, `/qalcom/version.lua`, `/qalcom/data`, `/qalcom/logs`) is rejected. This means a downloaded package can never overwrite a trusted, kernel-loaded module or a built-in app — closing the privilege-escalation hole a security audit found. Only `kind == "os-update"` may touch system paths, and then behind an extra "system update" warning. User data directories are preserved exactly as `install.lua` preserves them.
+
+> **Security note (audit-driven).** Two blockers were found and addressed. (a) *Writable core* — fixed by the `/qalcom/pkg/` quarantine and expanded protected roots above; app names are also checked against the built-in set, and the kernel refuses to override any existing app at merge time. (b) *No sandbox* — installed apps run with the same globals as built-in apps (Qalcom is explicitly "not a secure sandbox"), so the capability allow-list (`fs.read`, `fs.write`, `telemetry.read`, `peripheral.read` — enforced at validate time, again in `launcherEntries`, and a third time in `Capabilities.register`) is defence in depth, not containment. The mitigation shipped for v1 is an explicit, unmissable **trust-the-publisher warning** on the confirm screen: the checksum proves the download was not altered in transit, not that the author is benign. A real `_ENV`/`setfenv` sandbox that routes `peripheral`/`redstone`/`http`/`fs`/`os.reboot` through the capability layer, or a signed-publisher model, remains available as future hardening.
 4. **Capability + role gate.** Install writes through `ctx:writeFile` / `ctx:makeDir`, which enforce `fs.write`. For Observer / Restricted guest the Install button is disabled with a "requires Administrator" note; in Safe Mode it's disabled with a Safe Mode note. Every install is audited via `ctx:audit("install", id .. "@" .. version)`.
 5. **Confirm screen** (modeled on `install.lua`'s `screenConfirm`): source code, publisher, version, file count and total bytes, target paths, requested capabilities, checksum, and explicit Install / Cancel.
 6. **Atomic-ish writes and rollback.** Write to temp paths then move (or clean-per-directory like `install.lua`); on any failure, abort with a "nothing was left half-installed" message. Record the installed package and its exact file list so Remove is precise.

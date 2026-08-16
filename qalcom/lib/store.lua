@@ -26,20 +26,39 @@ Store.kinds = { app = true, ["os-update"] = true, pack = true }
 
 -- Capabilities a downloaded, launchable app may request. Deliberately narrow:
 -- even with the operator's consent at the confirm screen, an installed package
--- must never be able to fire cannons, reboot the machine, manage accounts, or
--- touch the network transport. Anything outside this set fails validation.
+-- must never be able to fire cannons, reboot the machine, manage accounts,
+-- reach the network transport, or exfiltrate over HTTP. Anything outside this
+-- set fails validation. (content.fetch is intentionally excluded.)
 Store.installableCapabilities = {
     ["fs.read"] = true,
     ["fs.write"] = true,
     ["telemetry.read"] = true,
     ["peripheral.read"] = true,
-    ["content.fetch"] = true,
+}
+
+-- Third-party packages are quarantined here. Their files may not live anywhere
+-- else (only an explicit os-update may touch system paths), so a package can
+-- never overwrite a trusted, kernel-loaded module or a built-in app file. The
+-- launchable entry point is always <packageRoot><app>/main.lua.
+Store.packageRoot = "/qalcom/pkg/"
+
+-- Built-in app names an installed package may not claim, for a friendly error
+-- (the kernel additionally refuses to override any existing app at merge time).
+Store.reservedApps = {
+    terminal = true, explorer = true, settings = true, account = true, editor = true,
+    dialog = true, control = true, logs = true, recovery = true, diagnostics = true,
+    capabilities = true, peripherals = true, calculator = true, network = true,
+    telemetry = true, network_service = true, cannon = true, fluent = true, store = true,
 }
 
 -- Files/trees the store refuses to touch unless the package is an explicit
--- OS update AND the operator confirms the extra warning. User data and logs are
--- never overwritten, matching install.lua's "your data is kept" behaviour.
-Store.protectedRoots = { "/startup.lua", "/qalcom/kernel", "/qalcom/data", "/qalcom/logs" }
+-- OS update AND the operator confirms the extra warning. Covers the boot loader,
+-- the kernel, every trusted library, the built-in apps, the version marker, and
+-- user data/logs -- everything the kernel dofile()s at boot with full globals.
+Store.protectedRoots = {
+    "/startup.lua", "/qalcom/kernel", "/qalcom/lib", "/qalcom/apps",
+    "/qalcom/version.lua", "/qalcom/data", "/qalcom/logs",
+}
 
 -- === Dependency loading =====================================================
 -- Load sibling modules through candidate paths so this file works both on a
@@ -229,6 +248,11 @@ function Store.validate(manifest, options)
         if Store.isProtectedPath(abs) and not allowProtected then
             return fail("file targets a protected system path: " .. abs)
         end
+        -- Everything but an explicit os-update is quarantined under packageRoot,
+        -- so a package can never place a file where the kernel would trust it.
+        if not allowProtected and abs:sub(1, #Store.packageRoot) ~= Store.packageRoot then
+            return fail("installed files must live under " .. Store.packageRoot .. ": " .. abs)
+        end
 
         local content = payload[rel]
         if type(content) ~= "string" then return fail("payload missing content for " .. rel) end
@@ -269,9 +293,19 @@ function Store.validate(manifest, options)
         warnings[#warnings + 1] = "checksum not verified (crypto unavailable)"
     end
 
-    -- A launchable app must name itself, ship its entry file, and stay within the
-    -- installable-capability allow-list. os-update / pack kinds carry no register
-    -- block and are exempt from these app-specific checks.
+    -- Every non-os-update package is held to the installable-capability
+    -- allow-list, whether or not it registers a launchable app, so a "pack" can
+    -- never request something a launchable app could not.
+    if not allowProtected then
+        for _, capability in ipairs(manifest.capabilities or {}) do
+            if not Store.installableCapabilities[capability] then
+                return fail("capability not allowed for installed apps: " .. tostring(capability))
+            end
+        end
+    end
+
+    -- A launchable app must name itself (not shadowing a built-in) and ship its
+    -- quarantined entry file at <packageRoot><app>/main.lua.
     local register = install.register
     if register ~= nil then
         if type(register) ~= "table" or not isNonEmptyString(register.app) then
@@ -280,17 +314,15 @@ function Store.validate(manifest, options)
         if register.app:match("^[%w_]+$") == nil then
             return fail("invalid app name: " .. tostring(register.app))
         end
-        local mainPath = "/qalcom/apps/" .. register.app .. ".lua"
+        if Store.reservedApps[register.app] then
+            return fail("app name is reserved: " .. register.app)
+        end
+        local mainPath = Store.packageRoot .. register.app .. "/main.lua"
         local hasMain = false
         for _, file in ipairs(files) do
             if file.path == mainPath then hasMain = true break end
         end
         if not hasMain then return fail("register app has no matching file: " .. mainPath) end
-        for _, capability in ipairs(manifest.capabilities or {}) do
-            if not Store.installableCapabilities[capability] then
-                return fail("capability not allowed for installed apps: " .. tostring(capability))
-            end
-        end
     end
 
     return {
@@ -515,15 +547,17 @@ function Store.recordInstall(registry, descriptor, source, timestamp)
     for _, file in ipairs(descriptor.files) do paths[#paths + 1] = file.path end
     local register = nil
     if type(descriptor.register) == "table" and isNonEmptyString(descriptor.register.app) then
-        local meta = descriptor.register.meta or {}
+        -- Accept metadata under register.meta (preferred) or directly on register.
+        local reg = descriptor.register
+        local meta = reg.meta or {}
         register = {
-            app = descriptor.register.app,
-            title = meta.title,
-            icon = meta.icon,
-            width = meta.width,
-            height = meta.height,
-            category = descriptor.register.category,
-            launcher = descriptor.register.launcher,
+            app = reg.app,
+            title = meta.title or reg.title,
+            icon = meta.icon or reg.icon,
+            width = meta.width or reg.width,
+            height = meta.height or reg.height,
+            category = reg.category,
+            launcher = reg.launcher,
         }
     end
     local capabilities = {}
@@ -553,7 +587,7 @@ function Store.launcherEntries(registry)
         local package = registry.packages[id]
         local register = package.register
         if type(register) == "table" and isNonEmptyString(register.app)
-            and register.app:match("^[%w_]+$") then
+            and register.app:match("^[%w_]+$") and not Store.reservedApps[register.app] then
             local capabilities = {}
             for _, capability in ipairs(package.capabilities or {}) do
                 if Store.installableCapabilities[capability] then
@@ -563,7 +597,7 @@ function Store.launcherEntries(registry)
             entries[#entries + 1] = {
                 id = id,
                 name = register.app,
-                path = "/qalcom/apps/" .. register.app .. ".lua",
+                path = Store.packageRoot .. register.app .. "/main.lua",
                 meta = {
                     title = register.title or register.app,
                     icon = register.icon or "?",
@@ -591,6 +625,45 @@ end
 function Store.removeRecord(registry, id)
     if registry and registry.packages then registry.packages[id] = nil end
     return registry
+end
+
+-- === Authoring ==============================================================
+
+-- Assemble a complete manifest table from metadata plus a payload map
+-- (targetPath -> content). Derives install.files from the payload, carries the
+-- register block through, and computes the integrity checksum. Pure: the pack
+-- tool feeds it files read from disk; callers should Store.validate the result
+-- before publishing. `meta` fields: id, name, version, publisher, category,
+-- kind, summary, description, requires, capabilities, icon, logo, root,
+-- register.
+function Store.assemble(meta, payload)
+    meta = meta or {}
+    payload = payload or {}
+    local files = {}
+    for _, path in ipairs(sortedKeys(payload)) do files[#files + 1] = { path = path } end
+    local manifest = {
+        qpkg = Store.schemaVersion,
+        id = meta.id,
+        name = meta.name,
+        version = meta.version,
+        publisher = meta.publisher,
+        category = meta.category,
+        kind = meta.kind or "app",
+        summary = meta.summary,
+        description = meta.description,
+        requires = meta.requires,
+        capabilities = meta.capabilities,
+        icon = meta.icon,
+        logo = meta.logo,
+        install = {
+            root = meta.root or "/",
+            files = files,
+            register = meta.register,
+        },
+        payload = payload,
+    }
+    manifest.integrity = { algo = "sha256", payload = Store.checksum(payload) }
+    return manifest
 end
 
 -- === Runtime-only (textutils) encode/decode =================================
