@@ -162,4 +162,14 @@ local x = math.max(margin, math.floor((screenWidth - width) / 2) + 1)
 local y = math.max(margin, math.floor((screenHeight - height) / 2) + 1)
 return x, y, width, height
 end
+function Pure.authMessageRow(cardY, cardHeight, height)
+cardY = math.floor(tonumber(cardY) or 1)
+cardHeight = math.floor(tonumber(cardHeight) or 1)
+height = math.floor(tonumber(height) or 1)
+local below = cardY + cardHeight + 1
+if below < height then return below end
+local above = cardY - 1
+if above >= 1 then return above end
+return math.max(1, height - 1)
+end
 return Pure

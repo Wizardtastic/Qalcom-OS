@@ -6,6 +6,10 @@ Network.protocolVersion = 1
 Network.protocol = "qalcom.v1"
 Network.defaultChannel = 4242
 Network.defaultReplyChannel = 4243
+-- Mail runs on its own channel pair with its own transport state so it never
+-- entangles with the telemetry service on the default channel.
+Network.mailChannel = 4244
+Network.mailReplyChannel = 4245
 Network.maxNodes = 32
 Network.maxNodeId = 48
 Network.maxAlias = 48
@@ -505,6 +509,12 @@ end
 
 Network.readRequests = { ["system.status"] = true, ["telemetry.snapshot"] = true, ["radar.contacts"] = true, ["assets.summary"] = true }
 Network.controlRequests = { ["infrastructure.toggle"] = true, ["infrastructure.safe_state"] = true, ["jobs.pause"] = true }
+-- Mail transport requests. The relay accepts deposits and answers polls,
+-- fetches, acks, and directory register/lookup; a client only ever sends these.
+Network.mailRequests = {
+    ["mail.deposit"] = true, ["mail.poll"] = true, ["mail.fetch"] = true,
+    ["mail.ack"] = true, ["mail.register"] = true, ["mail.lookup"] = true,
+}
 
 function Network.validateRequest(payload, kind)
     if type(payload) ~= "table" then return false, "Request payload must be a table" end
@@ -514,6 +524,20 @@ function Network.validateRequest(payload, kind)
     elseif kind == "control_request" then
         if not Network.controlRequests[request] then return false, "Control request is not allowlisted" end
         if request == "infrastructure.toggle" and clean(payload.target, 32) == "" then return false, "Control target required" end
+    elseif kind == "mail_request" then
+        if not Network.mailRequests[request] then return false, "Mail request is not allowlisted" end
+        if request == "mail.deposit" then
+            if clean(payload.to, Network.maxAlias) == "" then return false, "Mail recipient required" end
+            if clean(payload.msgId, 96) == "" then return false, "Mail message id required" end
+            local seq, total = tonumber(payload.seq), tonumber(payload.total)
+            if not seq or not total or total < 1 or seq < 1 or seq > total then return false, "Invalid mail chunk sequence" end
+            if type(payload.data) ~= "string" then return false, "Mail chunk data required" end
+        elseif request == "mail.fetch" or request == "mail.ack" then
+            if clean(payload.msgId, 96) == "" then return false, "Mail message id required" end
+        elseif request == "mail.register" or request == "mail.lookup" then
+            if clean(payload.alias, Network.maxAlias) == "" then return false, "Mail alias required" end
+        end
+        -- mail.poll needs no extra fields; the sender is the authenticated source.
     else
         return false, "Unsupported request kind"
     end

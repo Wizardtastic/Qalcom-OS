@@ -170,6 +170,20 @@ function Pure.responsiveMetrics(screenWidth, screenHeight)
     }
 end
 
+-- Pick the row the setup/login card status message should occupy. The card is
+-- vertically centered, so the natural below-card row can fall at or past the
+-- bottom text row on compact terminals; prefer a row that is always visible.
+function Pure.authMessageRow(cardY, cardHeight, height)
+    cardY = math.floor(tonumber(cardY) or 1)
+    cardHeight = math.floor(tonumber(cardHeight) or 1)
+    height = math.floor(tonumber(height) or 1)
+    local below = cardY + cardHeight + 1
+    if below < height then return below end
+    local above = cardY - 1
+    if above >= 1 then return above end
+    return math.max(1, height - 1)
+end
+
 function Pure.fitWindow(screenWidth, screenHeight, desiredWidth, desiredHeight, minimumWidth, minimumHeight, margin)
     margin = margin or 1
     local availableWidth = math.max(1, screenWidth - margin * 2)

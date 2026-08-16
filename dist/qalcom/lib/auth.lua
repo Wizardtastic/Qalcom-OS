@@ -275,10 +275,7 @@ variant = "accent",
 focused = buttonActive,
 })
 if message and message ~= "" then
-local messageY = L.cardY + L.cardHeight + 1
-if messageY < height then
-UI.center(target, messageY, message, messageColor or UI.colors.textMuted, backdrop, width)
-end
+UI.center(target, Pure.authMessageRow(L.cardY, L.cardHeight, height), message, messageColor or UI.colors.textMuted, backdrop, width)
 end
 UI.center(target, height, "Tab switches fields   -   Enter submits   -   Esc back", UI.colors.loginMuted or UI.colors.textSubtle or UI.colors.muted, backdrop, width)
 end
